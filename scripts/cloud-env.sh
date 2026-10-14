@@ -15,3 +15,5 @@ p=Path('/workspace/.velnix-tools/gradle/gradle.properties')
 print(' '.join('-D'+s[len('systemProp.'):] for s in p.read_text().splitlines() if s.startswith('systemProp.') and ('proxyHost=' in s or 'proxyPort=' in s)) if p.exists() else '')
 PY
 )"
+
+export VELNIX_QA_PYTHON=/workspace/.velnix-tools/qa-python/bin/python

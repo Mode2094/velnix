@@ -17,9 +17,17 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test
+      - run: python3 scripts/check_secrets.py
       - run: flutter analyze
       - run: flutter test --reporter expanded
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          python3 -m venv /tmp/velnix-qa
+          /tmp/velnix-qa/bin/pip install -r scripts/qa-requirements.txt
+          /tmp/velnix-qa/bin/python scripts/verify_barcodes.py
       - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo
+      - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=live
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
@@ -47,6 +55,7 @@ jobs:
           java-version: '21'
       - run: npm ci
       - run: npm run syntax
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run test:emulator
   android:
@@ -64,3 +73,4 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: flutter build apk --debug --dart-define=VELNIX_MODE=demo
+      - run: flutter build apk --debug --dart-define=VELNIX_MODE=live
