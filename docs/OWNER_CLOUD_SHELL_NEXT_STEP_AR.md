@@ -1,3 +1,5 @@
+> تحديث: وافق المالك على إنشاء عضوية الحساب المحدد فقط. المسار الحالي في [دليل الإنشاء](OWNER_BOOTSTRAP_GCLOUD_APPLY_AR.md)؛ إجراءات الجرد وZIP أدناه تاريخية وليست مطلوبة الآن. GitHub API أصبح قابلاً للقراءة في جلسة الإصلاح الأخيرة؛ الحجب المذكور أدناه وصف للحالة السابقة.
+
 # الخطوة البشرية التالية — جرد رسمي من Google Cloud Shell
 
 المسار الحالي المعتمد دون رفع ملفات: [افتح الفرع والدليل مباشرة](https://shell.cloud.google.com/cloudshell/editor?project=velnix-6c1a2&cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FMode2094%2Fvelnix&cloudshell_git_branch=audit%2Fproduction-readiness&cloudshell_tutorial=docs%2FCLOUD_SHELL_OWNER_TUTORIAL.md) ثم اتبع [إجراء التشغيل الموحد](CLOUD_SHELL_OWNER_TUTORIAL.md). فتح الرابط لا يشغّل الأوامر تلقائياً ولا يمنح Codex التحكم. طرق الملف وZIP أدناه بدائل تاريخية، وليست مطلوبة لهذا الإجراء.

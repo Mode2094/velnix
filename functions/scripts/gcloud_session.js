@@ -25,6 +25,15 @@ function createGcloudSession({run=args=>execFileSync('gcloud',args,{encoding:'ut
   const response=await fetchImpl(url.href,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+accessToken(),'X-Goog-User-Project':PROJECT},signal:AbortSignal.timeout(20000)});
   return readGoogleJson(response);
  }
- return {account,credential,get};
+ async function firestoreTransaction(action,body){
+  if(!['beginTransaction','batchGet','runQuery','commit','rollback'].includes(action))throw Error('firestore_action_refused');
+  const suffix='/documents:'+action;
+  const response=await fetchImpl('https://firestore.googleapis.com/v1/projects/'+PROJECT+'/databases/(default)'+suffix,{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+accessToken(),'X-Goog-User-Project':PROJECT,'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+  if(action==='runQuery'||action==='batchGet'){
+   const data=await response.json();if(!response.ok||!Array.isArray(data)||!data.length||data.some(row=>!row||typeof row!=='object'||row.error||(action==='runQuery'?!row.document&&!row.readTime:!row.found&&!row.missing)))throw Error('unverified_query_response');return data;
+  }
+  return readGoogleJson(response);
+ }
+ return {account,credential,get,firestoreTransaction};
 }
 module.exports={PROJECT,createGcloudSession};

@@ -8,17 +8,17 @@ test('owner preparation rejects unreadable inventory, old memberships, locks and
  for(const change of [s=>s.authentication.status='unverified',s=>s.firestore.members.status='unverified',s=>s.firestore.bootstrapState.status='unverified',s=>s.authentication.totalUsers=2,s=>s.firestore.members.count=1,s=>s.firestore.joinRequests.count=1,s=>s.firestore.bootstrapState.exists=true,s=>s.firestore.generalManagersIncludingInactive=1]){const s=snapshot();change(s);assert.throws(()=>assertInventory(s,uid));}
  assert.throws(()=>assertInventory(snapshot(),'other_uid'));
 });
-async function setup(t,{domains=['8080-owner.cloudshell.dev'],tokenChange={},dryRunFails=false}={}){
- let dryRuns=0,verified=0;const now=Date.UTC(2026,9,14,19);
+async function setup(t,{domains=['8080-owner.cloudshell.dev'],tokenChange={},dryRunFails=false,apply=false,applyUnknown=false}={}){
+ let dryRuns=0,verified=0,applies=0;const now=Date.UTC(2026,9,14,19);
  const token={uid,email:candidate,email_verified:true,auth_time:now/1000,firebase:{sign_in_provider:'google.com'},...tokenChange};
- const server=createPortal({candidateEmail:candidate,publicConfig:{projectId:'velnix-6c1a2'},authorizedDomains:domains,now:()=>now,auth:{verifyIdToken:async(value,revoked)=>{verified++;assert.equal(revoked,true);assert.equal(value,'signed-fixture');return token;},getUser:async()=>({email:candidate,emailVerified:true,disabled:false,providerData:[{providerId:'google.com',email:candidate}]})},checkInventory:async()=>snapshot(),runDryRun:async actual=>{dryRuns++;assert.equal(actual,uid);if(dryRunFails)throw Error('refused');}});
+ const server=createPortal({candidateEmail:candidate,publicConfig:{projectId:'velnix-6c1a2'},authorizedDomains:domains,now:()=>now,auth:{verifyIdToken:async(value,revoked)=>{verified++;assert.equal(revoked,true);assert.equal(value,'signed-fixture');return token;},getUser:async()=>({email:candidate,emailVerified:true,disabled:false,providerData:[{providerId:'google.com',email:candidate}]})},checkInventory:async()=>snapshot(),runDryRun:async actual=>{dryRuns++;assert.equal(actual,uid);if(dryRunFails)throw Error('refused');},runApply:apply?async actual=>{applies++;assert.equal(actual,uid);if(applyUnknown){const e=Error('unknown');e.outcomeUnknown=true;throw e;}return {membershipCreated:true,readbackVerified:true,uid:actual};}:undefined});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
  const address='http://127.0.0.1:'+server.address().port,origin='https://8080-owner.cloudshell.dev';
  const page=await fetch(address,{headers:{'x-forwarded-host':'8080-owner.cloudshell.dev'}});
  const cookie=page.headers.get('set-cookie')?.split(';')[0],csrf=cookie?.split('=')[1];
  const headers={'x-forwarded-host':'8080-owner.cloudshell.dev',origin,cookie,'x-owner-csrf':csrf,'content-type':'application/json'};
- return {page,send:(overrides={},body={idToken:'signed-fixture'})=>fetch(address+'/verify',{method:'POST',headers:{...headers,...overrides},body:JSON.stringify(body)}),dryRuns:()=>dryRuns,verified:()=>verified};
+ return {page,send:(overrides={},body={idToken:'signed-fixture'})=>fetch(address+'/verify',{method:'POST',headers:{...headers,...overrides},body:JSON.stringify(body)}),dryRuns:()=>dryRuns,verified:()=>verified,applies:()=>applies};
 }
 test('an unauthorized preview domain stops before Google login or domain modifications',async t=>{
  const p=await setup(t,{domains:[]});assert.equal(p.page.status,409);assert.match(await p.page.text(),/Authorized domains/);assert.equal(p.verified(),0);assert.equal(p.dryRuns(),0);
@@ -40,4 +40,15 @@ test('a verified matching session runs one dry-run, returns UID without tokens a
 });
 test('a refused dry-run remains a failure rather than a ready administrator',async t=>{
  const p=await setup(t,{dryRunFails:true});const response=await p.send();assert.equal(response.status,403);assert.equal((await response.json()).membershipCreated,false);
+});
+
+test('approved portal re-verifies Google identity, runs dry-run, applies once and caches only verified success',async t=>{
+ const p=await setup(t,{apply:true});const response=await p.send();assert.equal(response.status,200);const result=await response.json();assert.equal(result.membershipCreated,true);assert.equal(result.readbackVerified,true);assert.equal(p.applies(),1);assert.equal(p.dryRuns(),1);
+ assert.equal((await p.send()).status,200);assert.equal(p.applies(),1);assert.equal(p.verified(),2);
+});
+test('unknown commit outcome stays unknown and blocks automatic portal retries',async t=>{
+ const p=await setup(t,{apply:true,applyUnknown:true});const response=await p.send();assert.equal(response.status,409);assert.equal((await response.json()).membershipCreated,null);assert.equal((await p.send()).status,409);assert.equal(p.applies(),1);
+});
+test('wrong Google identity cannot reach approved apply callback',async t=>{
+ const p=await setup(t,{apply:true,tokenChange:{email:'other@example.test'}});assert.equal((await p.send()).status,403);assert.equal(p.applies(),0);
 });

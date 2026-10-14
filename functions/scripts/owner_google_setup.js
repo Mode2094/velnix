@@ -13,8 +13,8 @@ function assertInventory(data,uid){
   if(uid&&(count!==1||candidate?.uidFromAuthRecordOnly!==uid))throw Error('uid_record_mismatch');
 }
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
-function createPortal({candidateEmail,publicConfig,authorizedDomains,auth,checkInventory,runDryRun,refreshDomains,now=()=>Date.now()}){
-  const csrf=crypto.randomBytes(32).toString('hex');let completed=null,busy=false;
+function createPortal({candidateEmail,publicConfig,authorizedDomains,auth,checkInventory,runDryRun,runApply,refreshDomains,now=()=>Date.now()}){
+  const csrf=crypto.randomBytes(32).toString('hex');let completed=null,busy=false,outcomeUnknown=false;
   function origin(req){
     const forwarded=req.headers['x-forwarded-host'];
     const host=forwarded||req.headers.host||'';
@@ -40,7 +40,7 @@ function createPortal({candidateEmail,publicConfig,authorizedDomains,auth,checkI
         res.setHeader('Set-Cookie',`velnix_owner=${csrf}; Secure; HttpOnly; SameSite=Strict; Path=/`);
         res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}' https://www.gstatic.com https://apis.google.com; style-src 'unsafe-inline'; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://*.google.com; img-src https: data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self' https://shell.cloud.google.com https://console.cloud.google.com`);
         res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});
-        res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>توثيق مدير Velnix</title><style>body{font:18px system-ui;max-width:620px;margin:12vh auto;padding:24px;line-height:1.8;background:#f4f7fa;color:#10283e}button{font:inherit;padding:14px;border:0;border-radius:10px;background:#12636b;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}button:disabled{opacity:.5}</style><h1>توثيق حساب المدير المرشح</h1><p>اختر حساب Google المحدد فقط. سيُنشأ حساب Firebase حقيقي عند أول تسجيل. لن تُنشأ عضوية مدير ولن ينفذ أي نشر.</p><p id="candidate"></p><button id="login">المتابعة باستخدام Google</button><pre id="result" role="status"></pre><script type="module" nonce="${nonce}">
+        res.end(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>توثيق مدير Velnix</title><style>body{font:18px system-ui;max-width:620px;margin:12vh auto;padding:24px;line-height:1.8;background:#f4f7fa;color:#10283e}button{font:inherit;padding:14px;border:0;border-radius:10px;background:#12636b;color:white}pre{white-space:pre-wrap;overflow-wrap:anywhere}button:disabled{opacity:.5}</style><h1>توثيق حساب المدير المرشح</h1><p>اختر حساب Google المحدد فقط. سيُنشأ حساب Firebase حقيقي عند أول تسجيل. ${runApply?'هذا المسار مفوض لإنشاء عضوية generalManager لهذا الحساب فقط بعد التحقق. لن ينفذ أي نشر.':'لن تُنشأ عضوية مدير ولن ينفذ أي نشر.'}</p><p id="candidate"></p><button id="login">المتابعة باستخدام Google</button><pre id="result" role="status"></pre><script type="module" nonce="${nonce}">
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,inMemoryPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 const email=${json(candidateEmail)}, auth=getAuth(initializeApp(${json(publicConfig)}));
@@ -52,7 +52,7 @@ button.onclick=async()=>{button.disabled=true;result.textContent='جارٍ ال�
  if(credential.user.email?.toLowerCase()!==email.toLowerCase())throw Error('wrong-account');
  const idToken=await credential.user.getIdToken(true);
  const response=await fetch('/verify',{method:'POST',headers:{'Content-Type':'application/json','X-Owner-CSRF':${json(csrf)}},body:JSON.stringify({idToken})});
- const data=await response.json();if(!response.ok)throw Error('verification-failed');
+ const data=await response.json();if(!response.ok){result.textContent=JSON.stringify(data,null,2);button.disabled=data.error==='bootstrap_commit_outcome_unknown';return;}
  result.textContent=JSON.stringify(data,null,2);
 }catch(error){result.textContent='لم يكتمل التحقق. تأكد من الحساب ومزود Google وApp Check والنطاق المصرح. لا ترسل أي token.';button.disabled=false;}finally{await signOut(auth).catch(()=>{});}};
 </script></html>`);return;
@@ -64,6 +64,7 @@ button.onclick=async()=>{button.disabled=true;result.textContent='جارٍ ال�
       const input=JSON.parse(body);
       if(typeof input.idToken!=='string'||Object.keys(input).length!==1)return send(400,{error:'invalid_input'});
       if(busy)return send(409,{error:'verification_in_progress'});
+      if(outcomeUnknown)return send(409,{error:'bootstrap_commit_outcome_unknown',membershipCreated:null});
       busy=true;
       try{
         const token=await auth.verifyIdToken(input.idToken,true);
@@ -74,11 +75,13 @@ button.onclick=async()=>{button.disabled=true;result.textContent='جارٍ ال�
         if(completed){if(completed.uid!==token.uid)throw Error('uid_changed');return send(200,completed);}
         assertInventory(await checkInventory(),token.uid);
         await runDryRun(token.uid);
-        completed={projectId:PROJECT,uid:token.uid,candidateAccountMatched:true,googleSessionVerified:true,bootstrapDryRun:'passed',membershipCreated:false,deployed:false,next:'انتظار موافقة محددة على إنشاء عضوية generalManager؛ لا تشغّل --apply قبلها.'};
+        let applied;
+        if(runApply){try{applied=await runApply(token.uid);}catch(e){if(e.outcomeUnknown)outcomeUnknown=true;throw e;}if(applied?.membershipCreated!==true||applied?.readbackVerified!==true||applied?.uid!==token.uid){outcomeUnknown=true;throw Error('unverified_apply_result');}}
+        completed={projectId:PROJECT,uid:token.uid,candidateAccountMatched:true,googleSessionVerified:true,bootstrapDryRun:'passed',membershipCreated:applied?.membershipCreated===true,commitTime:applied?.commitTime,readbackVerified:applied?.readbackVerified===true,deployed:false,next:applied?'تم تأكيد العضوية والقفل وسجل التدقيق من Firebase. لا نشر.':'انتظار موافقة محددة على إنشاء عضوية generalManager؛ لا تشغّل --apply قبلها.'};
         // Only a redacted result; no ID token, ADC or Google access token.
         console.log(JSON.stringify(completed,null,2));return send(200,completed);
       }finally{busy=false;}
-    }catch(_){return send(403,{error:'verification_or_preflight_failed',membershipCreated:false});}
+    }catch(_){return send(outcomeUnknown?409:403,{error:outcomeUnknown?'bootstrap_commit_outcome_unknown':'verification_or_preflight_failed',membershipCreated:outcomeUnknown?null:false});}
   });
   return server;
 }
@@ -86,7 +89,11 @@ async function main(){
   const candidateEmail=process.argv[2];if(!candidateEmail||!/^\S+@\S+\.\S+$/.test(candidateEmail))throw Error('candidate_required');
   const {initializeApp}=require('firebase-admin/app');
   const {getAuth}=require('firebase-admin/auth');
-  const session=createGcloudSession();
+  const apply=process.argv[3]==='--approve-bootstrap';
+  if(process.argv.length>4||(process.argv[3]&&!apply))throw Error('invalid_mode');
+  const {applyOwnerBootstrap,OWNER}=require('./bootstrap_gcloud_apply');
+  if(apply&&candidateEmail!==OWNER)throw Error('approved_owner_required');
+  const session=createGcloudSession({expectedAccount:apply?OWNER:undefined});
   process.env.GOOGLE_CLOUD_QUOTA_PROJECT=PROJECT;
   initializeApp({projectId:PROJECT,credential:session.credential});
   const get=session.get;
@@ -103,7 +110,7 @@ async function main(){
   const domains=config.authorizedDomains;if(!Array.isArray(domains))throw Error('authorized_domains_unverified');
   const server=createPortal({candidateEmail,publicConfig,authorizedDomains:domains,auth:getAuth(),checkInventory,runDryRun:async uid=>{
     execFileSync(process.execPath,[require('node:path').join(__dirname,'bootstrap_admin.js'),'--gcloud-session'],{env:{...process.env,GCLOUD_PROJECT:PROJECT,GOOGLE_CLOUD_PROJECT:PROJECT,VELNIX_BOOTSTRAP_CONFIRM_PROJECT:PROJECT,VELNIX_ADMIN_GOOGLE_UID:uid,VELNIX_OPERATOR_ACCOUNT:session.account},stdio:['ignore','pipe','pipe'],timeout:60000});
-  },refreshDomains:async()=>{
+  },runApply:apply?(uid=>applyOwnerBootstrap({session,auth:getAuth(),uid,approved:true})):undefined,refreshDomains:async()=>{
     config=await get(`https://identitytoolkit.googleapis.com/v2/projects/${PROJECT}/config`);
     if(!Array.isArray(config.authorizedDomains))throw Error('authorized_domains_unverified');
     domains.splice(0,domains.length,...config.authorizedDomains);
