@@ -11,12 +11,19 @@ return async function processRemote(companyId, payload, eventId, source) {
   const orderRef=db.doc(`orders/${orderId}`),eventRef=db.doc(`deliveryInbox/${companyId}/events/${eventId}`);
   return db.runTransaction(async tx=>{
     const [event,order]=await Promise.all([tx.get(eventRef),tx.get(orderRef)]);
-    if(event.exists)return {ignored:'duplicate'};
+    const sameStatus=order.exists&&order.data().companyId===companyId&&order.data().status===mapped;
+    const syncSuccess={lastSyncAt:FieldValue.serverTimestamp(),syncError:null};
+    if(event.exists){
+      // Poll IDs are stable per raw status. A fresh successful poll still
+      // proves recovery; a replayed webhook does not prove a fresh connection.
+      if(source==='poll'&&sameStatus)tx.update(orderRef,syncSuccess);
+      return {ignored:'duplicate'};
+    }
     if(order.exists&&order.data().companyId===companyId&&order.data().status==='ready'&&['sending','needs_review'].includes(order.data().dispatchState))return {deferred:'awaiting_dispatch_confirmation'};
     tx.create(eventRef,{companyId,orderId,raw,source,receivedAt:FieldValue.serverTimestamp()});
     if(!order.exists||order.data().companyId!==companyId)return {ignored:'unmatched_order'};
     if(!remoteCanAdvance(order.data().status,mapped))return {ignored:'out_of_order'};
-    if(order.data().status===mapped)return {ignored:'same_status'};
+    if(sameStatus){tx.update(orderRef,syncSuccess);return {ignored:'same_status'};}
     tx.update(orderRef,{revision:FieldValue.increment(1),status:mapped,...(mapped==='delivered'?{completionSource:'carrier'}:{}),remoteStatus:raw,updatedAt:FieldValue.serverTimestamp(),lastSyncAt:FieldValue.serverTimestamp(),syncError:null});
     const actor={id:`delivery:${companyId}`,name:'شركة التوصيل'};
     await addEvent(orderId,'remote_status',actor,{raw,mapped,source},tx);

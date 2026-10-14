@@ -31,6 +31,7 @@ class _LiveOrdersState extends State<LiveOrders> {
   bool busy = false, more = true, limited = false;
   String? error;
   int generation = 0;
+  String appliedQuery = '';
   @override
   void initState() {
     super.initState();
@@ -53,6 +54,7 @@ class _LiveOrdersState extends State<LiveOrders> {
       busy = true;
       error = null;
       if (reset) {
+        appliedQuery = search.text.trim();
         rows = [];
         after = null;
         more = true;
@@ -60,7 +62,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     });
     final token = after;
     try {
-      final query = search.text.trim();
+      final query = appliedQuery;
       if (query.isNotEmpty && query.length < 2) {
         throw VelnixException('اكتب حرفين على الأقل للبحث');
       }

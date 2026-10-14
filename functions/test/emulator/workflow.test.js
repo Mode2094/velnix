@@ -161,6 +161,14 @@ test('durable notices survive duplicate event delivery without resetting read st
   assert.equal(repeated.size,notices.size);
   assert.equal((await notices.docs[0].ref.get()).data().read,true);
 });
+test('a sales employee cannot become their own supervisor during a role change',async()=>{
+  await getAuth().createUser({uid:'self_supervisor',email:'self-supervisor@velnix.test',password:'LocalTestingOnly123!'});
+  await db.doc('members/self_supervisor').set({name:'Sales',role:'sales',active:true,permissions:[]});
+  await assert.rejects(invoke('saveMember','gm',{id:'self_supervisor',name:'Entry',role:'dataEntry',active:true,permissions:[],salesSupervisorId:'self_supervisor'}),{code:'invalid-argument'});
+  assert.equal((await db.doc('members/self_supervisor').get()).data().role,'sales');
+  assert.equal((await getAuth().getUser('self_supervisor')).displayName,undefined);
+});
+
 test('concurrent mutual administrator deactivation preserves an active administrator',async()=>{
   for(const id of ['gmA','gmB']){
     await getAuth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});

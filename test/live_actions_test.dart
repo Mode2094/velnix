@@ -39,6 +39,48 @@ Future<void> fill(WidgetTester tester) async {
 void main() {
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
+  testWidgets(
+    'order pagination keeps the applied query until a new search is submitted',
+    (tester) async {
+      final calls = <String>[];
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        if (name == 'listCompanies' || name == 'listOrderCreators') {
+          return {'items': []};
+        }
+        calls.add(name);
+        if (name == 'listOrders') {
+          return {
+            'items': [],
+            'nextAfterId': data['afterId'] == null ? 'first' : null,
+          };
+        }
+        if (name == 'searchOrders') return {'items': []};
+        throw StateError(name);
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrders(
+            policy: SessionPolicy({
+              'id': 'entry',
+              'role': 'dataEntry',
+              'active': true,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'عميل');
+      await tester.ensureVisible(find.text('تحميل المزيد'));
+      await tester.tap(find.text('تحميل المزيد'));
+      await tester.pumpAndSettle();
+      expect(calls, ['listOrders', 'listOrders']);
+      await tester.ensureVisible(find.byTooltip('تنفيذ البحث'));
+      await tester.tap(find.byTooltip('تنفيذ البحث'));
+      await tester.pumpAndSettle();
+      expect(calls.last, 'searchOrders');
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final role in [
     'generalManager',
     'manager',

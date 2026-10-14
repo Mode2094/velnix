@@ -406,6 +406,7 @@ exports.saveMember=callable(async req=>{
   if(supervisor){const sup=await db.doc(`members/${supervisor}`).get();if(!sup.exists||sup.data().role!=='sales'||sup.data().active===false)fail('failed-precondition','مشرف المبيعات غير متاح');}
   if(req.data?.id){
     const id=idValue(req.data.id);const target=await db.doc(`members/${id}`).get();
+    if(supervisor===id)fail('invalid-argument','لا يمكن أن يكون الموظف مشرفاً على نفسه');
     if(!target.exists)fail('not-found','الموظف غير موجود');
     if(id===user.id||target.data().role==='generalManager'&&user.role!=='generalManager')fail('permission-denied','لا يمكنك تعديل هذا الحساب');
     if(user.role!=='generalManager' && target.data().role==='manager')fail('permission-denied','لا يمكنك تعديل المدير');

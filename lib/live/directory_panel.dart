@@ -20,6 +20,7 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
   String? cursor, error;
   bool busy = false, more = true;
   int generation = 0;
+  String appliedQuery = '';
   @override
   void initState() {
     super.initState();
@@ -39,6 +40,7 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
       busy = true;
       error = null;
       if (reset) {
+        appliedQuery = search.text.trim();
         rows = [];
         cursor = null;
         more = true;
@@ -47,7 +49,7 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
     try {
       final data = await VelnixGateway.instance.call(widget.endpoint, {
         'pageSize': 30,
-        'query': search.text.trim(),
+        'query': appliedQuery,
         'afterId': ?cursor,
       });
       if (!mounted || request != generation) return;

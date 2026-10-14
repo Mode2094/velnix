@@ -47,10 +47,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('أول موظف'), findsOneWidget);
+    // Editing a draft must not combine a new query with the old page cursor.
+    await tester.enterText(find.byType(TextField), 'جديد');
     await tester.tap(find.text('تحميل المزيد'));
     await tester.pumpAndSettle();
     expect(find.text('ثاني موظف'), findsOneWidget);
     expect(calls[1]['afterId'], 'first');
+    expect(calls[1]['query'], '');
     await tester.enterText(find.byType(TextField), 'جديد');
     await tester.tap(find.byTooltip('بحث'));
     await tester.pumpAndSettle();

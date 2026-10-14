@@ -32,6 +32,32 @@ test('early provider update is retryable until shipment confirmation, not burned
   await db.doc('orders/early_order').update({status:'dispatched',dispatchState:'sent'});
   assert.equal((await processRemote('remote_company',payload,'early_event','webhook')).updated,true);
 });
+test('successful unchanged status clears a sync error without a business revision or extra event',async()=>{
+  const ref=db.doc('orders/recovered_sync');
+  await ref.set({status:'inTransit',companyId:'remote_company',revision:7,syncError:'Temporary failure'});
+  const payload={reference:ref.id,status:'shipping'};
+  assert.equal((await processRemote('remote_company',payload,'sync_poll','poll')).ignored,'same_status');
+  let order=(await ref.get()).data();
+  assert.equal(order.syncError,null);assert.ok(order.lastSyncAt);assert.equal(order.revision,7);
+  await ref.update({syncError:'Another temporary failure'});
+  assert.equal((await processRemote('remote_company',payload,'sync_poll','poll')).ignored,'duplicate');
+  order=(await ref.get()).data();assert.equal(order.syncError,null);assert.equal(order.revision,7);
+  assert.equal((await db.collection('orders/'+ref.id+'/events').get()).size,0);
+  await ref.update({status:'delivered',syncError:'Do not erase on stale poll'});
+  await processRemote('remote_company',payload,'sync_poll','poll');
+  assert.equal((await ref.get()).data().syncError,'Do not erase on stale poll');
+});
+
+test('replayed webhook does not clear a subsequent sync failure',async()=>{
+  const ref=db.doc('orders/replayed_sync');
+  await ref.set({status:'inTransit',companyId:'remote_company',revision:2});
+  const payload={reference:ref.id,status:'shipping'};
+  await processRemote('remote_company',payload,'same_webhook','webhook');
+  await ref.update({syncError:'Later failure'});
+  assert.equal((await processRemote('remote_company',payload,'same_webhook','webhook')).ignored,'duplicate');
+  assert.equal((await ref.get()).data().syncError,'Later failure');
+});
+
 test('unmatched orders and path injection never mutate data',async()=>{
   assert.equal((await processRemote('remote_company',{reference:'../secrets',status:'done'},'bad_ref','webhook')).ignored,'invalid_reference');
   await db.doc('orders/unmatched_order').set({status:'dispatched',companyId:'someone_else'});
