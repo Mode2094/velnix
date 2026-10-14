@@ -19,6 +19,56 @@ String orderBarcode(Map<String, dynamic> order) {
   return value == 'VNX-$id' ? value : 'VNX-$id';
 }
 
+/// Keep at least ten modules of clear space on either side and one 203-DPI
+/// dot per narrow module. Refuse too-small paper instead of silently shrinking.
+({double width, double quietZone, double leftPadding, double rightPadding})
+invoiceBarcodeGeometry(
+  String value,
+  double availableWidth, [
+  double pageMargin = 0,
+]) {
+  final elements = pw.Barcode.code128().make(
+    value,
+    width: 1,
+    height: 1,
+    drawText: false,
+  );
+  final module = elements
+      .whereType<pw.BarcodeBar>()
+      .map((bar) => bar.width)
+      .reduce((a, b) => a < b ? a : b);
+  final modules = (1 / module).round();
+  const dot = 72 / 203;
+  final preferred = modules * .2 * PdfPageFormat.mm + 4 * PdfPageFormat.mm;
+  final desired = preferred > 90 * PdfPageFormat.mm
+      ? preferred
+      : 90 * PdfPageFormat.mm;
+  final total = availableWidth < desired ? availableWidth : desired;
+  var dots = (total / (modules + 20) / dot).floor();
+  double quiet(int count) => 10 * count * dot > 2 * PdfPageFormat.mm
+      ? 10 * count * dot
+      : 2 * PdfPageFormat.mm;
+  while (dots > 0 && modules * dots * dot + 2 * quiet(dots) + dot > total) {
+    dots--;
+  }
+  if (dots < 1) {
+    throw const FormatException(
+      'الورق ضيق لباركود قابل للقراءة؛ اختر ورقاً أعرض لهذا الطلب',
+    );
+  }
+  final width = modules * dots * dot;
+  // Align the first bar and every module to the 203-DPI printer grid.
+  final left =
+      (((availableWidth - width) / 2 + pageMargin) / dot).round() * dot -
+      pageMargin;
+  return (
+    width: width,
+    quietZone: quiet(dots),
+    leftPadding: left,
+    rightPadding: availableWidth - left - width,
+  );
+}
+
 /// Common paper formats, thermal rolls, and user-specified label paper.
 enum OrderPaper { a3, a4, a5, a6, letter, legal, thermal80, thermal58, custom }
 
@@ -106,6 +156,13 @@ class OrderInvoicePdf {
       bottom: pw.BorderSide(color: PdfColors.grey300, width: .6),
     );
     final barcode = orderBarcode(order);
+    final geometry = invoiceBarcodeGeometry(
+      barcode,
+      format.width - horizontalMargin * 2,
+      horizontalMargin,
+    );
+    final barcodeWidth = geometry.width;
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: format,
@@ -170,13 +227,29 @@ class OrderInvoicePdf {
             item('ملاحظات', order['note']),
           pw.SizedBox(height: narrow ? 10 : 18),
           pw.Center(
-            child: pw.BarcodeWidget(
-              barcode: pw.Barcode.code128(),
-              data: barcode,
-              drawText: true,
-              height: narrow ? 39 : 66,
-              width: format.width - horizontalMargin * 2 - (narrow ? 5 : 35),
-              textStyle: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
+            child: pw.Column(
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Padding(
+                  padding: pw.EdgeInsets.only(
+                    left: geometry.leftPadding,
+                    right: geometry.rightPadding,
+                  ),
+                  child: pw.BarcodeWidget(
+                    barcode: pw.Barcode.code128(),
+                    data: barcode,
+                    drawText: false,
+                    height: narrow ? 36 : 60,
+                    width: barcodeWidth,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  barcode,
+                  textDirection: pw.TextDirection.ltr,
+                  style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
+                ),
+              ],
             ),
           ),
           pw.SizedBox(height: 9),

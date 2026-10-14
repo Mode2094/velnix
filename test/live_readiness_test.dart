@@ -157,6 +157,15 @@ void main() {
         expect(bytes.length, greaterThan(3000));
         await File('${directory.path}/${paper.name}.pdf').writeAsBytes(bytes);
       }
+      for (final paper in [OrderPaper.thermal58, OrderPaper.thermal80]) {
+        final standard = await OrderInvoicePdf.generate(
+          order: {...order, 'id': 'AbCdEfGhIjKlMnOpQrSt'},
+          format: paper.format(),
+        );
+        await File(
+          '${directory.path}/${paper.name}_standard_id.pdf',
+        ).writeAsBytes(standard);
+      }
       final hidden = await OrderInvoicePdf.generate(
         order: Map.of(order)..remove('amount'),
         format: PdfPageFormat.a4,

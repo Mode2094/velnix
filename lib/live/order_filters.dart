@@ -48,9 +48,7 @@ class _OrderFiltersState extends State<OrderFilters> {
     try {
       final values = await Future.wait([
         VelnixGateway.instance.companies(),
-        VelnixGateway.instance
-            .call('listOrderCreators')
-            .then(VelnixGateway.instance.listResult),
+        VelnixGateway.instance.directoryItems('listOrderCreators'),
       ]);
       if (mounted) {
         setState(() {

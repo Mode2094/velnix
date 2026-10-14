@@ -8,6 +8,17 @@ class LiveCompanies extends StatefulWidget {
 }
 
 class _LiveCompaniesState extends State<LiveCompanies> {
+  bool operating = false;
+  Future<void> guard(Future<void> Function() operation) async {
+    if (operating) return;
+    setState(() => operating = true);
+    try {
+      await operation();
+    } finally {
+      if (mounted) setState(() => operating = false);
+    }
+  }
+
   late Future<List<Map<String, dynamic>>> request;
   @override
   void initState() {
@@ -15,7 +26,7 @@ class _LiveCompaniesState extends State<LiveCompanies> {
     refresh();
   }
 
-  void refresh() => request = VelnixGateway.instance.companies();
+  void refresh() => request = Future.value([]);
   void reload() {
     setState(refresh);
   }
@@ -33,9 +44,9 @@ class _LiveCompaniesState extends State<LiveCompanies> {
   }
 
   @override
-  Widget build(BuildContext context) => AsyncPanel<List<Map<String, dynamic>>>(
-    future: request,
-    onRetry: reload,
+  Widget build(BuildContext context) => DirectoryPanel(
+    key: ValueKey(request),
+    endpoint: 'listCompanies',
     builder: (companies) => SingleChildScrollView(
       child: LiveContent(
         child: Column(
@@ -53,7 +64,9 @@ class _LiveCompaniesState extends State<LiveCompanies> {
                 ),
                 if (widget.policy.can('manageCompanies'))
                   FilledButton.icon(
-                    onPressed: () => _edit(null),
+                    onPressed: operating
+                        ? null
+                        : () => guard(() => _edit(null)),
                     icon: const Icon(Icons.add),
                     label: const Text('إضافة شركة'),
                   ),
@@ -65,6 +78,7 @@ class _LiveCompaniesState extends State<LiveCompanies> {
               style: TextStyle(color: VColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 15),
+            if (operating) const LinearProgressIndicator(),
             if (companies.isEmpty)
               const VLivePanel(child: Text('لم تتم إضافة شركات توصيل')),
             for (final c in companies)
@@ -113,12 +127,20 @@ class _LiveCompaniesState extends State<LiveCompanies> {
                       ),
                       const SizedBox(height: 9),
                       Text(
-                        'المحوّل: ${c['provider']} • آخر اختبار: ${c['lastHealthCheck'] ?? 'لم يتم'}',
+                        'المحوّل: ${c['provider']} • آخر اختبار: ${c['lastHealthCheck'] == null ? 'لم يتم' : businessDate(c['lastHealthCheck'])}',
                         style: const TextStyle(
                           color: VColors.muted,
                           fontSize: 12,
                         ),
                       ),
+                      if (c['lastHealthError'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            c['lastHealthError'].toString(),
+                            style: const TextStyle(color: VColors.danger),
+                          ),
+                        ),
                       const SizedBox(height: 9),
                       Text(
                         c['apiUrl']?.toString() ?? '',
@@ -142,24 +164,32 @@ class _LiveCompaniesState extends State<LiveCompanies> {
                           children: [
                             if (c['archived'] != true)
                               OutlinedButton.icon(
-                                onPressed: () => _edit(c),
+                                onPressed: operating
+                                    ? null
+                                    : () => guard(() => _edit(c)),
                                 icon: const Icon(Icons.edit_outlined),
                                 label: const Text('تعديل'),
                               ),
                             if (c['archived'] == true)
                               OutlinedButton.icon(
-                                onPressed: () => _restore(c),
+                                onPressed: operating
+                                    ? null
+                                    : () => guard(() => _restore(c)),
                                 icon: const Icon(Icons.restore),
                                 label: const Text('استعادة الشركة'),
                               ),
                             OutlinedButton.icon(
-                              onPressed: () => _health(c),
+                              onPressed: operating
+                                  ? null
+                                  : () => guard(() => _health(c)),
                               icon: const Icon(Icons.network_check),
                               label: const Text('اختبار الاتصال'),
                             ),
                             if (c['archived'] != true)
                               OutlinedButton.icon(
-                                onPressed: () => _archive(c),
+                                onPressed: operating
+                                    ? null
+                                    : () => guard(() => _archive(c)),
                                 icon: const Icon(Icons.archive_outlined),
                                 label: const Text('أرشفة'),
                               ),
@@ -652,6 +682,17 @@ class LiveMembers extends StatefulWidget {
 }
 
 class _LiveMembersState extends State<LiveMembers> {
+  bool operating = false;
+  Future<void> guard(Future<void> Function() operation) async {
+    if (operating) return;
+    setState(() => operating = true);
+    try {
+      await operation();
+    } finally {
+      if (mounted) setState(() => operating = false);
+    }
+  }
+
   late Future<List<Map<String, dynamic>>> future;
   @override
   void initState() {
@@ -659,15 +700,15 @@ class _LiveMembersState extends State<LiveMembers> {
     reload();
   }
 
-  void reload() => future = VelnixGateway.instance.members();
+  void reload() => future = Future.value([]);
   void refresh() {
     setState(reload);
   }
 
   @override
-  Widget build(BuildContext context) => AsyncPanel<List<Map<String, dynamic>>>(
-    future: future,
-    onRetry: refresh,
+  Widget build(BuildContext context) => DirectoryPanel(
+    key: ValueKey(future),
+    endpoint: 'listMembers',
     builder: (items) => SingleChildScrollView(
       child: LiveContent(
         child: Column(
@@ -684,13 +725,18 @@ class _LiveMembersState extends State<LiveMembers> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 FilledButton.icon(
-                  onPressed: () => _edit(null, items),
+                  onPressed: operating
+                      ? null
+                      : () => guard(() => _edit(null, items)),
                   icon: const Icon(Icons.person_add_alt),
                   label: const Text('موظف جديد'),
                 ),
               ],
             ),
             const SizedBox(height: 14),
+            if (operating) const LinearProgressIndicator(),
+            if (items.isEmpty)
+              const VLivePanel(child: Text('لا يوجد موظفون مطابقون')),
             for (final m in items)
               Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -735,12 +781,13 @@ class _LiveMembersState extends State<LiveMembers> {
                       IconButton(
                         tooltip: 'إعدادات الموظف',
                         onPressed:
-                            (m['id'] == widget.policy.id ||
+                            (operating ||
+                                m['id'] == widget.policy.id ||
                                 !widget.policy.canGrantRole(
                                   m['role'].toString(),
                                 ))
                             ? null
-                            : () => _edit(m, items),
+                            : () => guard(() => _edit(m, items)),
                         icon: const Icon(Icons.settings_outlined),
                       ),
                     ],
@@ -766,6 +813,13 @@ class _LiveMembersState extends State<LiveMembers> {
     Map<String, dynamic>? m,
     List<Map<String, dynamic>> members,
   ) async {
+    try {
+      members = await VelnixGateway.instance.members();
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (!mounted) return;
     final done = await Navigator.push<bool>(
       context,
       MaterialPageRoute<bool>(

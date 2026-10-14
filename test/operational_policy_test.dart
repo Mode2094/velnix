@@ -29,6 +29,41 @@ void main() {
     },
   );
 
+  test(
+    'warehouse completes an internal ready order while carrier orders stay protected',
+    () {
+      final store = DemoStore()..chooseUser('u3');
+      addTearDown(store.dispose);
+      final internal = store.orders.firstWhere(
+        (o) => o.companyId == null && !o.status.isClosed,
+      );
+      for (final target in [
+        OrderStatus.review,
+        OrderStatus.preparing,
+        OrderStatus.ready,
+      ]) {
+        if (store.allowedManualTargets(internal).contains(target)) {
+          store.setStatus(internal, target);
+        }
+      }
+      expect(internal.status, OrderStatus.ready);
+      expect(
+        store.allowedManualTargets(internal),
+        contains(OrderStatus.delivered),
+      );
+      store.setStatus(internal, OrderStatus.delivered);
+      expect(internal.status, OrderStatus.delivered);
+      expect(store.allowedManualTargets(internal), isEmpty);
+      final carrier = store.orders.firstWhere(
+        (o) => o.companyId != null && o.status == OrderStatus.ready,
+      );
+      expect(
+        store.allowedManualTargets(carrier),
+        isNot(contains(OrderStatus.delivered)),
+      );
+    },
+  );
+
   test('delivery assignment requires explicit role permission', () {
     final store = DemoStore()..chooseUser('u5'); // data entry
     final mine = store.visibleOrders.firstWhere((o) => o.companyId == null);

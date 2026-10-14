@@ -103,7 +103,7 @@ class VelnixGateway {
   Future<Map<String, dynamic>> companyStats(String id) =>
       call('companyStats', {'id': id});
   Future<List<Map<String, dynamic>>> companies() async =>
-      listResult(await call('listCompanies'));
+      directoryItems('listCompanies');
   Future<void> saveCompany(Map<String, dynamic> company) async {
     await call('saveCompany', company);
   }
@@ -119,7 +119,7 @@ class VelnixGateway {
   Future<Map<String, dynamic>> testCompany(String id) =>
       call('testCompanyConnection', {'id': id});
   Future<List<Map<String, dynamic>>> members() async =>
-      listResult(await call('listMembers'));
+      directoryItems('listMembers');
   Future<void> saveMember(Map<String, dynamic> member) async {
     await call('saveMember', member);
   }
@@ -134,6 +134,22 @@ class VelnixGateway {
       listResult(await call('listSyncEvents'));
   Future<List<Map<String, dynamic>>> audit() async =>
       listResult(await call('listAudit'));
+
+  Future<List<Map<String, dynamic>>> directoryItems(String endpoint) async {
+    final items = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    String? cursor;
+    do {
+      final page = await call(endpoint, {'pageSize': 100, 'afterId': ?cursor});
+      items.addAll(listResult(page));
+      if (page['more'] != true) return items;
+      final next = page['afterId'] as String?;
+      if (next == null || !seen.add(next)) {
+        throw VelnixException('تعذر متابعة القائمة؛ حدّثها');
+      }
+      cursor = next;
+    } while (true);
+  }
 
   List<Map<String, dynamic>> listResult(Map<String, dynamic> result) =>
       (result['items'] as List? ?? [])

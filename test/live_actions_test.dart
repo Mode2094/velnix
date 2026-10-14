@@ -200,4 +200,71 @@ void main() {
       expect(find.text('إعادة المحاولة'), findsOneWidget);
     },
   );
+  testWidgets(
+    'internal completion requires confirmation, refreshes provenance and removes final actions',
+    (tester) async {
+      String state = 'ready';
+      int writes = 0;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        if (name == 'changeOrderStatus') {
+          writes++;
+          expect(data['status'], 'delivered');
+          state = 'delivered';
+          return {'ok': true};
+        }
+        expect(name, 'getOrder');
+        return {
+          'order': {
+            'id': 'internal',
+            'customer': 'عميل اختبار',
+            'status': state,
+            'phone': '0791234567',
+            'city': 'عمان',
+            'area': 'وسط',
+            'address': 'شارع',
+            'description': 'طرد',
+            'quantity': 1,
+            'paymentMethod': 'عند الاستلام',
+            'companyId': null,
+            if (state == 'delivered') 'completionSource': 'internal',
+            'actions': {
+              'statuses': state == 'ready' ? ['delivered'] : [],
+              'edit': false,
+              'assign': false,
+              'dispatch': false,
+              'resolve': false,
+            },
+          },
+          'events': [],
+        };
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrderDetail(
+            id: 'internal',
+            policy: SessionPolicy({
+              'id': 'warehouse',
+              'role': 'warehouse',
+              'active': true,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('إكمال الطلب الداخلي'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إكمال الطلب الداخلي'));
+      await tester.pumpAndSettle();
+      expect(writes, 0);
+      expect(find.text('تأكيد إكمال الطلب الداخلي'), findsOneWidget);
+      await tester.tap(find.text('تأكيد الإكمال'));
+      await tester.pumpAndSettle();
+      expect(writes, 1);
+      expect(
+        find.textContaining('إكمال داخلي بواسطة موظف مخوّل'),
+        findsOneWidget,
+      );
+      expect(find.text('إكمال الطلب الداخلي'), findsNothing);
+    },
+  );
 }

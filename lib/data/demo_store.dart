@@ -188,7 +188,10 @@ class DemoStore extends ChangeNotifier {
       OrderStatus.created => [OrderStatus.review, OrderStatus.cancelled],
       OrderStatus.review => [OrderStatus.preparing, OrderStatus.cancelled],
       OrderStatus.preparing => [OrderStatus.ready, OrderStatus.cancelled],
-      OrderStatus.ready => [OrderStatus.cancelled],
+      OrderStatus.ready => [
+        if (o.companyId == null) OrderStatus.delivered,
+        OrderStatus.cancelled,
+      ],
       // Carrier-controlled shipping states may never be overridden locally.
       OrderStatus.dispatched => [],
       OrderStatus.inTransit => [],

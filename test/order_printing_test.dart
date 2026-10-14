@@ -16,6 +16,22 @@ void main() {
   test('cannot override the code derived from an immutable order ID', () {
     expect(orderBarcode({'id': 'A1', 'barcodeValue': 'VNX-other'}), 'VNX-A1');
   });
+  test('barcode keeps quiet zones and rejects unreadably narrow paper', () {
+    final geometry = invoiceBarcodeGeometry(
+      'VNX-Order_1234567890',
+      52 * PdfPageFormat.mm,
+    );
+    expect(geometry.quietZone / PdfPageFormat.mm, greaterThanOrEqualTo(2));
+    expect(
+      (geometry.width + geometry.leftPadding + geometry.rightPadding) /
+          PdfPageFormat.mm,
+      closeTo(52, .01),
+    );
+    expect(
+      () => invoiceBarcodeGeometry('VNX-${'A' * 140}', 52 * PdfPageFormat.mm),
+      throwsFormatException,
+    );
+  });
   test('paper sizes cover common printers', () {
     expect(OrderPaper.values.length, 9);
     expect(

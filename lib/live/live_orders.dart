@@ -532,6 +532,17 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                             'طريقة الدفع': o['paymentMethod'],
                             'شركة التوصيل': o['companyName'],
                             'رقم التتبع': o['trackingNumber'],
+                            if (o['lastSyncAt'] != null)
+                              'آخر مزامنة': businessDate(o['lastSyncAt']),
+                            if (o['lastSyncAttemptAt'] != null)
+                              'آخر محاولة مزامنة': businessDate(
+                                o['lastSyncAttemptAt'],
+                              ),
+                            if (o['completionSource'] != null)
+                              'مصدر الإكمال':
+                                  o['completionSource'] == 'internal'
+                                  ? 'إكمال داخلي بواسطة موظف مخوّل'
+                                  : 'تأكيد شركة التوصيل',
                             if (o['amount'] != null)
                               'المبلغ': displayAmount(o['amount']),
                             'ملاحظات': o['note'],
@@ -603,7 +614,11 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                                       .cast<String>())
                                 OutlinedButton(
                                   onPressed: () => _changeStatus(t),
-                                  child: Text('تحويل إلى ${statusLabels[t]}'),
+                                  child: Text(
+                                    t == 'delivered'
+                                        ? 'إكمال الطلب الداخلي'
+                                        : 'تحويل إلى ${statusLabels[t]}',
+                                  ),
                                 ),
                             if (actions['edit'] == true)
                               OutlinedButton.icon(
@@ -816,13 +831,19 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
   }
 
   Future<void> _changeStatus(String target) async {
-    if (target == 'cancelled') {
+    if (target == 'cancelled' || target == 'delivered') {
       final yes = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('تأكيد إلغاء الطلب'),
-          content: const Text(
-            'سيتم وضع الطلب بحالة ملغي مع الاحتفاظ بسجل الطلب. لا يمكن إعادة فتحه بهذه المرحلة.',
+          title: Text(
+            target == 'delivered'
+                ? 'تأكيد إكمال الطلب الداخلي'
+                : 'تأكيد إلغاء الطلب',
+          ),
+          content: Text(
+            target == 'delivered'
+                ? 'سيُسجّل إكمال الطلب داخلياً بحالة نهائية. تأكد من تسليمه؛ هذا الإجراء لا يمثل تأكيد شركة توصيل.'
+                : 'سيتم وضع الطلب بحالة ملغي مع الاحتفاظ بسجل الطلب. لا يمكن إعادة فتحه بهذه المرحلة.',
           ),
           actions: [
             TextButton(
@@ -831,7 +852,9 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('تأكيد الإلغاء'),
+              child: Text(
+                target == 'delivered' ? 'تأكيد الإكمال' : 'تأكيد الإلغاء',
+              ),
             ),
           ],
         ),
