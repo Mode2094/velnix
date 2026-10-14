@@ -2,10 +2,10 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createPortal,assertInventory}=require('../scripts/owner_google_setup');
 const candidate='owner@example.test',uid='verified_uid';
-const snapshot=()=>({authentication:{status:'read',totalUsers:1,candidate:{uidFromAuthRecordOnly:uid,googleProviderLinked:true}},firestore:{members:{count:0},joinRequests:{count:0},generalManagersIncludingInactive:0,bootstrapState:{exists:false}}});
+const snapshot=()=>({authentication:{status:'read',totalUsers:1,candidate:{uidFromAuthRecordOnly:uid,googleProviderLinked:true}},firestore:{database:{status:'read'},members:{status:'read',count:0},joinRequests:{status:'read',count:0},generalManagersIncludingInactive:0,bootstrapState:{status:'not-found',exists:false}}});
 test('owner preparation rejects unreadable inventory, old memberships, locks and a different UID',()=>{
  assert.doesNotThrow(()=>assertInventory(snapshot(),uid));
- for(const change of [s=>s.authentication.status='unverified',s=>s.authentication.totalUsers=2,s=>s.firestore.members.count=1,s=>s.firestore.joinRequests.count=1,s=>s.firestore.bootstrapState.exists=true,s=>s.firestore.generalManagersIncludingInactive=1]){const s=snapshot();change(s);assert.throws(()=>assertInventory(s,uid));}
+ for(const change of [s=>s.authentication.status='unverified',s=>s.firestore.members.status='unverified',s=>s.firestore.bootstrapState.status='unverified',s=>s.authentication.totalUsers=2,s=>s.firestore.members.count=1,s=>s.firestore.joinRequests.count=1,s=>s.firestore.bootstrapState.exists=true,s=>s.firestore.generalManagersIncludingInactive=1]){const s=snapshot();change(s);assert.throws(()=>assertInventory(s,uid));}
  assert.throws(()=>assertInventory(snapshot(),'other_uid'));
 });
 async function setup(t,{domains=['8080-owner.cloudshell.dev'],tokenChange={},dryRunFails=false}={}){

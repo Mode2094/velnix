@@ -1,5 +1,7 @@
 # Velnix
 
+التشغيل الموحد للمالك دون ZIP: [فتح الفرع والدليل في Google Cloud Shell](https://shell.cloud.google.com/cloudshell/editor?project=velnix-6c1a2&cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FMode2094%2Fvelnix&cloudshell_git_branch=audit%2Fproduction-readiness&cloudshell_tutorial=docs%2FCLOUD_SHELL_OWNER_TUTORIAL.md). يتطلب إجازة إجراء التشغيل الواحد وتسجيل Google؛ لا ينشئ عضوية مدير ولا ينشر شيئاً تلقائياً.
+
 الدخول الحي Google فقط مع طلبات انضمام وموافقة المدير العام: [خطة الترحيل والقبول](docs/GOOGLE_ONLY_ACCESS_MIGRATION_AR.md). لا تنشر Backend الجديد قبل إثبات Google UID للإدارة الحالية، ولا تعطّل Email/Password من Console قبل القبول.
 
 تهيئة المشروع الحالي على Android/iOS/Web: [FIREBASE_CURRENT_PROJECT_SETUP_AR](docs/FIREBASE_CURRENT_PROJECT_SETUP_AR.md). ملفات SDK وdart-defines محلية مستثناة؛ لا ينشئ التجهيز تسجيلات أو ينشر خدمات. المشروع الواحد الحالي للتجربة والتسليم لا يوفّر عزلاً للبيانات.

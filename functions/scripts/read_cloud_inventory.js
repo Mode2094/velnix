@@ -2,6 +2,7 @@
 // Run in the owner's Google Cloud Shell. GET-only; tokens stay in memory.
 const {execFileSync}=require('node:child_process');
 const PROJECT='velnix-6c1a2';
+const {readGoogleJson,listPage}=require('./google_read');
 async function inventory({get,candidateEmail}){
   const result={projectId:PROJECT,readOnly:true,authentication:{},firestore:{},bootstrapExecuted:false};
   async function read(label,path){
@@ -11,14 +12,15 @@ async function inventory({get,candidateEmail}){
   if(auth)result.authConfiguration={status:'read',emailPasswordEnabled:auth.signIn?.email?.enabled??null};
   const google=await read('googleProvider',`https://identitytoolkit.googleapis.com/v2/projects/${PROJECT}/defaultSupportedIdpConfigs/google.com`);
   if(google)result.googleProvider={status:'read',enabled:google.enabled===true,clientIdPresent:!!google.clientId};
-  let count=0,pageToken,candidate=null,complete=true;
+  let count=0,pageToken,candidate=null,complete=true;const authPages=new Set();
   do{
     const url=new URL(`https://identitytoolkit.googleapis.com/v1/projects/${PROJECT}/accounts:batchGet`);
     url.searchParams.set('maxResults','1000');
     url.searchParams.set('fields','users(localId,email,emailVerified,disabled,providerUserInfo(providerId,email)),nextPageToken');
     if(pageToken)url.searchParams.set('nextPageToken',pageToken);
     const page=await read('authUserRead',url.href);
-    if(!page){complete=false;break;}
+    if(!listPage(page,'users',['users','nextPageToken'])||(page.nextPageToken&&authPages.has(page.nextPageToken))){complete=false;result.authUserRead??={status:'unverified',reason:'unexpected_or_repeated_page'};break;}
+    if(page.nextPageToken)authPages.add(page.nextPageToken);
     for(const user of page.users||[]){count++;if(user.email?.toLowerCase()===candidateEmail.toLowerCase())candidate={uidFromAuthRecordOnly:user.localId,emailVerified:user.emailVerified===true,disabled:user.disabled===true,googleProviderLinked:(user.providerUserInfo||[]).some(p=>p.providerId==='google.com'),googleSessionVerified:false};}
     pageToken=page.nextPageToken;
   }while(pageToken);
@@ -27,13 +29,14 @@ async function inventory({get,candidateEmail}){
   if(!database){result.firestore={status:'unverified',members:null,joinRequests:null,bootstrapState:null};result.readyForBootstrap=false;return result;}
   result.firestore.database={status:'read',locationId:database.locationId||null};
   for(const collection of ['members','joinRequests']){
-    let total=0,managers=0,next,ok=true;
+    let total=0,managers=0,next,ok=true;const seen=new Set();
     do{
       const url=new URL(`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents/${collection}`);
       url.searchParams.set('pageSize','300');url.searchParams.append('mask.fieldPaths','role');
       if(next)url.searchParams.set('pageToken',next);
       const page=await read(collection+'Read',url.href);
-      if(!page){ok=false;break;}
+      if(!listPage(page,'documents',['documents','nextPageToken'])||(page.nextPageToken&&seen.has(page.nextPageToken))){ok=false;result[collection+'Read']??={status:'unverified',reason:'unexpected_or_repeated_page'};break;}
+      if(page.nextPageToken)seen.add(page.nextPageToken);
       for(const doc of page.documents||[]){total++;if(doc.fields?.role?.stringValue==='generalManager')managers++;}
       next=page.nextPageToken;
     }while(next);
@@ -63,9 +66,7 @@ async function main(){
   if(!token)throw Error('google_login_required');
   const get=async url=>{
     const response=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
-    const data=await response.json().catch(()=>({}));
-    if(!response.ok){const error=Error('read_failed');error.status=response.status;error.apiStatus=data.error?.status;throw error;}
-    return data;
+    return readGoogleJson(response);
   };
   console.log(JSON.stringify(await inventory({get,candidateEmail:email}),null,2));
 }

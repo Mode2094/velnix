@@ -3,12 +3,13 @@
 const http=require('node:http'),crypto=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {inventory}=require('./read_cloud_inventory');
+const {readGoogleJson}=require('./google_read');
 const {requireGoogleSession,googleProfile}=require('../src/google_identity');
 const PROJECT='velnix-6c1a2',WEB_APP='1:948196868655:web:ace9b264b4fae48ac43cda';
 function assertInventory(data,uid){
   const count=data.authentication?.totalUsers,candidate=data.authentication?.candidate;
   if(data.authentication?.status!=='read'||!(count===0||count===1&&candidate?.googleProviderLinked===true&&(!uid||candidate.uidFromAuthRecordOnly===uid)))throw Error('auth_inventory_not_clear');
-  if(data.firestore?.members?.count!==0||data.firestore?.joinRequests?.count!==0||data.firestore?.generalManagersIncludingInactive!==0||data.firestore?.bootstrapState?.exists!==false)throw Error('firestore_inventory_not_clear');
+  if(data.firestore?.database?.status!=='read'||data.firestore?.members?.status!=='read'||data.firestore?.joinRequests?.status!=='read'||data.firestore?.bootstrapState?.status!=='not-found'||data.firestore?.members?.count!==0||data.firestore?.joinRequests?.count!==0||data.firestore?.generalManagersIncludingInactive!==0||data.firestore?.bootstrapState?.exists!==false)throw Error('firestore_inventory_not_clear');
   if(uid&&(count!==1||candidate?.uidFromAuthRecordOnly!==uid))throw Error('uid_record_mismatch');
 }
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
@@ -89,7 +90,7 @@ async function main(){
   const get=async url=>{
     const token=await credential.getAccessToken();
     const response=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});
-    const data=await response.json().catch(()=>({}));if(!response.ok){const e=Error('read_failed');e.status=response.status;e.apiStatus=data.error?.status;throw e;}return data;
+    return readGoogleJson(response);
   };
   const checkInventory=()=>inventory({get,candidateEmail});
   const first=await checkInventory();assertInventory(first);
