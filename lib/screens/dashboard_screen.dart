@@ -54,7 +54,7 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'أهلاً، ${me.name.split(' ').first} 👋',
+                        'أهلاً، ${me.name.split(' ').first}',
                         style: const TextStyle(
                           fontSize: 27,
                           fontWeight: FontWeight.w900,
