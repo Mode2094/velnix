@@ -10,7 +10,7 @@ before(async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
     const db=ctx.firestore();
     await setDoc(doc(db,'members/entry'),{name:'مدخل',active:true});
-    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key'])
+    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key','joinRequests/other'])
       await setDoc(doc(db,path),{value:'private'});
   });
 });
@@ -25,7 +25,7 @@ test('own profile is readable, other profiles and profile mutation are denied',a
 for(const role of ['generalManager','manager','warehouse','sales','dataEntry']){
   test(role+' cannot access privileged collections through client SDK',async()=>{
     const db=env.authenticatedContext(role,{role}).firestore();
-    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key']){
+    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key','joinRequests/other']){
       await assertFails(getDoc(doc(db,path)));
       await assertFails(setDoc(doc(db,path),{value:'tampered'}));
       await assertFails(deleteDoc(doc(db,path)));
@@ -36,4 +36,19 @@ test('unauthenticated users cannot read a profile or order',async()=>{
   const db=env.unauthenticatedContext().firestore();
   await assertFails(getDoc(doc(db,'members/entry')));
   await assertFails(getDoc(doc(db,'orders/order')));
+});
+
+test('pending rejected and disabled identities cannot read internal data or change their decision',async()=>{
+  for(const status of ['pending','rejected','disabled']){
+    const uid='join_rules_'+status;
+    await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'joinRequests/'+uid),{status,email:'fixture@example.test'});});
+    const db=env.authenticatedContext(uid,{firebase:{sign_in_provider:'google.com'}}).firestore();
+    await assertSucceeds(getDoc(doc(db,'joinRequests/'+uid)));
+    await assertFails(setDoc(doc(db,'joinRequests/'+uid),{status:'approved'}));
+    await assertFails(deleteDoc(doc(db,'joinRequests/'+uid)));
+    await assertFails(getDocs(collection(db,'joinRequests')));
+    await assertFails(getDoc(doc(db,'joinRequests/other')));
+    await assertFails(getDoc(doc(db,'orders/order')));
+    await assertFails(setDoc(doc(db,'members/'+uid),{role:'generalManager',active:true}));
+  }
 });

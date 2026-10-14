@@ -14,7 +14,7 @@ providers.requireOperationalProvider=company=>{
 const functions=require('../../src/index');
 const {getFirestore}=require('firebase-admin/firestore'),{getApp,deleteApp}=require('firebase-admin/app');
 const db=getFirestore();let server,local,kmsFails=false,mode='disconnect',requests=0;
-const invoke=id=>functions.sendOrderToDelivery.run({auth:{uid:'dispatch_gm'},data:{id}});
+const invoke=id=>functions.sendOrderToDelivery.run({auth:{uid:'dispatch_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data:{id}});
 before(async()=>{
  server=http.createServer(async(req,res)=>{
   requests++;let body='';for await(const chunk of req)body+=chunk;

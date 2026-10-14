@@ -8,7 +8,7 @@ const {getApp,deleteApp}=require('firebase-admin/app');
 const {getFirestore,Timestamp}=require('firebase-admin/firestore');
 const {getAuth}=require('firebase-admin/auth');
 const db=getFirestore();
-const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id}:null,data});
+const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id,token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}}:null,data});
 const payload={customer:'عميل عربي',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
 const users={generalManager:'gm',manager:'manager',warehouse:'warehouse',sales:'sales',dataEntry:'entry'};
 let orderId;
@@ -68,13 +68,14 @@ before(async()=>{
   await db.doc('companies/company').set({name:'Local contract',enabled:true,archived:false,provider:'generic_v1',statusMap:{delivered:'delivered'}});
 });
 after(async()=>{await db.terminate();await deleteApp(getApp());});
-test('all five accounts sign in through the real local Auth REST service',async()=>{
+test('legacy password authentication remains enabled but cannot authorize Velnix; Google policy preserves roles',async()=>{
   for(const [role,id]of Object.entries(users)){
     const response=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:id+'@velnix.test',password:'LocalTestingOnly123!',returnSecureToken:true})});
     assert.equal(response.status,200);
     const session=await response.json();
     const verified=await getAuth().verifyIdToken(session.idToken);
     assert.equal(verified.uid,id);
+    await assert.rejects(functions.me.run({auth:{uid:verified.uid,token:verified},data:{}}),{code:'permission-denied'});
     assert.equal((await invoke('me',verified.uid)).role,role);
   }
   const denied=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'entry@velnix.test',password:'WrongLocalPassword',returnSecureToken:true})});
@@ -182,10 +183,9 @@ test('team queries spanning more than 30 creators paginate without loss or dupli
   const stats=await invoke('dashboardStats','sales');
   assert.equal(Object.values(stats.counters.all).reduce((count,item)=>count+item.count,0),ids.length);
 });
-test('employee creation honors inactive state and delegated managers cannot escalate',async()=>{
-  const result=await invoke('saveMember','gm',{name:'Disabled test',email:'disabled-test@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:false,permissions:[]});
-  assert.equal((await db.doc('members/'+result.id).get()).data().active,false);
-  assert.equal((await getAuth().getUser(result.id)).disabled,true);
+test('password employee creation is refused and delegated managers cannot escalate',async()=>{
+  await assert.rejects(invoke('saveMember','gm',{name:'Disabled test',email:'disabled-test@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:false,permissions:[]}),{code:'failed-precondition'});
+  await assert.rejects(getAuth().getUserByEmail('disabled-test@velnix.test'),{code:'auth/user-not-found'});
   await db.doc('members/manager').update({permissions:['manageEmployees']});
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'generalManager',permissions:[]}),{code:'permission-denied'});
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'warehouse-escalation@velnix.test',password:'LocalTestingOnly123!',role:'warehouse',permissions:[]}),{code:'permission-denied'});

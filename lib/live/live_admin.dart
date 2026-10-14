@@ -783,13 +783,23 @@ class _LiveMembersState extends State<LiveMembers> {
                   'فريق العمل والصلاحيات',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                FilledButton.icon(
-                  onPressed: operating
-                      ? null
-                      : () => guard(() => _edit(null, items)),
-                  icon: const Icon(Icons.person_add_alt),
-                  label: const Text('موظف جديد'),
-                ),
+                if (widget.policy.role == 'generalManager')
+                  FilledButton.icon(
+                    onPressed: operating
+                        ? null
+                        : () async {
+                            await Navigator.push<void>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    LiveJoinRequests(policy: widget.policy),
+                              ),
+                            );
+                            if (mounted) refresh();
+                          },
+                    icon: const Icon(Icons.person_add_alt),
+                    label: const Text('طلبات الانضمام'),
+                  ),
               ],
             ),
             const SizedBox(height: 14),
@@ -896,7 +906,9 @@ class LiveMemberForm extends StatefulWidget {
     required this.policy,
     required this.members,
     this.initial,
+    this.joinRequest = false,
   });
+  final bool joinRequest;
   final SessionPolicy policy;
   final List<Map<String, dynamic>> members;
   final Map<String, dynamic>? initial;
@@ -912,7 +924,6 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   late final email = TextEditingController(
     text: widget.initial?['email']?.toString() ?? '',
   );
-  final password = TextEditingController();
   late String role = widget.initial?['role']?.toString() ?? 'dataEntry';
   late bool active = widget.initial?['active'] != false;
   late String? salesSupervisor = widget.initial?['salesSupervisorId']
@@ -938,7 +949,6 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   void dispose() {
     name.dispose();
     email.dispose();
-    password.dispose();
     super.dispose();
   }
 
@@ -946,17 +956,17 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
     if (!form.currentState!.validate() || busy) return;
     setState(() => busy = true);
     try {
-      await VelnixGateway.instance.saveMember({
-        if (widget.initial != null) 'id': widget.initial!['id'],
-        'name': name.text.trim(),
-        'email': email.text.trim(),
-        'role': role,
-        'permissions': permissions.toList(),
-        'active': active,
-        'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
-        if (widget.initial == null) 'password': password.text,
-      });
-      password.clear();
+      await VelnixGateway.instance
+          .call(widget.joinRequest ? 'decideJoinRequest' : 'saveMember', {
+            if (widget.joinRequest) 'decision': 'approved',
+            if (widget.initial != null) 'id': widget.initial!['id'],
+            'name': name.text.trim(),
+            'email': email.text.trim(),
+            'role': role,
+            'permissions': permissions.toList(),
+            'active': active,
+            'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
+          });
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -969,7 +979,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(
-        widget.initial == null ? 'إضافة موظف' : 'تعديل صلاحيات الموظف',
+        widget.joinRequest ? 'اعتماد طلب الانضمام' : 'تعديل صلاحيات الموظف',
       ),
     ),
     body: SingleChildScrollView(
@@ -984,6 +994,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                   children: [
                     TextFormField(
                       controller: name,
+                      readOnly: widget.joinRequest,
                       decoration: const InputDecoration(
                         labelText: 'اسم الموظف',
                       ),
@@ -1002,19 +1013,6 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                           ? 'بريد غير صحيح'
                           : null,
                     ),
-                    if (widget.initial == null) ...[
-                      const SizedBox(height: 11),
-                      TextFormField(
-                        controller: password,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'كلمة مرور أولية • 12 حرفاً أو أكثر',
-                        ),
-                        validator: (v) => (v?.length ?? 0) < 12
-                            ? 'الحد الأدنى 12 حرفاً'
-                            : null,
-                      ),
-                    ],
                     const SizedBox(height: 11),
                     DropdownButtonFormField<String>(
                       isExpanded: true,
@@ -1092,12 +1090,13 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                         onChanged: (v) => setState(() => salesSupervisor = v),
                       ),
                     ],
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('الحساب مفعّل'),
-                      value: active,
-                      onChanged: (v) => setState(() => active = v),
-                    ),
+                    if (!widget.joinRequest)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('الحساب مفعّل'),
+                        value: active,
+                        onChanged: (v) => setState(() => active = v),
+                      ),
                   ],
                 ),
               ),
@@ -1208,5 +1207,126 @@ class _LiveAuditState extends State<LiveAudit> {
         ),
       ),
     ),
+  );
+}
+
+class LiveJoinRequests extends StatefulWidget {
+  const LiveJoinRequests({super.key, required this.policy});
+  final SessionPolicy policy;
+  @override
+  State<LiveJoinRequests> createState() => _LiveJoinRequestsState();
+}
+
+class _LiveJoinRequestsState extends State<LiveJoinRequests> {
+  int revision = 0;
+  bool busy = false;
+  Future<void> decide(Map<String, dynamic> request, bool approve) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      if (approve) {
+        final members = await VelnixGateway.instance.members();
+        if (!mounted) return;
+        await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LiveMemberForm(
+              policy: widget.policy,
+              members: members,
+              initial: request,
+              joinRequest: true,
+            ),
+          ),
+        );
+      } else {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('رفض طلب الانضمام؟'),
+            content: Text(request['name']?.toString() ?? ''),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('تراجع'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('تأكيد الرفض'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true) {
+          await VelnixGateway.instance.call('decideJoinRequest', {
+            'id': request['id'],
+            'decision': 'rejected',
+          });
+        }
+      }
+      if (mounted) setState(() => revision++);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('طلبات الانضمام')),
+    body: widget.policy.role != 'generalManager'
+        ? const Center(child: Text('الصلاحية غير متاحة'))
+        : DirectoryPanel(
+            key: ValueKey(revision),
+            endpoint: 'listJoinRequests',
+            searchable: false,
+            builder: (items) => SingleChildScrollView(
+              child: LiveContent(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (busy) const LinearProgressIndicator(),
+                    if (items.isEmpty)
+                      const VLivePanel(
+                        child: Text('لا توجد طلبات انضمام معلقة'),
+                      ),
+                    for (final item in items)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: VLivePanel(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(item['name']?.toString() ?? ''),
+                              Text(
+                                item['email']?.toString() ?? '',
+                                textDirection: TextDirection.ltr,
+                              ),
+                              Wrap(
+                                spacing: 8,
+                                children: [
+                                  FilledButton(
+                                    onPressed: busy
+                                        ? null
+                                        : () => decide(item, true),
+                                    child: const Text('مراجعة واعتماد'),
+                                  ),
+                                  TextButton(
+                                    onPressed: busy
+                                        ? null
+                                        : () => decide(item, false),
+                                    child: const Text('رفض'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
   );
 }

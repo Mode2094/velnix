@@ -58,6 +58,9 @@ String auditActionLabel(dynamic action) {
         'company.archived': 'أرشفة شركة التوصيل',
         'company.restored': 'استعادة شركة التوصيل',
         'member.created': 'إضافة موظف',
+        'join.requested': 'طلب انضمام',
+        'join.approved': 'الموافقة على الانضمام',
+        'join.rejected': 'رفض طلب الانضمام',
         'member.updated': 'تحديث بيانات الموظف وصلاحياته',
         'settings.updated': 'تحديث إعدادات المؤسسة',
       }[value] ??
@@ -97,7 +100,7 @@ class VelnixLiveApp extends StatelessWidget {
         }
         return snap.data == null
             ? const LiveLogin()
-            : const AuthenticatedWorkspace();
+            : AuthenticatedWorkspace(key: ValueKey(snap.data!.uid));
       },
     ),
   );
@@ -110,80 +113,9 @@ class LiveLogin extends StatefulWidget {
 }
 
 class _LiveLoginState extends State<LiveLogin> {
-  final email = TextEditingController(), password = TextEditingController();
-  bool busy = false, obscure = true;
+  bool busy = false;
   String? error;
   static Future<void>? _googleInitialization;
-  @override
-  void dispose() {
-    email.dispose();
-    password.dispose();
-    super.dispose();
-  }
-
-  Future<void> resetPassword() async {
-    final value = email.text.trim();
-    if (!value.contains('@')) {
-      setState(
-        () => error = 'أدخل بريدك الإلكتروني أولاً لاستعادة كلمة المرور',
-      );
-      return;
-    }
-    try {
-      await VelnixGateway.instance.auth.sendPasswordResetEmail(email: value);
-      if (mounted) {
-        setState(() => error = null);
-        showSuccess(
-          context,
-          'إذا كان البريد مسجلاً، ستصلك رسالة استعادة كلمة المرور',
-        );
-      }
-    } on FirebaseAuthException catch (exception) {
-      if ([
-        'network-request-failed',
-        'too-many-requests',
-      ].contains(exception.code)) {
-        if (mounted) {
-          showError(
-            context,
-            'تعذر إرسال الرسالة الآن؛ تحقق من الاتصال ثم أعد المحاولة',
-          );
-        }
-        return;
-      }
-      // Do not leak whether a company employee account exists.
-      if (mounted) {
-        showSuccess(
-          context,
-          'إذا كان البريد مسجلاً، ستصلك رسالة استعادة كلمة المرور',
-        );
-      }
-    }
-  }
-
-  Future<void> login() async {
-    if (busy) return;
-    if (email.text.trim().isEmpty || password.text.isEmpty) {
-      setState(() => error = 'أدخل البريد الإلكتروني وكلمة المرور');
-      return;
-    }
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      await VelnixGateway.instance.auth.signInWithEmailAndPassword(
-        email: email.text.trim(),
-        password: password.text,
-      );
-    } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        setState(() => error = authErrorMessage(e.code));
-      }
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
 
   Future<void> signInWithGoogle() async {
     if (busy) return;
@@ -218,9 +150,7 @@ class _LiveLoginState extends State<LiveLogin> {
           GoogleAuthProvider.credential(idToken: auth.idToken),
         );
       } else {
-        throw UnsupportedError(
-          'استخدم البريد الإلكتروني أو افتح التطبيق في المتصفح لتسجيل Google',
-        );
+        throw UnsupportedError('افتح التطبيق في متصفح مدعوم لتسجيل Google');
       }
       // Authentication alone does not grant Velnix access; Cloud Functions
       // require an active members/{uid} profile on every request.
@@ -276,37 +206,6 @@ class _LiveLoginState extends State<LiveLogin> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextField(
-                        controller: email,
-                        keyboardType: TextInputType.emailAddress,
-                        textDirection: TextDirection.ltr,
-                        decoration: const InputDecoration(
-                          labelText: 'البريد الإلكتروني',
-                          prefixIcon: Icon(Icons.mail_outline),
-                        ),
-                      ),
-                      const SizedBox(height: 13),
-                      TextField(
-                        controller: password,
-                        obscureText: obscure,
-                        onSubmitted: (_) => login(),
-                        textDirection: TextDirection.ltr,
-                        decoration: InputDecoration(
-                          labelText: 'كلمة المرور',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            tooltip: obscure
-                                ? 'إظهار كلمة المرور'
-                                : 'إخفاء كلمة المرور',
-                            icon: Icon(
-                              obscure
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () => setState(() => obscure = !obscure),
-                          ),
-                        ),
-                      ),
                       if (error != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 12),
@@ -317,47 +216,27 @@ class _LiveLoginState extends State<LiveLogin> {
                         ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed: busy ? null : login,
+                        onPressed:
+                            busy ||
+                                !const bool.fromEnvironment(
+                                  'VELNIX_GOOGLE_ENABLED',
+                                )
+                            ? null
+                            : signInWithGoogle,
                         icon: busy
                             ? const SizedBox.square(
                                 dimension: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
                                 ),
                               )
-                            : const Icon(Icons.login),
-                        label: const Text('دخول إلى مساحة العمل'),
+                            : const Icon(Icons.account_circle_outlined),
+                        label: const Text('المتابعة باستخدام Google'),
                       ),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton(
-                          onPressed: busy ? null : resetPassword,
-                          child: const Text('نسيت كلمة المرور؟'),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (kIsWeb ||
-                          [
-                            TargetPlatform.android,
-                            TargetPlatform.iOS,
-                            TargetPlatform.macOS,
-                          ].contains(defaultTargetPlatform))
-                        OutlinedButton.icon(
-                          onPressed:
-                              busy ||
-                                  !const bool.fromEnvironment(
-                                    'VELNIX_GOOGLE_ENABLED',
-                                  )
-                              ? null
-                              : signInWithGoogle,
-                          icon: const Icon(Icons.account_circle_outlined),
-                          label: const Text('الدخول باستخدام Google'),
-                        ),
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: Text(
-                          'تسجيل Google يحتاج إعداد المؤسسة وتفعيل حساب الموظف مسبقاً. لا يمنح صلاحيات تلقائية.',
+                          'الحسابات الجديدة تنتظر موافقة المدير العام. لا يمنح تسجيل الدخول صلاحيات تلقائية.',
                           style: TextStyle(color: VColors.muted, fontSize: 11),
                         ),
                       ),
@@ -367,7 +246,7 @@ class _LiveLoginState extends State<LiveLogin> {
               ),
               const SizedBox(height: 15),
               const Text(
-                'الدخول مخصص للموظفين الذين فعّلهم المدير العام',
+                'الوصول للعمل متاح للحسابات المعتمدة فقط',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: VColors.muted, fontSize: 12),
               ),
@@ -386,14 +265,39 @@ class AuthenticatedWorkspace extends StatefulWidget {
 }
 
 class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
-  late Future<SessionPolicy> session;
+  late Future<Map<String, dynamic>> session;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? joinDecision;
+
+  Future<Map<String, dynamic>> loadSession() async {
+    final status = await VelnixGateway.instance.call('joinSession');
+    if (status['status'] != 'approved') return status;
+    return {'status': 'approved', 'member': await VelnixGateway.instance.me()};
+  }
+
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? membership;
   String? lastPolicy;
   @override
   void initState() {
     super.initState();
-    session = VelnixGateway.instance.me().then(SessionPolicy.new);
+    session = loadSession();
     final uid = VelnixGateway.instance.auth.currentUser!.uid;
+    joinDecision = FirebaseFirestore.instance
+        .doc('joinRequests/$uid')
+        .snapshots()
+        .listen(
+          (snapshot) {
+            if (mounted) setState(() => session = loadSession());
+          },
+          onError: (Object error) {
+            if (mounted) {
+              setState(
+                () => session = Future.error(
+                  VelnixException('تعذر متابعة قرار الانضمام؛ أعد المحاولة'),
+                ),
+              );
+            }
+          },
+        );
     membership = FirebaseFirestore.instance
         .doc('members/$uid')
         .snapshots()
@@ -404,16 +308,13 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
                 '${d?["active"]}:${d?["role"]}:${d?["permissions"]}:${d?["salesSupervisorId"]}:${d?["authorizationVersion"]}';
             if (lastPolicy != null && lastPolicy != policy && mounted) {
               liveNavigatorKey.currentState?.popUntil((route) => route.isFirst);
-              setState(
-                () => session = VelnixGateway.instance.me().then(
-                  SessionPolicy.new,
-                ),
-              );
+              setState(() => session = loadSession());
             }
             lastPolicy = policy;
           },
           onError: (Object e) {
             if (mounted) {
+              liveNavigatorKey.currentState?.popUntil((route) => route.isFirst);
               setState(
                 () => session = Future.error(
                   VelnixException(
@@ -429,11 +330,12 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
   @override
   void dispose() {
     membership?.cancel();
+    joinDecision?.cancel();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<SessionPolicy>(
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>>(
     future: session,
     builder: (context, snap) {
       if (snap.connectionState != ConnectionState.done) {
@@ -453,11 +355,7 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
                       textAlign: TextAlign.center,
                     ),
                     TextButton(
-                      onPressed: () => setState(
-                        () => session = VelnixGateway.instance.me().then(
-                          SessionPolicy.new,
-                        ),
-                      ),
+                      onPressed: () => setState(() => session = loadSession()),
                       child: const Text('إعادة المحاولة'),
                     ),
                     TextButton(
@@ -472,18 +370,57 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
         }
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
-      if (!snap.data!.active) {
-        return Scaffold(
-          body: Center(
-            child: TextButton(
-              onPressed: () => NotificationsService.instance.signOut(),
-              child: const Text('الحساب موقوف • تسجيل الخروج'),
-            ),
-          ),
+      final status = snap.data!['status'];
+      if (status != 'approved') {
+        return JoinStatusScreen(
+          status: status?.toString() ?? 'disabled',
+          onRefresh: () => setState(() => session = loadSession()),
+          onSignOut: () => NotificationsService.instance.signOut(),
         );
       }
-      return LiveShell(key: ValueKey(lastPolicy), policy: snap.data!);
+      return LiveShell(
+        key: ValueKey(lastPolicy),
+        policy: SessionPolicy(
+          Map<String, dynamic>.from(snap.data!['member'] as Map),
+        ),
+      );
     },
+  );
+}
+
+class JoinStatusScreen extends StatelessWidget {
+  const JoinStatusScreen({
+    super.key,
+    required this.status,
+    required this.onRefresh,
+    required this.onSignOut,
+  });
+  final String status;
+  final VoidCallback onRefresh, onSignOut;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.verified_user_outlined, size: 56),
+            const SizedBox(height: 16),
+            Text(switch (status) {
+              'pending' => 'حسابك بانتظار موافقة المدير',
+              'rejected' => 'تم رفض طلب انضمامك. راجع المدير العام',
+              _ => 'حسابك معطل. راجع المدير العام',
+            }, textAlign: TextAlign.center),
+            TextButton(
+              onPressed: onRefresh,
+              child: const Text('تحديث حالة الحساب'),
+            ),
+            TextButton(onPressed: onSignOut, child: const Text('تسجيل الخروج')),
+          ],
+        ),
+      ),
+    ),
   );
 }
 

@@ -8,8 +8,10 @@ class DirectoryPanel extends StatefulWidget {
     super.key,
     required this.endpoint,
     required this.builder,
+    this.searchable = true,
   });
   final String endpoint;
+  final bool searchable;
   final Widget Function(List<Map<String, dynamic>>) builder;
   @override
   State<DirectoryPanel> createState() => _DirectoryPanelState();
@@ -84,21 +86,23 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Expanded(
-              child: TextField(
-                controller: search,
-                onSubmitted: (_) => load(reset: true),
-                decoration: const InputDecoration(
-                  labelText: 'البحث ببداية الاسم',
-                  prefixIcon: Icon(Icons.search),
+            if (widget.searchable)
+              Expanded(
+                child: TextField(
+                  controller: search,
+                  onSubmitted: (_) => load(reset: true),
+                  decoration: const InputDecoration(
+                    labelText: 'البحث ببداية الاسم',
+                    prefixIcon: Icon(Icons.search),
+                  ),
                 ),
               ),
-            ),
-            IconButton(
-              tooltip: 'بحث',
-              onPressed: busy ? null : () => load(reset: true),
-              icon: const Icon(Icons.search),
-            ),
+            if (widget.searchable)
+              IconButton(
+                tooltip: 'بحث',
+                onPressed: busy ? null : () => load(reset: true),
+                icon: const Icon(Icons.search),
+              ),
             IconButton(
               tooltip: 'تحديث القائمة',
               onPressed: busy ? null : () => load(reset: true),

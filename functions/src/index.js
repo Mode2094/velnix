@@ -28,9 +28,9 @@ const str=(v,max=120)=>typeof v==='string'&&v.trim()&&v.trim().length<=max?v.tri
 const idValue=v=>{try{return documentId(v);}catch(e){return firebaseError(e);}};
 const optional=(v,max=120)=>typeof v==='string'?v.trim().slice(0,max):'';
 const requiredPerm=(user,perm)=>{if(!can(user,perm))fail('permission-denied','الصلاحية غير متاحة');};
+const {requireGoogleSession}=require('./google_identity');
 const requireAuth=async req=>{
-  const uid=req.auth?.uid;
-  if(!uid)fail('unauthenticated','يرجى تسجيل الدخول');
+  const uid=requireGoogleSession(req);
   const snap=await db.doc(`members/${uid}`).get();
   if(!snap.exists || snap.data().active!==true || !validRole(snap.data().role))fail('permission-denied','الحساب غير مفعل');
   const user={...snap.data(),id:uid};
@@ -98,6 +98,9 @@ function firebaseError(e){
   logger.error('velnix.error',{code:e?.code||'unknown'});
   fail('internal','تعذر إتمام العملية؛ أعد المحاولة أو راجع المسؤول');
 }
+
+const joins=require('./join_requests')({db,auth:getAuth(),FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
+for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler);
 
 exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,email:user.email||''};});
 exports.listOrders=callable(async req=>{
@@ -461,18 +464,7 @@ exports.saveMember=callable(async req=>{
     if(!active)await getAuth().revokeRefreshTokens(id);
     return {id};
   }
-  const email=str(req.data?.email,240).toLowerCase(), password=str(req.data?.password,140);
-  if(password.length<12)fail('invalid-argument','كلمة المرور الأولية يجب أن تحتوي 12 حرفاً على الأقل');
-  const active=req.data?.active!==false;
-  const authUser=await getAuth().createUser({email,password,displayName:name,disabled:!active});
-  try {await db.runTransaction(async tx=>{
-    await currentActor(tx,user);
-    if(supervisor){const sup=await tx.get(db.doc('members/'+supervisor));if(!sup.exists||sup.data().role!=='sales'||sup.data().active!==true)fail('failed-precondition','مشرف المبيعات غير متاح');tx.update(sup.ref,{authorizationVersion:FieldValue.increment(1)});}
-    tx.create(db.doc('members/'+authUser.uid),{name,email,role,active,permissions,salesSupervisorId:supervisor,createdAt:FieldValue.serverTimestamp()});
-    await audit('member.created',user,authUser.uid,{role},tx);
-  });}
-  catch(e){await getAuth().deleteUser(authUser.uid);throw e;}
-  return {id:authUser.uid};
+  fail('failed-precondition','إضافة الموظف تتطلب طلب انضمام Google وموافقة المدير العام');
 });
 
 exports.listNotices=callable(async req=>{

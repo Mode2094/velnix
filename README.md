@@ -1,5 +1,7 @@
 # Velnix
 
+الدخول الحي Google فقط مع طلبات انضمام وموافقة المدير العام: [خطة الترحيل والقبول](docs/GOOGLE_ONLY_ACCESS_MIGRATION_AR.md). لا تنشر Backend الجديد قبل إثبات Google UID للإدارة الحالية، ولا تعطّل Email/Password من Console قبل القبول.
+
 تهيئة المشروع الحالي على Android/iOS/Web: [FIREBASE_CURRENT_PROJECT_SETUP_AR](docs/FIREBASE_CURRENT_PROJECT_SETUP_AR.md). ملفات SDK وdart-defines محلية مستثناة؛ لا ينشئ التجهيز تسجيلات أو ينشر خدمات. المشروع الواحد الحالي للتجربة والتسليم لا يوفّر عزلاً للبيانات.
 
 Flutter + Firebase لإدارة الطلبات باللغة العربية. تغييرات التدقيق على `audit/production-readiness`؛ التطبيق غير معتمد للإنتاج، ولم ينشر على أي مشروع حقيقي.

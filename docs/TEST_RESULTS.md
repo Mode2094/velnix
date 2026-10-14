@@ -1,6 +1,8 @@
 # نتائج التحقق النهائي — 14 أكتوبر 2026
 
-> تحديث ثبات CI بعد8fa8d99: [تقرير المعالجة وبوابة إغلاق المرحلة الرابعة](STAGE4_CI_STABILITY_CLOSURE_AR.md). الأصل: Push ناجح وPR فاشل بحسب المالك. الإصلاح اجتاز3تكرارات و318Flutter/58Node/48محاكي/12Python/36PDF محلياً، لكن الإغلاق معلق حتى تأكيد Push وPR على SHA الإصلاح نفسه؛ الوصول إلى GitHub CI محجوب حالياً. لا اعتماد مرحلةخامسة أو إنتاج من النجاح المحلي وحده.
+> أحدث تغيير مفوض: Google فقط مع موافقة الانضمام. الفحص الشامل ناجح:323 Flutter و58 Node و64 Auth/Firestore و12 Python و36 PDF رقمي، مع analyze/format/syntax ناجحة وnpm audit إنتاج صفر vulnerabilities. Web وAndroid Debug Live مع VELNIX_GOOGLE_ENABLED=true بُنيا محلياً؛ لا اختبار OAuth/Firebase فعلي أو iOS أو أجهزة. [الدليل](evidence/google-only-approval-validation.json) و[خطة الترحيل](GOOGLE_ONLY_ACCESS_MIGRATION_AR.md). CI للـcommit الجديد لا يستنتج من المحلي؛ API محجوب في هذه البيئة.
+
+تحديث المرحلة الرابعة التاريخي: أكد المالك نجاح Push وPR على e35c973 خارج Codex؛ [تقرير الإغلاق](STAGE4_CI_STABILITY_CLOSURE_AR.md). الأعداد التالية محفوظة كتاريخ للمراحل السابقة وليست أحدث نتائج هذا التغيير.
 
 أحدث فحوص المرحلة الرابعة: **312 Flutter،54 Node،48 Auth/Firestore،5 Python preflight،36 PDF رقمي** ناجحة، والتنسيق/analyze/syntax/فحص الأسرار وnpm audit إنتاج بلا findings/advisories معروفة. Web وAndroid Debug بنمطَي Demo/Live: أربعة أبنية ناجحة. [تقرير المرحلة الرابعة](SAFE_HANDOFF_STAGE4_REPORT_AR.md) و[الدليل](evidence/safe-handoff-stage4-validation.json) يوضحان حدود التشغيل. لا iOS أو توقيع release أو API Click أو Firebase/FCM/KMS/IAM فعلي أو اختبار جهاز/استعادة. CI على SHA النهائي يتحقق بعد الرفع، وليس مستنتجاً من السجل التاريخي أدناه.
 
