@@ -1,0 +1,59 @@
+{
+  "date": "2026-10-14",
+  "sourceCommit": "41a6151e7c11d0f171492bac118fe3d7575034b8",
+  "flutter": "3.47.7",
+  "node": "22.23.3",
+  "flutterTests": {
+    "passed": 264,
+    "failed": 0
+  },
+  "affectedGreetingTests": {
+    "passed": 7,
+    "failed": 0
+  },
+  "nodeTests": {
+    "passed": 44,
+    "failed": 0,
+    "includesStaticChecks": 11
+  },
+  "browser": [
+    {
+      "width": 390,
+      "mode": "demo",
+      "loginAndDashboard": true,
+      "pageErrors": []
+    },
+    {
+      "width": 1440,
+      "mode": "demo",
+      "loginAndDashboard": true,
+      "pageErrors": []
+    }
+  ],
+  "builds": {
+    "web": "demo success",
+    "android": "debug demo success",
+    "ios": "not executed"
+  },
+  "productionDependenciesAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "externalLiveServices": "not configured or verified",
+  "firebaseEmulatorTests": {
+    "passed": 27,
+    "failed": 0,
+    "project": "demo-velnix",
+    "services": [
+      "auth",
+      "firestore"
+    ],
+    "startupAndShutdown": "emulators:exec success",
+    "durationMs": 200794.260979
+  },
+  "validationScript": "scripts/validate.sh completed successfully"
+}

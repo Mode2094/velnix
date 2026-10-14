@@ -1,37 +1,18 @@
-# Velnix — Smart Order Management v0.7
+# Velnix
 
-**حزمة كود ومراجعة هندسية غير معتمدة للإطلاق التجاري.** Flutter + Firebase Functions + سياسات وصول + فواتير PDF/باركود.
+Flutter + Firebase لإدارة الطلبات باللغة العربية. تغييرات التدقيق على `audit/production-readiness`؛ التطبيق غير معتمد للإنتاج، ولم ينشر على أي مشروع حقيقي.
 
-## ما الجديد
+تم إصلاح نطاق الفرق بعد نقل الأعضاء، معاملات الطلب ومراجعاته، العدادات والبحث والفلاتر، الأدوار والإشعارات الدائمة، واجهات RTL وطباعة PDF بخط محلي. أضيفت إعدادات مؤسسة محفوظة وملفات Android/iOS/Web وCI.
 
-- شاشة طباعة فاتورة/سند طلب عربية مع Code128 ثابت وإعادة الطباعة وPDF ومقاسات ورق متعددة، في الوضعين التجريبي والحي.
-- اعتماد استعلام جديد قبل طباعة بيانات حيّة، وإخفاء المبالغ حسب صلاحية المستخدم في الخادم.
-- تسجيل Google Sign-In مبدئياً دون منح صلاحيات تلقائياً، وإصلاح تفعيل شركات التوصيل.
-- حماية إنشاء الطلبات من إعادة الإرسال بذات requestKey في Firestore transaction.
-- إصلاح البحث عبر الباركود وإدخال الأرقام العربية، واستخدام Firestore Aggregation للأعداد المالية والحالات بدل حد 1,000.
-- توسعت اختبارات خادم Node.js إلى 30 حالة ناجحة (تشمل اختبارات بنية كود، وليست Firebase Emulator).
-
-## الملفات المرجعية
-
-- `docs/23_FINAL_QA_AND_LIMITATIONS_AR.md` — قائمة الشاشات وما ثبت وما لم يثبت، ومانعات P0.
-- `docs/24_PRINTING_AND_AUTH_SETUP_AR.md` — طريقة الطباعة وإعداد Google.
-- `docs/25_OPEN_CODE_EXECUTION_GATE_AR.md` — بروموت قبول هندسي عملي في Open Code.
-- `docs/26_UI_ACTION_INVENTORY_AR.md` — جرد استاتيكي لمواضع الأزرار والتفاعلات.
-
-## أوامر الفحص
+استخدم Flutter 3.47.7 وNode 22.23.3 وJava 21. في البيئة الحالية:
 
 ```bash
-flutter create --platforms=android,ios,web,windows,macos,linux .
-flutter pub get
-flutter analyze
-flutter test
-npm --prefix functions install
-npm --prefix functions run syntax
-npm --prefix functions test
+source scripts/cloud-env.sh
+scripts/validate.sh
+flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo
+flutter build apk --debug --dart-define=VELNIX_MODE=demo
 ```
 
-لا تنفّذ إنشاء ملفات المنصات فوق أي تخصيص موجود دون نسخة احتياطية. `flutterfire configure` وإعداد Google/App Check/KMS/الشركة يجب تنفيذهما قبل التشغيل الحقيقي. Flutter SDK وFirebase Emulator **غير متوفرين في بيئة إعداد هذه الحزمة**، لذا لم يتم الاختبار الحقيقي على الأجهزة.
+المحاكيات `demo-velnix` محلية؛ الاختبارات تمسح بياناتها. لا تشغلها على خدمات فعلية. الوضع الافتراضي live يتطلب إعداد Firebase؛ demo صريح لا يمثل تشغيل الإنتاج. لا تستخدم flutter create فوق تخصيصات المنصات.
 
-## النطاق
-
-نظام الطلبات والصلاحيات الخمس وتكامل شركة توصيل واحدة (بعد اعتماد وثائق مزودها) والطباعة. متجر إلكتروني/إدارة المخزون خارج المرحلة الأولى. نشر التطبيق على Google Play / App Store ورسوم وحسابات المتاجر خارج النطاق التعاقدي.
+راجع [نتائج الاختبارات](docs/TEST_RESULTS.md)، [تقرير التدقيق](docs/AUDIT_REPORT.md)، [المعمارية](docs/ARCHITECTURE.md)، [الصلاحيات](docs/ROLE_PERMISSION_MATRIX.md)، [إعداد Firebase](docs/FIREBASE_SETUP.md)، [جاهزية الإنتاج](docs/PRODUCTION_READINESS.md) و[المتطلبات الخارجية](docs/REMAINING_EXTERNAL_REQUIREMENTS.md). التقارير المرقمة القديمة تاريخية وتسبق التحقق الحالي.

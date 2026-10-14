@@ -34,3 +34,5 @@ service-account*.json
 
 # Flutter applications retain their resolved dependency versions.
 !pubspec.lock
+
+__pycache__/
