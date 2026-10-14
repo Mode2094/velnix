@@ -22,12 +22,15 @@ async function decryptSecret(ciphertext) {
   return Buffer.from(resp.plaintext).toString('utf8');
 }
 async function vendorRequest(company,token,method,route,body,transport=fetch) {
-  if(!/^\/(?:health|orders(?:\/[A-Za-z0-9%_.-]+)?)$/.test(route)||!['GET','POST'].includes(method))throw Error('invalid_vendor_route');
+  const click=company.provider==='click_delivery_v1';
+  if(click&&transport===fetch)throw Error('click_live_calls_disabled');
+  if(click?(route!=='/getorder'||method!=='POST'):(!/^\/(?:health|orders(?:\/[A-Za-z0-9%_.-]+)?)$/.test(route)||!['GET','POST'].includes(method)))throw Error('invalid_vendor_route');
   const base=allowedUrl(company.apiUrl);
+  if(click&&base!=='https://admin.clickdelivery.org/Client')throw Error('invalid_click_url');
   const target = base + route;
   const control=new AbortController();const timer=setTimeout(()=>control.abort(),12000);
   try {
-    const response=await transport(target,{method,redirect:'error',signal:control.signal,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json','Accept':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+    const response=await transport(target,{method,redirect:'error',signal:control.signal,headers:{Authorization:click?'client':`Bearer ${token}`,'Content-Type':'application/json','Accept':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
     if(Number(response.headers.get('content-length'))>1024*1024)throw Error('vendor_response_too_large');
     const chunks=[];let length=0;
     for await(const chunk of response.body||[]){

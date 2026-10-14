@@ -2,6 +2,7 @@
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict');
 if(!process.env.FIRESTORE_EMULATOR_HOST||!process.env.FIREBASE_AUTH_EMULATOR_HOST)throw Error('Auth and Firestore emulators are required');
 process.env.GCLOUD_PROJECT='demo-velnix';
+process.env.ALLOWED_DELIVERY_HOSTS='admin.clickdelivery.org,local-contract.example';
 const functions=require('../../src/index');
 const {getApp,deleteApp}=require('firebase-admin/app');
 const {getFirestore,Timestamp}=require('firebase-admin/firestore');
@@ -11,6 +12,50 @@ const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id}:null,data}
 const payload={customer:'عميل عربي',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
 const users={generalManager:'gm',manager:'manager',warehouse:'warehouse',sales:'sales',dataEntry:'entry'};
 let orderId;
+test('disabled carrier and unconfirmed Click fail before claiming a shipment lock',async()=>{
+  for(const [id,company] of Object.entries({disabled_carrier:{provider:'generic_v1',enabled:false,apiUrl:'https://local-contract.example'},click_carrier:{provider:'click_delivery_v1',enabled:true,apiUrl:'https://admin.clickdelivery.org/Client'}})){
+    await db.doc('companies/'+id).set(company);
+    const ref=db.doc('orders/'+id);await ref.set({status:'ready',companyId:id,createdBy:'gm',dispatchState:'idle',revision:0});
+    await assert.rejects(invoke('sendOrderToDelivery','gm',{id}),{code:'failed-precondition'});
+    const order=(await ref.get()).data();assert.equal(order.dispatchState,'idle');assert.equal(order.dispatchLockId,undefined);assert.equal(order.revision,0);
+  }
+});
+test('missing credentials before a vendor attempt return to idle and retain an audited order',async()=>{
+  await db.doc('companies/missing_credentials').set({enabled:true,provider:'generic_v1',apiUrl:'https://local-contract.example'});
+  const ref=db.doc('orders/no_vendor_attempt');await ref.set({status:'ready',companyId:'missing_credentials',createdBy:'gm',dispatchState:'idle'});
+  await assert.rejects(invoke('sendOrderToDelivery','gm',{id:ref.id}),{code:'failed-precondition'});
+  const order=(await ref.get()).data();assert.equal(order.dispatchState,'idle');assert.equal(order.status,'ready');assert.equal(order.dispatchLockId,undefined);
+  assert.ok(order.syncError.includes('لم يبدأ'));
+  assert.equal((await ref.collection('events').where('action','==','dispatch_preparation_failed').get()).size,1);
+  assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_preparation_failed').get()).size,1);
+});
+test('Click company draft stays disabled and cannot accept generic secrets, mapping or activation',async()=>{
+  process.env.ALLOWED_DELIVERY_HOSTS='admin.clickdelivery.org,local-contract.example';
+  const data={name:'Click fixture',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',enabled:false,statusMap:{}};
+  const saved=await invoke('saveCompany','gm',data);
+  assert.equal((await db.doc('companies/'+saved.id).get()).data().enabled,false);
+  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,enabled:true}),{code:'failed-precondition'});
+  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,apiToken:'not-a-click-token'}),{code:'invalid-argument'});
+  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,statusMap:{invented:'delivered'}}),{code:'invalid-argument'});
+  await assert.rejects(invoke('saveCompany','entry',data),{code:'permission-denied'});
+  assert.equal((await db.doc('companySecrets/'+saved.id).get()).exists,false);
+  let code,body;
+  const response={status(value){code=value;return this;},send(value){body=value;return this;}};
+  await functions.deliveryWebhook({method:'POST',query:{companyId:saved.id}},response);
+  assert.equal(code,409);assert.equal(body,'provider_contract_unconfirmed');
+  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,provider:'generic_v1',apiUrl:'https://local-contract.example'}),{code:'failed-precondition'});
+});
+test('no permanent order-delete or Click-remove callable exists; rules deny deletion for every role',()=>{
+  assert.equal(functions.deleteOrder,undefined);assert.equal(functions.removeorder,undefined);
+  // Actual SDK deletion denials for all five roles are exercised in rules.test.js.
+});
+test('order creation cannot forge carrier status, identifiers or unverified financial fields',async()=>{
+  const created=await invoke('createOrder','entry',{...payload,requestKey:'forged_carrier_fields',status:'delivered',shippingStatus:'partiallyDelivered',companyId:'click_carrier',trackingNumber:'FAKE',Order_ID:1,amountMinor:0,collectedAmount:999});
+  const record=(await db.doc('orders/'+created.id).get()).data();
+  assert.equal(record.status,'created');assert.equal(record.companyId,null);assert.equal(record.trackingNumber,null);assert.equal(record.amountMinor,12345);
+  for(const field of ['shippingStatus','Order_ID','collectedAmount'])assert.equal(Object.hasOwn(record,field),false);
+  await assert.rejects(invoke('changeOrderStatus','gm',{id:created.id,status:'partiallyDelivered'}),{code:'failed-precondition'});
+});
 before(async()=>{
   if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIRESTORE_EMULATOR_HOST))throw Error('Only loopback test database may be reset');
   if(!/^127\.0\.0\.1:\d+$/.test(process.env.FIREBASE_AUTH_EMULATOR_HOST))throw Error('Only loopback test Auth may be reset');

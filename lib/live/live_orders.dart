@@ -534,6 +534,16 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                             'الكمية': o['quantity'],
                             'طريقة الدفع': o['paymentMethod'],
                             'شركة التوصيل': o['companyName'],
+                            if (o['companyProvider'] == 'click_delivery_v1')
+                              'حالة الشحنة':
+                                  ShippingStatus.parse(
+                                    o['shippingStatus'],
+                                  )?.label ??
+                                  'غير مؤكدة؛ لم يكتمل عقد Click Delivery',
+                            if (o['companyProvider'] == 'click_delivery_v1' &&
+                                o['amount'] != null)
+                              'التحصيل ورسوم التوصيل':
+                                  'غير مؤكدة؛ قيمة الطلب المسجلة ليست مبلغ التحصيل أو صافي التسوية',
                             'رقم التتبع': o['trackingNumber'],
                             if (o['lastSyncAt'] != null)
                               'آخر مزامنة': businessDate(o['lastSyncAt']),

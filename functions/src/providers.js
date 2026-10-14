@@ -1,7 +1,9 @@
 'use strict';
-const {vendorRequest}=require('./delivery');
+const {vendorRequest,allowedUrl}=require('./delivery');
+const {CLICK_PROVIDER,assertClickUrl,clickDelivery}=require('./click_delivery');
 // Documented local reference contract; not a certified carrier.
 const providers=Object.freeze({
+  [CLICK_PROVIDER]:clickDelivery,
   generic_v1:{
     health:(company,token,transport)=>vendorRequest(company,token,'GET','/health',undefined,transport),
     create:(company,token,order,transport)=>vendorRequest(company,token,'POST','/orders',{
@@ -15,6 +17,14 @@ const providers=Object.freeze({
 });
 function providerFor(company) {
   if(!Object.hasOwn(providers,company.provider))throw Error('unsupported_delivery_provider');
+  if(company.provider===CLICK_PROVIDER)assertClickUrl(company);
+  else if(new URL(company.apiUrl).hostname==='admin.clickdelivery.org')throw Error('click_requires_dedicated_adapter');
   return providers[company.provider];
 }
-module.exports={providerFor};
+function requireOperationalProvider(company){
+  const adapter=providerFor(company);
+  if(company.provider===CLICK_PROVIDER)throw Error('click_contract_incomplete');
+  allowedUrl(company.apiUrl);
+  return adapter;
+}
+module.exports={providerFor,requireOperationalProvider};

@@ -33,6 +33,10 @@ test('uncertain dispatch has audited manager-only recovery',()=>{
   assert.match(section,/trackingNumber/);
 });
 test('archiving does not stop incoming updates for previously sent shipments',()=>{
-  assert.match(src,/companyCredentials\(companyId,\{allowInactive:true\}\)/);
-  assert.match(src,/companyCredentials\(o\.companyId,\{allowInactive:true\}\)/);
+  const webhook=src.slice(src.indexOf('exports.deliveryWebhook='),src.indexOf('exports.reconcileDeliveryStatuses='));
+  const polling=src.slice(src.indexOf('exports.reconcileDeliveryStatuses='),src.indexOf('exports.registerDevice='));
+  // Missing secrets permit rejection before decrypt, never block archived
+  // reference shipments from updates through either supported path.
+  assert.match(webhook,/companyCredentials\(companyId,\{allowInactive:true(?:,requireSecrets:false)?\}\)/);
+  assert.match(polling,/companyCredentials\(o\.companyId,\{allowInactive:true\}\)/);
 });

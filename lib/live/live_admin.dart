@@ -453,6 +453,8 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
       e.key.toString(): e.value.toString(),
   };
   late bool enabled = widget.initial?['enabled'] == true;
+  late String provider =
+      widget.initial?['provider']?.toString() ?? 'generic_v1';
   String target = 'delivered';
   bool busy = false;
   @override
@@ -473,11 +475,15 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
         if (widget.initial != null) 'id': widget.initial!['id'],
         'name': name.text.trim(),
         'apiUrl': url.text.trim(),
-        'provider': 'generic_v1',
-        'enabled': enabled,
-        'statusMap': mappings,
-        if (token.text.isNotEmpty) 'apiToken': token.text,
-        if (webhook.text.isNotEmpty) 'webhookKey': webhook.text,
+        'provider': provider,
+        'enabled': provider == 'click_delivery_v1' ? false : enabled,
+        'statusMap': provider == 'click_delivery_v1'
+            ? <String, String>{}
+            : mappings,
+        if (provider == 'generic_v1' && token.text.isNotEmpty)
+          'apiToken': token.text,
+        if (provider == 'generic_v1' && webhook.text.isNotEmpty)
+          'webhookKey': webhook.text,
       });
       token.clear();
       webhook.clear();
@@ -513,6 +519,45 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                       ),
                     ),
                     const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      isExpanded: true,
+                      initialValue: provider,
+                      decoration: const InputDecoration(
+                        labelText: 'نوع التكامل',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'generic_v1',
+                          child: Text(
+                            'موصل مرجعي',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'click_delivery_v1',
+                          child: Text(
+                            'Click Delivery — مسودة معطلة',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                      onChanged: widget.initial != null
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setState(() {
+                                provider = value;
+                                enabled = false;
+                                if (provider == 'click_delivery_v1') {
+                                  url.text =
+                                      'https://admin.clickdelivery.org/Client';
+                                }
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 12),
                     TextFormField(
                       controller: name,
                       decoration: const InputDecoration(
@@ -537,8 +582,10 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('الشركة مفعّلة'),
-                      value: enabled,
-                      onChanged: (v) => setState(() => enabled = v),
+                      value: provider == 'click_delivery_v1' ? false : enabled,
+                      onChanged: provider == 'click_delivery_v1'
+                          ? null
+                          : (v) => setState(() => enabled = v),
                     ),
                     const Text(
                       'لن يعمل الرابط إلا إذا كان مضيفه مسموحاً به في إعدادات الخادم.',
@@ -548,117 +595,129 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                 ),
               ),
               const SizedBox(height: 12),
-              VLivePanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'بيانات الاتصال السرية',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: token,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'API Token • اتركه فارغاً للاحتفاظ بالسابق',
-                      ),
-                    ),
-                    const SizedBox(height: 11),
-                    TextField(
-                      controller: webhook,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText:
-                            'Webhook HMAC Secret • اتركه فارغاً للاحتفاظ بالسابق',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'لا يتم عرض الرموز القديمة. تُرسل للخادم وتحفظ مشفّرة باستخدام Cloud KMS؛ لا تُخزّن داخل التطبيق.',
-                      style: TextStyle(color: VColors.muted, fontSize: 12),
-                    ),
-                  ],
+              if (provider == 'click_delivery_v1')
+                const VFeedbackPanel(
+                  title: 'تكامل Click Delivery غير مفعّل',
+                  message:
+                      'لا اتصال أو إنشاء شحنة في هذه المرحلة. نحتاج استجابات الشركة وأكواد الحالات وتفسير المبالغ قبل إدخال الاعتمادات وتفعيل التكامل.',
                 ),
-              ),
-              const SizedBox(height: 12),
-              VLivePanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'ربط حالات التوصيل',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 17,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    for (final e in mappings.entries)
-                      ListTile(
-                        title: Text(e.key, textDirection: TextDirection.ltr),
-                        subtitle: Text(statusLabels[e.value] ?? e.value),
-                        trailing: IconButton(
-                          tooltip: 'إزالة الربط',
-                          onPressed: () =>
-                              setState(() => mappings.remove(e.key)),
-                          icon: const Icon(Icons.close, color: VColors.danger),
+              if (provider == 'generic_v1')
+                VLivePanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'بيانات الاتصال السرية',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
                         ),
                       ),
-                    TextField(
-                      controller: remote,
-                      decoration: const InputDecoration(
-                        labelText:
-                            'اسم الحالة في شركة التوصيل • مثال delivered',
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: token,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'API Token • اتركه فارغاً للاحتفاظ بالسابق',
+                        ),
                       ),
-                      textDirection: TextDirection.ltr,
-                    ),
-                    const SizedBox(height: 9),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-
-                      initialValue: target,
-                      decoration: const InputDecoration(
-                        labelText: 'الحالة الداخلية',
+                      const SizedBox(height: 11),
+                      TextField(
+                        controller: webhook,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'Webhook HMAC Secret • اتركه فارغاً للاحتفاظ بالسابق',
+                        ),
                       ),
-                      items: statusLabels.entries
-                          .where(
-                            (e) => [
-                              'inTransit',
-                              'delivered',
-                              'returned',
-                              'cancelled',
-                            ].contains(e.key),
-                          )
-                          .map(
-                            (e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setState(() => target = v ?? target),
-                    ),
-                    const SizedBox(height: 9),
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        final key = remote.text.trim();
-                        if (RegExp(r'^[a-zA-Z0-9_.-]{1,80}$').hasMatch(key)) {
-                          setState(() => mappings[key] = target);
-                          remote.clear();
-                        } else {
-                          showError(context, 'صيغة حالة غير صحيحة');
-                        }
-                      },
-                      icon: const Icon(Icons.add),
-                      label: const Text('إضافة ربط حالة'),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      const Text(
+                        'لا يتم عرض الرموز القديمة. تُرسل للخادم وتحفظ مشفّرة باستخدام Cloud KMS؛ لا تُخزّن داخل التطبيق.',
+                        style: TextStyle(color: VColors.muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              const SizedBox(height: 12),
+              if (provider == 'generic_v1')
+                VLivePanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'ربط حالات التوصيل',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 17,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final e in mappings.entries)
+                        ListTile(
+                          title: Text(e.key, textDirection: TextDirection.ltr),
+                          subtitle: Text(statusLabels[e.value] ?? e.value),
+                          trailing: IconButton(
+                            tooltip: 'إزالة الربط',
+                            onPressed: () =>
+                                setState(() => mappings.remove(e.key)),
+                            icon: const Icon(
+                              Icons.close,
+                              color: VColors.danger,
+                            ),
+                          ),
+                        ),
+                      TextField(
+                        controller: remote,
+                        decoration: const InputDecoration(
+                          labelText:
+                              'اسم الحالة في شركة التوصيل • مثال delivered',
+                        ),
+                        textDirection: TextDirection.ltr,
+                      ),
+                      const SizedBox(height: 9),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+
+                        initialValue: target,
+                        decoration: const InputDecoration(
+                          labelText: 'الحالة الداخلية',
+                        ),
+                        items: statusLabels.entries
+                            .where(
+                              (e) => [
+                                'inTransit',
+                                'delivered',
+                                'returned',
+                                'cancelled',
+                              ].contains(e.key),
+                            )
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e.key,
+                                child: Text(e.value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => target = v ?? target),
+                      ),
+                      const SizedBox(height: 9),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final key = remote.text.trim();
+                          if (RegExp(r'^[a-zA-Z0-9_.-]{1,80}$').hasMatch(key)) {
+                            setState(() => mappings[key] = target);
+                            remote.clear();
+                          } else {
+                            showError(context, 'صيغة حالة غير صحيحة');
+                          }
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('إضافة ربط حالة'),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: busy ? null : save,

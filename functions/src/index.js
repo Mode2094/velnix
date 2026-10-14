@@ -12,7 +12,8 @@ const {logger}=require('firebase-functions');
 const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
-const {providerFor}=require('./providers');
+const {providerFor,requireOperationalProvider}=require('./providers');
+const {CLICK_PROVIDER}=require('./click_delivery');
 const {directoryPage}=require('./directory');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
 initializeApp();const db=getFirestore();
@@ -88,6 +89,8 @@ function firebaseError(e){
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(['delivery_host_not_allowed','kms_not_configured','kms_not_configured_or_bad_secret','unsupported_delivery_provider'].includes(e?.message))fail('failed-precondition','إعداد شركة التوصيل أو خدمة تشفير مفاتيحها غير مكتمل؛ راجع إعدادات المؤسسة');
+  if(['click_contract_incomplete','click_requires_dedicated_adapter'].includes(e?.message))fail('failed-precondition','تكامل Click Delivery غير مفعّل: نحتاج استجابات API وأكواد الحالات وعقد المبالغ قبل تشغيله');
+  if(e?.message==='invalid_click_url')fail('invalid-argument','رابط Click Delivery يجب أن يطابق العنوان الموثق للشركة');
   logger.error('velnix.error',{code:e?.code||'unknown'});
   fail('internal','تعذر إتمام العملية؛ أعد المحاولة أو راجع المسؤول');
 }
@@ -175,7 +178,7 @@ exports.companyStats=callable(async req=>{
 exports.getOrder=callable(async req=>{
   const user=await requireAuth(req), {snap}=await oneOrder(user,req.data?.id);
   const events=await snap.ref.collection('events').orderBy('createdAt','desc').limit(80).get();
-  const order=orderForUser(user,snap);if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;}
+  const order=orderForUser(user,snap);if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;order.companyProvider=company.data()?.provider||null;}
   return {order,events:events.docs.map(d=>({id:d.id,...d.data(),createdAt:safeDate(d.data().createdAt)}))};
 });
 exports.createOrder=callable(async req=>{
@@ -278,11 +281,18 @@ exports.saveCompany=callable(async req=>{
   const id=req.data?.id?idValue(req.data.id):db.collection('companies').doc().id;
   const ref=db.collection('companies').doc(id);
   const name=str(req.data?.name,140),apiUrl=allowedUrl(str(req.data?.apiUrl,300));
-  if(req.data?.provider!=='generic_v1')fail('invalid-argument','المحول المتاح حالياً generic_v1 فقط');
+  const provider=req.data?.provider;
+  const patch={};
+  if(!['generic_v1',CLICK_PROVIDER].includes(provider))fail('invalid-argument','اختر محول شركة التوصيل المتاح');
+  providerFor({provider,apiUrl});
+  if(provider===CLICK_PROVIDER){
+    if(req.data?.enabled===true)fail('failed-precondition','يمكن حفظ Click Delivery كمسودة معطلة فقط حتى استكمال عقد API');
+    if(req.data?.apiToken||req.data?.webhookKey||Object.keys(req.data?.statusMap||{}).length)fail('invalid-argument','لا تستخدم token أو webhook أو أكواد حالات generic مع Click Delivery');
+  }
   let statusMap;try{statusMap=safeStatusMap(req.data?.statusMap||{});}catch(e){return firebaseError(e);}
   const existing=await ref.get();
+  if(existing.exists&&existing.data().provider!==provider)fail('failed-precondition','لا يمكن تغيير محول شركة موجودة؛ أنشئ إعداداً مستقلاً لحماية الشحنات السابقة');
   if(existing.exists&&existing.data().archived)fail('failed-precondition','استعد الشركة المؤرشفة صراحةً قبل تعديلها');
-  const patch={};
   if(req.data?.apiToken)patch.apiTokenCiphertext=await encryptSecret(str(req.data.apiToken,2000));
   if(req.data?.webhookKey)patch.webhookKeyCiphertext=await encryptSecret(str(req.data.webhookKey,2000));
   if(req.data?.enabled===true){
@@ -290,11 +300,12 @@ exports.saveCompany=callable(async req=>{
     const savedSecrets=await db.doc(`companySecrets/${id}`).get();
     if(!patch.apiTokenCiphertext&&!savedSecrets.data()?.apiTokenCiphertext)fail('failed-precondition','أدخل مفتاح API قبل تفعيل الشركة');
   }
-  const newData={name,apiUrl,provider:'generic_v1',enabled:req.data?.enabled===true,
+  const newData={name,apiUrl,provider,enabled:req.data?.enabled===true,
     ...(!existing.exists?{archived:false}:{}),statusMap,updatedAt:FieldValue.serverTimestamp()};
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);
+    if(latest.exists&&latest.data().provider!==provider)fail('failed-precondition','تغيّر محول الشركة؛ أعد تحميلها');
     if(latest.exists&&latest.data().archived)fail('failed-precondition','استعد الشركة المؤرشفة قبل تعديلها');
     tx.set(ref,newData,{merge:true});
     if(Object.keys(patch).length)tx.set(db.doc('companySecrets/'+id),patch,{merge:true});
@@ -311,14 +322,15 @@ exports.restoreCompany=callable(async req=>{
   const id=idValue(req.data?.id),ref=db.doc('companies/'+id);
   await db.runTransaction(async tx=>{await currentActor(tx,user);const company=await tx.get(ref);if(!company.exists)fail('not-found','الشركة غير موجودة');tx.update(ref,{archived:false,enabled:false,updatedAt:FieldValue.serverTimestamp()});await audit('company.restored',user,id,{},tx);});return {ok:true};
 });
-async function companyCredentials(companyId,{allowInactive=false}={}) {
+async function companyCredentials(companyId,{allowInactive=false,requireSecrets=true}={}) {
   const [c,s]=await Promise.all([db.doc(`companies/${companyId}`).get(),db.doc(`companySecrets/${companyId}`).get()]);
-  if(!c.exists||(!allowInactive&&(!c.data().enabled||c.data().archived))||!s.exists)fail('failed-precondition','شركة التوصيل غير مجهزة');
-  return {company:c.data(),secrets:s.data()};
+  if(!c.exists||(!allowInactive&&(!c.data().enabled||c.data().archived))||(requireSecrets&&!s.exists))fail('failed-precondition','شركة التوصيل غير مجهزة');
+  return {company:c.data(),secrets:s.data()||{}};
 }
 exports.testCompanyConnection=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
   const id=idValue(req.data?.id);const {company,secrets}=await companyCredentials(id,{allowInactive:true});
+  requireOperationalProvider(company);
   try{const json=await providerFor(company).health(company,await decryptSecret(secrets.apiTokenCiphertext));
     await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:true,lastHealthError:null});
     return {connected:true,provider:company.provider,serviceStatus:'ok'};
@@ -337,12 +349,19 @@ exports.sendOrderToDelivery=callable(async req=>{
     if(o.dispatchState==='sent')fail('failed-precondition','الطلب أُرسل بالفعل');
     // A timed-out request may have reached the vendor: never auto-resend it.
     if(o.dispatchState==='sending')fail('failed-precondition','يوجد إرسال سابق يحتاج مراجعة إذا لم يكتمل');
+    const company=await tx.get(db.doc('companies/'+o.companyId));
+    if(!company.exists||company.data().archived||company.data().enabled!==true)fail('failed-precondition','شركة التوصيل غير مفعلة؛ لم يبدأ إرسال الشحنة');
+    requireOperationalProvider(company.data());
     snapshot={...o,id:ref.id};
     tx.update(ref,{dispatchState:'sending',dispatchLockId:lockId,dispatchLockUntil:Timestamp.fromMillis(Date.now()+90000)});
   });
+  let vendorAttempted=false;
   try {
     const {company,secrets}=await companyCredentials(snapshot.companyId);
-    const result=await providerFor(company).create(company,await decryptSecret(secrets.apiTokenCiphertext),snapshot);
+    const adapter=requireOperationalProvider(company);
+    const token=await decryptSecret(secrets.apiTokenCiphertext);
+    vendorAttempted=true;
+    const result=await adapter.create(company,token,snapshot);
     const tracking=optional(result.trackingNumber||result.tracking,120);
     if(!tracking)throw new Error('vendor_missing_tracking');
     await db.runTransaction(async tx=>{
@@ -355,9 +374,14 @@ exports.sendOrderToDelivery=callable(async req=>{
   }catch(e){
     logger.error('delivery dispatch failed',{id:ref.id,code:e.code||'unknown'});
     await db.runTransaction(async tx=>{const o=await tx.get(ref);
-      if(o.data()?.dispatchLockId===lockId)tx.update(ref,{dispatchState:'needs_review',syncError:'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.',dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
+      if(o.data()?.dispatchLockId===lockId){
+        const failure=vendorAttempted?{dispatchState:'needs_review',syncError:'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
+        tx.update(ref,{...failure,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
+        const action=vendorAttempted?'dispatch_attempt_failed':'dispatch_preparation_failed';
+        await addEvent(ref.id,action,user,{},tx);await audit('order.'+action,user,ref.id,{},tx);
+      }
     });
-    fail('unavailable','فشل إرسال الطلب. تحقق من الشركة قبل إعادة المحاولة.');
+    fail(vendorAttempted?'unavailable':'failed-precondition',vendorAttempted?'فشل إرسال الطلب. تحقق من الشركة قبل إعادة المحاولة.':'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.');
   }
 });
 
@@ -486,7 +510,8 @@ exports.deliveryWebhook=onRequest({region:REGION,invoker:'public',maxInstances:1
   try {
     const companyId=optional(req.query.companyId,140);
     if(!/^[\w-]{3,140}$/.test(companyId)){res.status(400).send('invalid_company');return;}
-    const credentials=await companyCredentials(companyId,{allowInactive:true});
+    const credentials=await companyCredentials(companyId,{allowInactive:true,requireSecrets:false});
+    if(credentials.company.provider===CLICK_PROVIDER){res.status(409).send('provider_contract_unconfirmed');return;}
     const secret=await decryptSecret(credentials.secrets.webhookKeyCiphertext);
     if(!verifyWebhook(req.rawBody,req.headers['x-velnix-timestamp'],req.headers['x-velnix-signature'],secret)){
       res.status(401).send('invalid_signature');return;
@@ -514,8 +539,9 @@ exports.reconcileDeliveryStatuses=onSchedule({schedule:'every 15 minutes',region
     if(!o.companyId||!o.trackingNumber)continue;
     try {
       const {company,secrets}=await companyCredentials(o.companyId,{allowInactive:true});
+      const adapter=requireOperationalProvider(company);
       const token=await decryptSecret(secrets.apiTokenCiphertext);
-      const data=await providerFor(company).status(company,token,o.trackingNumber);
+      const data=await adapter.status(company,token,o.trackingNumber);
       const rawStatus=optional(data.status,80);
       if(rawStatus)await processRemote(o.companyId,{reference:doc.id,status:rawStatus},crypto.createHash('sha256').update(doc.id+':'+rawStatus).digest('hex'),'poll');
       checked++;

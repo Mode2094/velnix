@@ -5,6 +5,9 @@ const optional=(v,max)=>typeof v==='string'?v.trim().slice(0,max):'';
 function createRemoteProcessor({db,FieldValue,addEvent,audit}) {
 return async function processRemote(companyId, payload, eventId, source) {
   const companyDoc=await db.doc(`companies/${companyId}`).get();if(!companyDoc.exists)return {ignored:'unknown_company'};
+  // Click has no documented webhook/response/status contract. Never feed
+  // its payloads into generic field names or statusMap, even on a stale record.
+  if(companyDoc.data().provider==='click_delivery_v1')return {ignored:'unconfirmed_provider_contract'};
   let orderId;try{orderId=documentId(payload.reference||payload.orderId);}catch(_){return {ignored:'invalid_reference'};}
   const raw=optional(payload.status,80),map=companyDoc.data().statusMap||{},mapped=Object.hasOwn(map,raw)?map[raw]:null;
   if(!orderId||!mapped)return {ignored:'unknown_order_or_status'};

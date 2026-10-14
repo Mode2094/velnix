@@ -64,3 +64,10 @@ test('unmatched orders and path injection never mutate data',async()=>{
   assert.equal((await processRemote('remote_company',{reference:'unmatched_order',status:'done'},'mismatch_event','webhook')).ignored,'unmatched_order');
   assert.equal((await db.doc('orders/unmatched_order').get()).data().status,'dispatched');
 });
+test('Click payloads cannot use invented generic status fields or close an order',async()=>{
+  await db.doc('companies/click_unknown_contract').set({provider:'click_delivery_v1',statusMap:{done:'delivered'}});
+  await db.doc('orders/click_unverified').set({companyId:'click_unknown_contract',status:'dispatched',revision:3});
+  assert.equal((await processRemote('click_unknown_contract',{reference:'click_unverified',status:'done',collectedAmount:999},'unverified_click','webhook')).ignored,'unconfirmed_provider_contract');
+  const order=(await db.doc('orders/click_unverified').get()).data();assert.equal(order.status,'dispatched');assert.equal(order.revision,3);
+  assert.equal((await db.doc('deliveryInbox/click_unknown_contract/events/unverified_click').get()).exists,false);
+});

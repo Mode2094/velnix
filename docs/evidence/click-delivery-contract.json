@@ -1,0 +1,151 @@
+{
+  "baseline_commit": "b362bbe",
+  "sources": {
+    "postman": {
+      "filename": "ClickApi.postman_collection.json",
+      "sha256": "5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061"
+    },
+    "text": {
+      "filename": "clickdelivery api[1] (2).txt",
+      "sha256": "bc1c465ff57a5f67550fab43b8812217d380e260652c285a20a542c0af6f405f"
+    }
+  },
+  "requests": [
+    {
+      "name": "getorder",
+      "method": "POST",
+      "url": "https://admin.clickdelivery.org/Client/getorder",
+      "authorization_header": "client",
+      "body_fields": [
+        "Order_ID",
+        "User_Name",
+        "User_Pass"
+      ],
+      "response_examples": 0,
+      "source": "ClickApi.postman_collection.json /item/0/request",
+      "operational": false
+    },
+    {
+      "name": "removeorder",
+      "method": "POST",
+      "url": "https://admin.clickdelivery.org/Client/removeorder",
+      "authorization_header": "client",
+      "body_fields": [
+        "Order_ID",
+        "User_Name",
+        "User_Pass"
+      ],
+      "response_examples": 0,
+      "source": "ClickApi.postman_collection.json /item/1/request",
+      "operational": false
+    },
+    {
+      "name": "setorder",
+      "method": null,
+      "url": "https://admin.clickdelivery.org/Client/setorder",
+      "authorization_header": "client",
+      "body_fields": [
+        {
+          "name": "User_Name",
+          "source_lines": [
+            6,
+            27
+          ]
+        },
+        {
+          "name": "User_Pass",
+          "source_lines": [
+            7,
+            28
+          ]
+        },
+        {
+          "name": "Client_Serial",
+          "source_lines": [
+            8,
+            29
+          ]
+        },
+        {
+          "name": "Reciver_Name",
+          "source_lines": [
+            9,
+            30
+          ]
+        },
+        {
+          "name": "Reciver_Phone",
+          "source_lines": [
+            10,
+            31
+          ]
+        },
+        {
+          "name": "Reciver_Address",
+          "source_lines": [
+            11,
+            32
+          ]
+        },
+        {
+          "name": "Ord_Content",
+          "source_lines": [
+            12,
+            33
+          ]
+        },
+        {
+          "name": "Ord_Quantity",
+          "source_lines": [
+            13,
+            34
+          ]
+        },
+        {
+          "name": "Ord_Amt",
+          "source_lines": [
+            14,
+            35
+          ]
+        },
+        {
+          "name": "Ord_Note",
+          "source_lines": [
+            15,
+            36
+          ]
+        },
+        {
+          "name": "Is_Ord_Exchange",
+          "source_lines": [
+            16,
+            37
+          ]
+        },
+        {
+          "name": "Open_Shippment",
+          "source_lines": [
+            18,
+            39
+          ]
+        }
+      ],
+      "response_examples": 0,
+      "source": "clickdelivery api[1] (2).txt lines 2-19 and 23-40",
+      "operational": false
+    }
+  ],
+  "not_documented": [
+    "all response schemas and success/error markers",
+    "status codes and their field name/type",
+    "webhook endpoint, signature or event order/version",
+    "health endpoint",
+    "setorder HTTP method",
+    "currency and Ord_Amt fee semantics",
+    "Client_Serial/Order_ID/tracking relationship and idempotency",
+    "boolean wire format for Is_Ord_Exchange/Open_Shippment",
+    "partial collections/refunds and cancellation charges",
+    "sandbox URL and credentials"
+  ],
+  "note": "No example passwords copied. Confirmed request evidence is not verified API behavior."
+}

@@ -16,6 +16,7 @@ import '../core/theme.dart';
 import '../core/widgets.dart';
 import '../core/dates.dart';
 import '../models/entities.dart';
+import '../models/shipping_status.dart';
 import 'gateway.dart';
 
 part 'live_dashboard.dart';
@@ -39,6 +40,8 @@ const eventLabels = {
   'sent_to_delivery': 'إرسال الشحنة',
   'remote_status': 'تحديث شركة التوصيل',
   'dispatch_exception_resolved': 'مراجعة نتيجة الإرسال',
+  'dispatch_preparation_failed': 'تعذر تجهيز الاتصال قبل إرسال الشحنة',
+  'dispatch_attempt_failed': 'نتيجة إرسال الشحنة تحتاج مراجعة',
 };
 String eventLabel(dynamic action) =>
     eventLabels[action?.toString()] ?? 'تحديث الطلب';
