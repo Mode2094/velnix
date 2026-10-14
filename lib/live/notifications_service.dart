@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'gateway.dart';
+import 'device_revocation.dart';
 
 /// Push is opt-in; callers surface configuration failures to the employee.
 class NotificationsService {
@@ -40,18 +41,25 @@ class NotificationsService {
     await _refresh?.cancel();
     _refresh = null;
     if (!const bool.fromEnvironment('VELNIX_PUSH_ENABLED')) return;
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) {
-      await VelnixGateway.instance.call('unregisterDevice', {'token': token});
-    }
-    await FirebaseMessaging.instance.deleteToken();
+    await revokeDeviceToken(
+      unregister: () async {
+        final token = await FirebaseMessaging.instance.getToken();
+        if (token != null) {
+          await VelnixGateway.instance.call('unregisterDevice', {
+            'token': token,
+          });
+        }
+      },
+      invalidate: () => FirebaseMessaging.instance.deleteToken(),
+    );
   }
 
   Future<void> signOut() async {
     try {
       await disable();
     } catch (_) {
-      /* Backend rechecks active membership on push. */
+      /* Both cleanup paths are attempted. Offline token revocation still
+         needs real-device verification; always close the local Auth session. */
     }
     await VelnixGateway.instance.auth.signOut();
   }

@@ -1,5 +1,8 @@
 'use strict';
 const crypto=require('node:crypto');
+const {setGlobalOptions}=require('firebase-functions/v2');
+const {runtimeOptions}=require('./runtime_config');
+setGlobalOptions(runtimeOptions(process.env.VELNIX_RUNTIME_SERVICE_ACCOUNT,process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT));
 const {onDocumentCreated}=require('firebase-functions/v2/firestore');
 const {deviceId,processPush,recoverPushes}=require('./push');
 const {initializeApp}=require('firebase-admin/app');

@@ -5,6 +5,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'live/live_app.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme.dart';
+import 'core/runtime_config.dart';
 import 'data/demo_store.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
@@ -14,6 +15,20 @@ import 'screens/shell_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const mode = String.fromEnvironment('VELNIX_MODE', defaultValue: 'live');
+  const config = RuntimeConfig(
+    mode: mode,
+    environment: String.fromEnvironment(
+      'VELNIX_ENVIRONMENT',
+      defaultValue: 'development',
+    ),
+    debugAppCheck: bool.fromEnvironment('VELNIX_DEBUG_APPCHECK'),
+  );
+  try {
+    config.validate(release: kReleaseMode);
+  } catch (_) {
+    runApp(const SetupFailureApp());
+    return;
+  }
   if (mode == 'demo') {
     runApp(const VelnixApp());
     return;
@@ -33,6 +48,7 @@ Future<void> main() async {
     } else {
       await Firebase.initializeApp();
     }
+    config.validateProject(Firebase.app().options.projectId);
     const webSiteKey = String.fromEnvironment('FIREBASE_APPCHECK_SITE_KEY');
     const debugAppCheck = bool.fromEnvironment('VELNIX_DEBUG_APPCHECK');
     if (debugAppCheck && kReleaseMode) {
@@ -53,23 +69,32 @@ Future<void> main() async {
       );
     }
     runApp(const VelnixLiveApp());
-  } catch (e) {
-    runApp(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'تعذر تهيئة Firebase. تحقق من إعدادات المشروع وApp Check.\n$e',
-                textAlign: TextAlign.center,
-              ),
+  } catch (_) {
+    runApp(const SetupFailureApp());
+  }
+}
+
+class SetupFailureApp extends StatelessWidget {
+  const SetupFailureApp({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: velnixTheme(),
+    home: const Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'تعذر بدء التطبيق. راجع إعدادات بيئة التشغيل وFirebase وApp Check مع مسؤول المؤسسة.',
+              textAlign: TextAlign.center,
             ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 class VelnixApp extends StatefulWidget {

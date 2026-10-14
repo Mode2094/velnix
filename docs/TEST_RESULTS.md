@@ -1,5 +1,8 @@
 # نتائج التحقق النهائي — 14 أكتوبر 2026
 
+أحدث فحوص المرحلة الرابعة: **312 Flutter،54 Node،48 Auth/Firestore،5 Python preflight،36 PDF رقمي** ناجحة، والتنسيق/analyze/syntax/فحص الأسرار وnpm audit إنتاج بلا findings/advisories معروفة. Web وAndroid Debug بنمطَي Demo/Live: أربعة أبنية ناجحة. [تقرير المرحلة الرابعة](SAFE_HANDOFF_STAGE4_REPORT_AR.md) و[الدليل](evidence/safe-handoff-stage4-validation.json) يوضحان حدود التشغيل. لا iOS أو توقيع release أو API Click أو Firebase/FCM/KMS/IAM فعلي أو اختبار جهاز/استعادة. CI على SHA النهائي يتحقق بعد الرفع، وليس مستنتجاً من السجل التاريخي أدناه.
+
+
 أحدث فحوص المرحلة الثالثة: **306 Flutter، 51 Node، 48 Auth/Firestore، و36 فحص PDF رقمي** ناجحة، مع Web Demo/Live محلياً. [تقرير Click Delivery](CLICK_DELIVERY_STAGE3_REPORT_AR.md) يميز طلبات Mock المؤكدة من التكامل غير المكتمل، و`evidence/click-stage3-validation.json` يسجل النتائج وحدودها. لا اتصال بالشركة ولا طابعة أو Deploy؛ ملخص المرحلتين السابقتين أدناه سجل تاريخي.
 
 التحديث الأحدث بعد مرحلتي جودة التسليم: **296 Flutter، 45 Node، 39 Auth/Firestore، 36 فحص باركود رقمي** ناجحة، مع 32 baseline جديدة و30 لقطة Chromium جديدة وأبنية Web وAndroid Debug بنمطَي Demo/Live. التفاصيل وحدود الإثبات في [DELIVERY_QUALITY_REVIEW_AR.md](DELIVERY_QUALITY_REVIEW_AR.md) و`evidence/delivery-quality-validation.json`. الجدول التالي محفوظ كسجل baseline السابق؛ أرقامه ليست أرقام النسخة الأحدث.

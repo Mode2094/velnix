@@ -21,6 +21,7 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: python3 scripts/check_secrets.py
+      - run: python3 scripts/test_runtime_config.py
       - run: flutter analyze
       - run: flutter test --reporter expanded
       - run: |

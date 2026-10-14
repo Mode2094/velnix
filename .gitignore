@@ -9,6 +9,10 @@ coverage/
 *-debug.log
 functions/node_modules/
 config/firebase.public.json
+config/firebase.*.json
+!config/firebase.*.example.json
+config/iam.*.json
+!config/iam.*.example.json
 web/firebase-messaging-sw.js
 !functions/package-lock.json
 .idea/

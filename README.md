@@ -2,6 +2,8 @@
 
 Flutter + Firebase لإدارة الطلبات باللغة العربية. تغييرات التدقيق على `audit/production-readiness`؛ التطبيق غير معتمد للإنتاج، ولم ينشر على أي مشروع حقيقي.
 
+المرجع الحالي: [التسليم الآمن — المرحلة الرابعة](docs/SAFE_HANDOFF_STAGE4_REPORT_AR.md)، [الإعدادات وتسليم المصدر](docs/SAFE_CONFIGURATION_HANDOFF_AR.md)، [الاستعادة والتراجع](docs/BACKUP_RESTORE_ROLLBACK_AR.md)، [قبول المرحلة الخامسة](docs/STAGING_ACCEPTANCE_PLAN.md). إعداد Live يستعمل VELNIX_ENVIRONMENT صراحة وملفاً عاماً لكل منصة مع preflight offline؛ Demo release development للـQA فقط. Click محجوب حتى اكتمال عقد الاستجابة، وgeneric_v1 ليس توافقاً مع الشركة. لا موارد أو Merge/Deploy.
+
 تم إصلاح نطاق الفرق بعد نقل الأعضاء، معاملات الطلب ومراجعاته، العدادات والبحث والفلاتر، الأدوار والإشعارات الدائمة، واجهات RTL وطباعة PDF بخط محلي. أضيفت إعدادات مؤسسة محفوظة وملفات Android/iOS/Web وCI.
 
 استخدم Flutter 3.47.7 وNode 22.23.3 وJava 21. في البيئة الحالية:

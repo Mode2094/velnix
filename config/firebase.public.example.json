@@ -8,6 +8,8 @@
   "FIREBASE_VAPID_KEY": "",
   "GOOGLE_WEB_CLIENT_ID": "",
   "VELNIX_MODE": "live",
+  "VELNIX_ENVIRONMENT": "development",
+  "VELNIX_DEBUG_APPCHECK": false,
   "VELNIX_GOOGLE_ENABLED": false,
   "VELNIX_PUSH_ENABLED": false
 }

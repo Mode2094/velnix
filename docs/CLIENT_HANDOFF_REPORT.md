@@ -1,5 +1,12 @@
 # تحقق التسليم — 14 أكتوبر 2026
 
+## المرحلة الرابعة: التسليم الآمن
+
+بدأت من e005c66 على فرع التطوير. [تقرير المرحلة الرابعة](SAFE_HANDOFF_STAGE4_REPORT_AR.md) يسجل الإصلاحات الأمنية المحدودة: محاولة إبطال FCM token حتى مع فشل unregister، وإخفاء خطأ تهيئة SDK الخام، وفصل نية البيئة مع preflight offline واختيار runtime identity. لا IAM/موارد أو Deploy. [تهيئة وتسليم المصدر](SAFE_CONFIGURATION_HANDOFF_AR.md) و[النسخ والاستعادة والتراجع](BACKUP_RESTORE_ROLLBACK_AR.md) و[قبول المرحلة الخامسة](STAGING_ACCEPTANCE_PLAN.md) هي المراجع الحالية. Click محجوب ولا generic بديل.
+
+محلياً: 312 Flutter،54 Node،48 Auth/Firestore،5 Python preflight،36 PDF رقمي، وأربعة أبنية Web/Android Debug Demo/Live ناجحة. CI النهائي وSHA يقدم بعد push في تقرير التسليم ولا يستنتج من الأرقام التاريخية أدناه. الانتقال مشروط ببوابات المالك، وiOS/signing/FCM/Click/الأجهزة/الطباعة/الاستعادة غير معتمدة.
+
+
 ## المرحلة الثالثة: Click Delivery
 
 أحدث نطاق العمل هو [تدقيق وتحضير Click Delivery](CLICK_DELIVERY_STAGE3_REPORT_AR.md)، ابتداءً من `b362bbe`. محول Click محجوب التشغيل لغياب الاستجابات وأكواد الحالات والمعاني المالية؛ لا API فعلياً ولا نجاح تكامل مستنتج من Mock. [التوافق والمصادر](CLICK_DELIVERY_COMPATIBILITY_AR.md) و[أسئلة الشركة](CLICK_DELIVERY_QUESTIONS_AR.md) يحددان بوابات الإكمال. الفحوص المحلية الحالية: 306 Flutter، 51 Node، 48 Auth/Firestore، و36 فحص PDF رقمي؛ نتائج CI لهذا commit تتحقق بعد رفعه ولا تستنتج من الأدلة القديمة أدناه.

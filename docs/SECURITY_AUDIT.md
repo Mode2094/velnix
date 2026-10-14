@@ -11,3 +11,9 @@
 الإكمال الداخلي لا يتجاوز company/dispatch/tracking/remote markers، والكتابة تعيد currentActor داخل المعاملة. push يفحص عضو/نطاق حاليين لكل محاولة، يسجل error code من allowlist فقط، ولا يحفظ رسالة exception أو token في notice. الجهاز الناجح يتجنب retries اللاحقة، وclaim ID يمنع انتهاء عامل قديم من الكتابة بعد استعادة lease.
 
 التحميل التدريجي يحافظ على التحقق الأصلي ويعيد التحقق في كل صفحة. استعلام creator للمبيعات مقيد بفريقه الحالي؛ إدارة الأعضاء ما زالت تتطلب manageEmployees، وعنوان API لا يعاد لغير مدير الشركات. فشل تحديث القائمة يزيل الصفوف القديمة. Secret scanner فحص توقيعات معروف، وليس تدقيق أسرار شاملاً أو اختبار اختراق. audit-level=high يفشل CI عند vulnerability إنتاجية عالية ولا يحول الفشل إلى نجاح.
+
+## المرحلة الرابعة — 14 أكتوبر2026
+
+راجعنا قواعد Firestore وAuth والأدوار والمعاملات وأقفال/idempotency الشحن ومفاتيح الشركات وسجلات الأخطاء والـretry؛ لم نكرر الإصلاحات السابقة. إصلاح جديد مثبت: فشل unregisterDevice لم يعد يمنع محاولة حذف FCM token. إذا فشل المساران فاختبار الخروج offline ووقف الإشعارات يبقى بوابة أجهزة؛ لا ضمان سحب ناجح من Mock. أزيل نص exception الخام من خطأ startup. أضيفت نية بيئة صريحة ترفض Demo/debug App Check عند production، وفحص عام offline واختيار حساب runtime المستقبل مع تحقق مشروعه. هذا ليس إثبات IAM ولا مانعاً تقنياً لتوزيع QA مصنف development يدوياً.
+
+Click محجوب، HTTPS/KMS/Backend guards محفوظة؛ HMAC المذكور تاريخياً يخص generic_v1 فقط ولا يثبت webhook للشركة. الفحوص312Flutter/54Node/48محاكي/5preflight ناجحة؛ لا production أو cloud secret inspection. راجع [تقرير المرحلة الرابعة](SAFE_HANDOFF_STAGE4_REPORT_AR.md) و[التهيئة الآمنة](SAFE_CONFIGURATION_HANDOFF_AR.md).
