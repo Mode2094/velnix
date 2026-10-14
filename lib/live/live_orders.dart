@@ -285,20 +285,17 @@ class _LiveOrdersState extends State<LiveOrders> {
                   ),
                 ),
               if (error != null)
-                VLivePanel(
-                  child: Text(
-                    error!,
-                    style: const TextStyle(color: VColors.danger),
-                  ),
+                VFeedbackPanel(
+                  title: 'تعذر تحميل الطلبات',
+                  message: error,
+                  icon: Icons.error_outline,
+                  onRetry: () => load(reset: true),
                 ),
-              if (!busy && rows.isEmpty)
-                VLivePanel(
-                  child: const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(28),
-                      child: Text('لا توجد طلبات مطابقة'),
-                    ),
-                  ),
+              if (!busy && error == null && rows.isEmpty)
+                const VFeedbackPanel(
+                  title: 'لا توجد طلبات مطابقة',
+                  message: 'جرّب تغيير البحث أو الفلاتر، أو أنشئ طلباً جديداً.',
+                  icon: Icons.receipt_long_outlined,
                 ),
               for (final item in visible)
                 Padding(
@@ -306,7 +303,11 @@ class _LiveOrdersState extends State<LiveOrders> {
                   child: _orderCard(item),
                 ),
               const SizedBox(height: 9),
-              if (busy) const Center(child: CircularProgressIndicator()),
+              if (busy)
+                const VFeedbackPanel(
+                  title: 'جارٍ تحميل الطلبات',
+                  loading: true,
+                ),
               if (more && !busy)
                 Center(
                   child: OutlinedButton.icon(

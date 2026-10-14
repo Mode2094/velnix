@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'gateway.dart';
+import '../core/widgets.dart';
 
 /// Cursor-based administration lists. A failed refresh discards cached rows.
 class DirectoryPanel extends StatefulWidget {
@@ -107,20 +108,24 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
         ),
       ),
       if (busy) const LinearProgressIndicator(),
-      if (error != null)
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              Text(error!),
-              TextButton(
-                onPressed: () => load(reset: true),
-                child: const Text('إعادة المحاولة'),
-              ),
-            ],
-          ),
-        ),
-      Expanded(child: widget.builder(rows)),
+      Expanded(
+        child: error != null || (busy && rows.isEmpty)
+            ? Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(12),
+                  child: VFeedbackPanel(
+                    title: error != null
+                        ? 'تعذر تحميل القائمة'
+                        : 'جارٍ تحميل القائمة',
+                    message: error,
+                    loading: error == null,
+                    icon: Icons.error_outline,
+                    onRetry: error != null ? () => load(reset: true) : null,
+                  ),
+                ),
+              )
+            : widget.builder(rows),
+      ),
       if (more && !busy)
         Padding(
           padding: const EdgeInsets.all(8),

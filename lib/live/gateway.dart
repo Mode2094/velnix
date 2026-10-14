@@ -29,7 +29,7 @@ class VelnixGateway {
             : (e.message ?? 'حدث خطأ أثناء الاتصال بالخادم'),
       );
     } on FirebaseAuthException catch (e) {
-      throw VelnixException(e.message ?? 'تعذر التحقق من الحساب');
+      throw VelnixException(authErrorMessage(e.code));
     }
   }
 
@@ -163,6 +163,17 @@ class VelnixException implements Exception {
   @override
   String toString() => message;
 }
+
+String authErrorMessage(String code) => switch (code) {
+  'invalid-credential' ||
+  'wrong-password' ||
+  'user-not-found' => 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+  'invalid-email' => 'أدخل بريداً إلكترونياً صالحاً',
+  'user-disabled' => 'الحساب موقوف؛ راجع مسؤول المؤسسة',
+  'network-request-failed' => 'تعذر الاتصال؛ تحقق من الشبكة ثم أعد المحاولة',
+  'too-many-requests' => 'محاولات كثيرة؛ انتظر قليلاً ثم أعد المحاولة',
+  _ => 'تعذر التحقق من الحساب؛ أعد المحاولة أو راجع مسؤول المؤسسة',
+};
 
 class SessionPolicy {
   SessionPolicy(this.data);

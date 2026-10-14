@@ -120,7 +120,7 @@ ThemeData velnixTheme() {
         ),
         foregroundColor: VColors.ink,
         side: const BorderSide(color: VColors.line),
-        minimumSize: const Size(0, 46),
+        minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
@@ -146,5 +146,41 @@ ThemeData velnixTheme() {
       ),
     ),
     dividerTheme: const DividerThemeData(color: VColors.line, thickness: 1),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      titleTextStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 19,
+        fontWeight: FontWeight.w800,
+        color: VColors.ink,
+      ),
+      contentTextStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 14,
+        height: 1.5,
+        color: VColors.ink,
+      ),
+    ),
+    dataTableTheme: const DataTableThemeData(
+      headingRowColor: WidgetStatePropertyAll(VColors.softBlue),
+      dividerThickness: 1,
+      headingTextStyle: TextStyle(
+        fontFamily: 'Cairo',
+        fontWeight: FontWeight.w800,
+        color: VColors.ink,
+      ),
+      dataTextStyle: TextStyle(fontFamily: 'Cairo', color: VColors.ink),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      contentTextStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        color: Colors.white,
+        height: 1.5,
+      ),
+    ),
   );
 }

@@ -91,7 +91,7 @@ class _VelnixAppState extends State<VelnixApp> {
   Widget build(BuildContext context) => StoreScope(
     store: _store,
     child: MaterialApp(
-      title: 'Velnix – Smart Order Management',
+      title: 'Velnix — إدارة الطلبات',
       debugShowCheckedModeBanner: false,
       theme: velnixTheme(),
       locale: const Locale('ar'),

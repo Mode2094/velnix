@@ -55,7 +55,7 @@ class VLogo extends StatelessWidget {
               ),
             ),
             Text(
-              'SMART ORDER MANAGEMENT',
+              'إدارة الطلبات بوضوح',
               style: TextStyle(
                 fontSize: 8,
                 fontWeight: FontWeight.w800,
@@ -114,6 +114,68 @@ class VPanel extends StatelessWidget {
     ),
     padding: padding,
     child: Material(type: MaterialType.transparency, child: child),
+  );
+}
+
+/// Shared presentation for loading, errors and empty lists.
+class VFeedbackPanel extends StatelessWidget {
+  const VFeedbackPanel({
+    super.key,
+    required this.title,
+    this.message,
+    this.icon = Icons.info_outline,
+    this.loading = false,
+    this.onRetry,
+  });
+  final String title;
+  final String? message;
+  final IconData icon;
+  final bool loading;
+  final VoidCallback? onRetry;
+  @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    child: VPanel(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            )
+          else
+            Icon(
+              icon,
+              color: onRetry == null ? VColors.brand : VColors.danger,
+              size: 32,
+            ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+            textAlign: TextAlign.center,
+          ),
+          if (message != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              message!,
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ],
+      ),
+    ),
   );
 }
 

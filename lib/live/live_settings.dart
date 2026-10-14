@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'gateway.dart';
 import 'live_app.dart';
+import '../core/widgets.dart';
 
 class LiveSettings extends StatefulWidget {
   const LiveSettings({super.key});
@@ -22,6 +23,10 @@ class _LiveSettingsState extends State<LiveSettings> {
   }
 
   Future<void> load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
     try {
       final data = await VelnixGateway.instance.call('getSettings');
       if (mounted) {
@@ -72,7 +77,26 @@ class _LiveSettingsState extends State<LiveSettings> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('إعدادات المؤسسة')),
     body: loading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(16),
+              child: VFeedbackPanel(
+                title: 'جارٍ تحميل الإعدادات',
+                loading: true,
+              ),
+            ),
+          )
+        : error != null
+        ? SingleChildScrollView(
+            child: LiveContent(
+              child: VFeedbackPanel(
+                title: 'تعذر تحميل الإعدادات',
+                message: error,
+                icon: Icons.error_outline,
+                onRetry: load,
+              ),
+            ),
+          )
         : SingleChildScrollView(
             child: LiveContent(
               child: Form(
@@ -80,18 +104,6 @@ class _LiveSettingsState extends State<LiveSettings> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (error != null)
-                      VLivePanel(
-                        child: Column(
-                          children: [
-                            Text(error!),
-                            TextButton(
-                              onPressed: load,
-                              child: const Text('إعادة المحاولة'),
-                            ),
-                          ],
-                        ),
-                      ),
                     VLivePanel(
                       child: Column(
                         children: [

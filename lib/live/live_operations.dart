@@ -128,7 +128,7 @@ class _LiveSyncCenterState extends State<LiveSyncCenter> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'أحدث أحداث Webhook والمزامنة التي وصلت إلى الخادم وتم توثيقها.',
+              'آخر تحديثات حالات الشحن الواردة من شركات التوصيل.',
               style: TextStyle(color: VColors.muted),
             ),
             const SizedBox(height: 14),
@@ -145,18 +145,20 @@ class _LiveSyncCenterState extends State<LiveSyncCenter> {
                       '${e['companyName'] ?? ''} • ${e['rawStatus'] ?? ''}',
                     ),
                     subtitle: Text(
-                      'طلب ${e['orderId'] ?? ''} • ${e['source'] ?? ''}\n${businessDate(e['receivedAt'])}',
+                      'طلب ${e['orderId'] ?? ''} • ${syncSourceLabel(e['source'])}\n${businessDate(e['receivedAt'])}',
                     ),
                   ),
                 ),
               ),
             if (items.isEmpty)
-              const VLivePanel(
-                child: Text('لا توجد أحداث مزامنة مسجلة حتى الآن'),
+              const VFeedbackPanel(
+                title: 'لا توجد أحداث مزامنة مسجلة حتى الآن',
+                message: 'ستظهر تحديثات شركات التوصيل هنا عند ورودها.',
+                icon: Icons.sync_outlined,
               ),
             const SizedBox(height: 12),
             const Text(
-              'المزامنة الآلية تحتاج نشر Cloud Scheduler وإعداد API/Webhook للشركة المختارة.',
+              'إذا تأخرت حالة شحنة، راجع آخر مزامنة في تفاصيل الطلب أو تواصل مع مسؤول المؤسسة.',
               style: TextStyle(color: VColors.muted, fontSize: 11),
             ),
           ],

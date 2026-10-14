@@ -1132,7 +1132,7 @@ class _LiveAuditState extends State<LiveAudit> {
                       Icons.verified_user_outlined,
                       color: VColors.brand,
                     ),
-                    title: Text(e['action']?.toString() ?? ''),
+                    title: Text(auditActionLabel(e['action'])),
                     subtitle: Text(
                       '${e['actorName'] ?? ''} • ${e['entityId'] ?? ''}\n${businessDate(e['createdAt'])}',
                     ),
@@ -1140,7 +1140,11 @@ class _LiveAuditState extends State<LiveAudit> {
                 ),
               ),
             if (rows.isEmpty)
-              const VLivePanel(child: Text('لا توجد أحداث مسجلة')),
+              const VFeedbackPanel(
+                title: 'لا توجد أحداث مسجلة',
+                message: 'ستظهر هنا العمليات التي يوثقها النظام.',
+                icon: Icons.history_outlined,
+              ),
           ],
         ),
       ),

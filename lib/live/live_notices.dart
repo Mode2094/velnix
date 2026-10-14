@@ -133,10 +133,14 @@ class _LiveNoticesState extends State<LiveNotices> {
                   ),
                 ),
               if (list.isEmpty)
-                const VLivePanel(child: Text('لا توجد إشعارات جديدة')),
+                const VFeedbackPanel(
+                  title: 'لا توجد إشعارات',
+                  message: 'ستظهر هنا تحديثات الطلبات المتاحة لحسابك.',
+                  icon: Icons.notifications_none_outlined,
+                ),
               const SizedBox(height: 12),
               const Text(
-                'تفعيل إشعارات الجهاز يتطلب السماح من الجهاز وتهيئة Firebase Messaging. يبقى سجل الإشعارات متاحاً داخل التطبيق.',
+                'اسمح بالإشعارات من إعدادات الجهاز لتلقي التحديثات. يبقى سجل الإشعارات متاحاً داخل التطبيق.',
                 style: TextStyle(color: VColors.muted, fontSize: 11),
               ),
             ],

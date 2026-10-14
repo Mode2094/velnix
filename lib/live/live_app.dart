@@ -13,6 +13,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../printing/order_printing.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/theme.dart';
+import '../core/widgets.dart';
 import '../core/dates.dart';
 import '../models/entities.dart';
 import 'gateway.dart';
@@ -41,6 +42,25 @@ const eventLabels = {
 };
 String eventLabel(dynamic action) =>
     eventLabels[action?.toString()] ?? 'تحديث الطلب';
+String syncSourceLabel(dynamic source) => switch (source) {
+  'webhook' => 'تحديث من شركة التوصيل',
+  'poll' => 'مزامنة آلية',
+  _ => 'تحديث حالة الشحنة',
+};
+String auditActionLabel(dynamic action) {
+  final value = action?.toString() ?? '';
+  if (value.startsWith('order.')) return eventLabel(value.substring(6));
+  return const {
+        'company.saved': 'حفظ بيانات شركة التوصيل',
+        'company.archived': 'أرشفة شركة التوصيل',
+        'company.restored': 'استعادة شركة التوصيل',
+        'member.created': 'إضافة موظف',
+        'member.updated': 'تحديث بيانات الموظف وصلاحياته',
+        'settings.updated': 'تحديث إعدادات المؤسسة',
+      }[value] ??
+      'عملية مسجلة';
+}
+
 final liveNavigatorKey = GlobalKey<NavigatorState>();
 String displayAmount(dynamic amount) =>
     amount is num ? '${amount.toStringAsFixed(3)} د.أ' : '—';
@@ -49,7 +69,7 @@ class VelnixLiveApp extends StatelessWidget {
   const VelnixLiveApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Velnix – Smart Order Management',
+    title: 'Velnix — إدارة الطلبات',
     debugShowCheckedModeBanner: false,
     theme: velnixTheme(),
     locale: const Locale('ar'),
@@ -155,11 +175,7 @@ class _LiveLoginState extends State<LiveLogin> {
       );
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        setState(
-          () => error = e.code == 'invalid-credential'
-              ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة'
-              : (e.message ?? 'تعذر تسجيل الدخول'),
-        );
+        setState(() => error = authErrorMessage(e.code));
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -877,15 +893,7 @@ class VLivePanel extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: VColors.line),
-    ),
-    child: Material(type: MaterialType.transparency, child: child),
-  );
+  Widget build(BuildContext context) => VPanel(padding: padding, child: child);
 }
 
 class LiveContent extends StatelessWidget {
@@ -938,28 +946,23 @@ class AsyncPanel<T> extends StatelessWidget {
       if (!snap.hasData || snap.hasError) {
         if (snap.hasError) {
           return Center(
-            child: VLivePanel(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.error_outline,
-                    color: VColors.danger,
-                    size: 32,
-                  ),
-                  const SizedBox(height: 10),
-                  Text('${snap.error}', textAlign: TextAlign.center),
-                  TextButton.icon(
-                    onPressed: onRetry,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('إعادة المحاولة'),
-                  ),
-                ],
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: VFeedbackPanel(
+                title: 'تعذر تحميل البيانات',
+                message: '${snap.error}',
+                icon: Icons.error_outline,
+                onRetry: onRetry,
               ),
             ),
           );
         }
-        return const Center(child: CircularProgressIndicator());
+        return const Center(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: VFeedbackPanel(title: 'جارٍ تحميل البيانات', loading: true),
+          ),
+        );
       }
       return Stack(
         fit: StackFit.expand,
