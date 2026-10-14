@@ -15,6 +15,9 @@ jobs:
         with:
           flutter-version: '3.47.7'
           cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
       - run: flutter pub get --enforce-lockfile
       - run: dart format --output=none --set-exit-if-changed lib test
       - run: python3 scripts/check_secrets.py
@@ -27,6 +30,13 @@ jobs:
           /tmp/velnix-qa/bin/pip install -r scripts/qa-requirements.txt
           /tmp/velnix-qa/bin/python scripts/verify_barcodes.py
       - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo
+      - name: Capture demo roles in Chromium
+        run: |
+          npm install --prefix /tmp/velnix-browser --package-lock=false playwright@1.64.0
+          python3 -m http.server 8767 --bind 127.0.0.1 --directory build/web > /tmp/velnix-demo-http.log 2>&1 &
+          VELNIX_HTTP_PID=$!
+          trap 'kill "$VELNIX_HTTP_PID"' EXIT
+          NODE_PATH=/tmp/velnix-browser/node_modules CHROME_EXECUTABLE=/usr/bin/google-chrome node scripts/browser_smoke.cjs
       - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=live
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()

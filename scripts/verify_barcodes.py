@@ -15,6 +15,9 @@ for pdf in sorted(source.glob('*.pdf')):
     expected = 'VNX-AbCdEfGhIjKlMnOpQrSt' if pdf.stem.endswith('_standard_id') else 'VNX-Order_1234567890'
     for dpi in (203, 300, 600):
         prefix = output / f'{pdf.stem}-{dpi}'
+        # Remove only this generated prefix so stale pages cannot satisfy a scan.
+        for stale in output.glob(prefix.name + '-*.png'):
+            stale.unlink()
         subprocess.run(['pdftoppm', '-r', str(dpi), '-png', str(pdf), str(prefix)], check=True, capture_output=True)
         images = sorted(output.glob(prefix.name + '-*.png'))
         decoded = set()
