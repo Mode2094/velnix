@@ -22,6 +22,7 @@ web/firebase-messaging-sw.js
 **/firebase_options.dart
 **/google-services.json
 **/GoogleService-Info.plist
+ios/Flutter/Firebase.local.xcconfig
 .env
 .env.*
 !.env.example
@@ -40,5 +41,6 @@ service-account*.json
 !pubspec.lock
 
 __pycache__/
+android/.kotlin/
 
 test/failures/

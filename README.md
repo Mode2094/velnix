@@ -1,5 +1,7 @@
 # Velnix
 
+تهيئة المشروع الحالي على Android/iOS/Web: [FIREBASE_CURRENT_PROJECT_SETUP_AR](docs/FIREBASE_CURRENT_PROJECT_SETUP_AR.md). ملفات SDK وdart-defines محلية مستثناة؛ لا ينشئ التجهيز تسجيلات أو ينشر خدمات. المشروع الواحد الحالي للتجربة والتسليم لا يوفّر عزلاً للبيانات.
+
 Flutter + Firebase لإدارة الطلبات باللغة العربية. تغييرات التدقيق على `audit/production-readiness`؛ التطبيق غير معتمد للإنتاج، ولم ينشر على أي مشروع حقيقي.
 
 المرجع الحالي: [التسليم الآمن — المرحلة الرابعة](docs/SAFE_HANDOFF_STAGE4_REPORT_AR.md)، [الإعدادات وتسليم المصدر](docs/SAFE_CONFIGURATION_HANDOFF_AR.md)، [الاستعادة والتراجع](docs/BACKUP_RESTORE_ROLLBACK_AR.md)، [قبول المرحلة الخامسة](docs/STAGING_ACCEPTANCE_PLAN.md). إعداد Live يستعمل VELNIX_ENVIRONMENT صراحة وملفاً عاماً لكل منصة مع preflight offline؛ Demo release development للـQA فقط. Click محجوب حتى اكتمال عقد الاستجابة، وgeneric_v1 ليس توافقاً مع الشركة. لا موارد أو Merge/Deploy.

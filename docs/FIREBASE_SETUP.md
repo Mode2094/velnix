@@ -1,5 +1,7 @@
 # إعداد Firebase
-1. يحدد المالك مشروع staging منفصلاً ومشروع الإنتاج والمنطقة؛ لا تستخدم بيانات عميل في الاختبارات. راجع firebase.json و109 فهارس المركبة قبل أي نشر مخول.
+
+> تحديث طلب المالك الحالي: التجربة والتسليم النهائي على مشروع واحد velnix-6c1a2. [وثيقة ربط المشروع الحالي](FIREBASE_CURRENT_PROJECT_SETUP_AR.md) تحدد التسجيلات والإعدادات المحلية والقيود. افتراض مشروع Staging مستقل في الخطط السابقة أُلغي بهذا الطلب؛ قيمة staging الآن لا تثبت عزل البيانات، ولا تسمح بتشغيل اختبارات المسح أو الاستعادة على المشروع الحقيقي. لا إنشاء موارد أو فوترة أو Deploy في هذا الطلب.
+1. يعتمد الطلب الحالي مشروع velnix-6c1a2 الواحد للتجربة والتسليم؛ منطقة Functions europe-west1. لا تستخدم بيانات عميل أو اختبارات reset/import فيه. راجع firebase.json و109 فهارس المركبة قبل أي نشر مخول.
 2. سجل Web وAndroid وiOS بعد اعتماد com.mode2094.velnix؛ ضع إعداد العميل العام في config/firebase.public.json المستثنى، وملفات المنصات المحلية. راجع مثال config/firebase.public.example.json وأسماء dart-defines في lib/main.dart.
 3. فعّل Email/Password، وعند اعتماد Google اضبط OAuth domains وSHA-1/SHA-256 وGoogle client IDs ثم VELNIX_GOOGLE_ENABLED. اختبر دخول وخروج واستعادة كلمة المرور لكل منصة.
 4. سجل App Check الصحيح Android/Apple/Web. لا تسمح debug tokens على release. اختبر رفض الطلبات غير الموثوقة في staging.

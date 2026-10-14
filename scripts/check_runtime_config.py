@@ -10,6 +10,7 @@ PUBLIC_FIELDS = {
     "FIREBASE_VAPID_KEY", "GOOGLE_WEB_CLIENT_ID", "VELNIX_MODE",
     "VELNIX_ENVIRONMENT", "VELNIX_DEBUG_APPCHECK", "VELNIX_GOOGLE_ENABLED",
     "VELNIX_PUSH_ENABLED",
+    "FIREBASE_STORAGE_BUCKET", "FIREBASE_IOS_BUNDLE_ID",
 }
 FLAGS = {"VELNIX_DEBUG_APPCHECK", "VELNIX_GOOGLE_ENABLED", "VELNIX_PUSH_ENABLED"}
 
@@ -46,6 +47,8 @@ def validate(data, *, environment, platform, expected_project, release=True):
     prefix = f"1:{data['FIREBASE_SENDER_ID']}:{platform}:"
     if not data["FIREBASE_APP_ID"].startswith(prefix):
         raise ValueError("Firebase app ID must match sender ID and selected platform")
+    if platform == "ios" and data.get("FIREBASE_IOS_BUNDLE_ID") != "com.mode2094.velnix":
+        raise ValueError("iOS bundle ID must match the registered application")
     if any("PRIVATE KEY" in v for v in data.values() if isinstance(v, str)):
         raise ValueError("Private credentials are forbidden in public configuration")
 

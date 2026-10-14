@@ -6,6 +6,7 @@ import 'live/live_app.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme.dart';
 import 'core/runtime_config.dart';
+import 'core/firebase_configuration.dart';
 import 'data/demo_store.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
@@ -36,16 +37,14 @@ Future<void> main() async {
   try {
     const apiKey = String.fromEnvironment('FIREBASE_API_KEY');
     if (apiKey.isNotEmpty) {
-      await Firebase.initializeApp(
-        options: const FirebaseOptions(
-          apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
-          appId: String.fromEnvironment('FIREBASE_APP_ID'),
-          messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID'),
-          projectId: String.fromEnvironment('FIREBASE_PROJECT_ID'),
-          authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
-        ),
+      FirebaseConfiguration.validate(
+        FirebaseConfiguration.supplied,
+        web: kIsWeb,
+        platform: defaultTargetPlatform,
       );
+      await Firebase.initializeApp(options: FirebaseConfiguration.supplied);
     } else {
+      if (kIsWeb) throw StateError('يلزم ملف إعداد Web المحلي');
       await Firebase.initializeApp();
     }
     config.validateProject(Firebase.app().options.projectId);

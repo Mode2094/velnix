@@ -6,6 +6,47 @@ import 'package:velnix/main.dart';
 
 void main() {
   test(
+    'token auto-init is stopped before deletion even when backend fails',
+    () async {
+      final events = <String>[];
+      await expectLater(
+        revokeDeviceToken(
+          unregister: () async {
+            events.add('backend');
+            throw StateError('backend unavailable');
+          },
+          stopAutoInit: () async {
+            events.add('stop');
+          },
+          invalidate: () async {
+            events.add('delete');
+          },
+        ),
+        throwsStateError,
+      );
+      expect(events, ['backend', 'stop', 'delete']);
+    },
+  );
+  test(
+    'a platform auto-init error never prevents attempting token deletion',
+    () async {
+      bool deleted = false;
+      await expectLater(
+        revokeDeviceToken(
+          unregister: () async {},
+          stopAutoInit: () async {
+            throw StateError('platform unavailable');
+          },
+          invalidate: () async {
+            deleted = true;
+          },
+        ),
+        throwsStateError,
+      );
+      expect(deleted, true);
+    },
+  );
+  test(
     'production intent rejects Demo and debug providers before services start',
     () {
       for (final config in [

@@ -20,6 +20,8 @@ class NotificationsService {
       throw VelnixException('اسمح بالإشعارات من إعدادات الجهاز أو المتصفح');
     }
     const vapid = String.fromEnvironment('FIREBASE_VAPID_KEY');
+    // Native defaults are disabled; explicit consent restores token renewal.
+    await FirebaseMessaging.instance.setAutoInitEnabled(true);
     final token = await FirebaseMessaging.instance.getToken(
       vapidKey: vapid.isEmpty ? null : vapid,
     );
@@ -51,6 +53,7 @@ class NotificationsService {
         }
       },
       invalidate: () => FirebaseMessaging.instance.deleteToken(),
+      stopAutoInit: () => FirebaseMessaging.instance.setAutoInitEnabled(false),
     );
   }
 
