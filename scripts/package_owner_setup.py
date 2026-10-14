@@ -12,6 +12,8 @@ FILES = {
     'functions/scripts/owner_google_setup.js': 'functions/scripts/owner_google_setup.js',
     'functions/scripts/read_cloud_inventory.js': 'functions/scripts/read_cloud_inventory.js',
     'functions/scripts/google_read.js': 'functions/scripts/google_read.js',
+    'functions/scripts/gcloud_session.js': 'functions/scripts/gcloud_session.js',
+    'functions/scripts/bootstrap_readonly.js': 'functions/scripts/bootstrap_readonly.js',
     'functions/scripts/bootstrap_admin.js': 'functions/scripts/bootstrap_admin.js',
     'functions/src/bootstrap_google.js': 'functions/src/bootstrap_google.js',
     'functions/src/google_identity.js': 'functions/src/google_identity.js',

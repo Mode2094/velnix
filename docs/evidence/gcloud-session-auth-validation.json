@@ -1,0 +1,21 @@
+{
+  "baselineCommit": "14e399c563f0da0ecf641ae6412c3bd8497fb668",
+  "validation": "scripts/validate.sh exited 0",
+  "localResults": {
+    "flutterTests": 323,
+    "nodeTests": 81,
+    "firebaseEmulatorTests": 64,
+    "pythonTests": 12,
+    "digitalPdfChecks": 36,
+    "flutterAnalyze": "passed",
+    "npmAudit": "0 vulnerabilities"
+  },
+  "credentialIntegration": {
+    "actualBootstrapCliAndAdminAuthSdk": true,
+    "adcFile": "nonexistent fixture path",
+    "gcloudAndGoogleHttp": "local fixtures only; no real cloud authentication claimed",
+    "verified": ["operator account binding", "Authorization and X-Goog-User-Project headers", "default and explicit gcloud dry-run", "existing lock and administrator rejection", "apply and conflicting auth modes rejected before HTTP", "credential errors redacted", "emulator overrides rejected"]
+  },
+  "cloudChanges": "none; no administrator creation, deployment or billing changes",
+  "githubCi": "verify against final commit; local results do not establish GitHub CI success"
+}

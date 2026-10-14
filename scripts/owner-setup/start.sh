@@ -17,12 +17,6 @@ fi
 if [[ -z "$candidate_email" ]]; then echo 'Candidate identity is required; no automatic account selection.' >&2; exit 1; fi
 command -v gcloud >/dev/null
 command -v node >/dev/null
-if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then echo "Use an official human ADC session, without a credential-file override." >&2; exit 1; fi
-# Official interactive user ADC when necessary; never requests a private key.
-if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
-  gcloud auth application-default login
-fi
-# Local ADC quota metadata only. Does not enable an API, billing or cloud resource.
-gcloud auth application-default set-quota-project velnix-6c1a2 >/dev/null
+# Reuse the existing human gcloud session. No ADC login, token files or quota-file edits.
 (cd functions && npm ci --omit=dev --no-audit --no-fund)
 node functions/scripts/owner_google_setup.js "$candidate_email"

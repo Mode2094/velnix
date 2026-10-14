@@ -1,0 +1,30 @@
+'use strict';
+const {execFileSync}=require('node:child_process');
+const {readGoogleJson}=require('./google_read');
+const PROJECT='velnix-6c1a2';
+function createGcloudSession({run=args=>execFileSync('gcloud',args,{encoding:'utf8',stdio:['ignore','pipe','ignore'],timeout:20000,maxBuffer:1024*1024}).trim(),fetchImpl=fetch,env=process.env,expectedAccount}={}){
+ if(env.FIREBASE_AUTH_EMULATOR_HOST||env.FIRESTORE_EMULATOR_HOST)throw Error('live_operator_emulator_override_refused');
+ const invoke=args=>{try{return run(args).trim();}catch(_){throw Error('gcloud_human_session_unavailable');}};
+ for(const key of ['CLOUDSDK_AUTH_ACCESS_TOKEN','CLOUDSDK_AUTH_ACCESS_TOKEN_FILE','CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE','CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT'])if(env[key])throw Error('gcloud_auth_override_refused');
+ const account=invoke(['auth','list','--filter=status:ACTIVE','--format=value(account)']);
+ const impersonation=invoke(['config','get-value','auth/impersonate_service_account']);
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account)||account.endsWith('.gserviceaccount.com')||(impersonation&&impersonation!=='(unset)')||(expectedAccount&&expectedAccount!==account))throw Error('gcloud_human_account_required');
+ function accessToken(){
+  const token=invoke(['auth','print-access-token','--account='+account,'--quiet']);
+  if(!token||/\s/.test(token))throw Error('gcloud_token_unavailable');
+  return token;
+ }
+ const credential={async getAccessToken(){
+  // gcloud controls expiry and refresh. Do not invent a one-hour expiry for its cached token.
+  // A short SDK cache lifetime requests the official session again at the next SDK call.
+  return {access_token:accessToken(),expires_in:1};
+ }};
+ async function get(input){
+  const url=new URL(input);
+  if(url.protocol!=='https:'||url.username||url.password||url.port||!['identitytoolkit.googleapis.com','firebase.googleapis.com','firestore.googleapis.com'].includes(url.hostname))throw Error('google_read_destination_refused');
+  const response=await fetchImpl(url.href,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+accessToken(),'X-Goog-User-Project':PROJECT},signal:AbortSignal.timeout(20000)});
+  return readGoogleJson(response);
+ }
+ return {account,credential,get};
+}
+module.exports={PROJECT,createGcloudSession};

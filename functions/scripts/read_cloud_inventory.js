@@ -1,8 +1,8 @@
 'use strict';
 // Run in the owner's Google Cloud Shell. GET-only; tokens stay in memory.
-const {execFileSync}=require('node:child_process');
 const PROJECT='velnix-6c1a2';
-const {readGoogleJson,listPage}=require('./google_read');
+const {listPage}=require('./google_read');
+const {createGcloudSession}=require('./gcloud_session');
 async function inventory({get,candidateEmail}){
   const result={projectId:PROJECT,readOnly:true,authentication:{},firestore:{},bootstrapExecuted:false};
   async function read(label,path){
@@ -57,17 +57,7 @@ async function inventory({get,candidateEmail}){
 async function main(){
   const email=process.argv[2];
   if(!email||!/^\S+@\S+\.\S+$/.test(email))throw Error('candidate_email_required');
-  const run=args=>execFileSync('gcloud',args,{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
-  const account=run(['auth','list','--filter=status:ACTIVE','--format=value(account)']);
-  const impersonation=run(['config','get-value','auth/impersonate_service_account']);
-  if(!account||account.includes('\n')||account.endsWith('.gserviceaccount.com')||(impersonation&&impersonation!=='(unset)'))throw Error('human_google_session_required');
-  // Official user authorization, not a private key, supplied password or pasted token.
-  const token=run(['auth','print-access-token','--account='+account,'--quiet']);
-  if(!token)throw Error('google_login_required');
-  const get=async url=>{
-    const response=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(20000)});
-    return readGoogleJson(response);
-  };
+  const {get}=createGcloudSession();
   console.log(JSON.stringify(await inventory({get,candidateEmail:email}),null,2));
 }
 if(require.main===module)main().catch(()=>{console.error('Read-only inventory could not start. In Google Cloud Shell authorize your human Google account with access to velnix-6c1a2, then retry. No credentials or response bodies printed.');process.exitCode=1;});

@@ -3,7 +3,7 @@
 const http=require('node:http'),crypto=require('node:crypto');
 const {execFileSync}=require('node:child_process');
 const {inventory}=require('./read_cloud_inventory');
-const {readGoogleJson}=require('./google_read');
+const {createGcloudSession}=require('./gcloud_session');
 const {requireGoogleSession,googleProfile}=require('../src/google_identity');
 const PROJECT='velnix-6c1a2',WEB_APP='1:948196868655:web:ace9b264b4fae48ac43cda';
 function assertInventory(data,uid){
@@ -84,14 +84,12 @@ button.onclick=async()=>{button.disabled=true;result.textContent='جارٍ ال�
 }
 async function main(){
   const candidateEmail=process.argv[2];if(!candidateEmail||!/^\S+@\S+\.\S+$/.test(candidateEmail))throw Error('candidate_required');
-  const {initializeApp,applicationDefault}=require('firebase-admin/app');
+  const {initializeApp}=require('firebase-admin/app');
   const {getAuth}=require('firebase-admin/auth');
-  const credential=applicationDefault();initializeApp({projectId:PROJECT,credential});
-  const get=async url=>{
-    const token=await credential.getAccessToken();
-    const response=await fetch(url,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(20000)});
-    return readGoogleJson(response);
-  };
+  const session=createGcloudSession();
+  process.env.GOOGLE_CLOUD_QUOTA_PROJECT=PROJECT;
+  initializeApp({projectId:PROJECT,credential:session.credential});
+  const get=session.get;
   const checkInventory=()=>inventory({get,candidateEmail});
   const first=await checkInventory();assertInventory(first);
   console.log(JSON.stringify({authentication:first.authentication,firestore:first.firestore,readOnlyInventory:true},null,2));
@@ -104,7 +102,7 @@ async function main(){
   let config=await get(`https://identitytoolkit.googleapis.com/v2/projects/${PROJECT}/config`);
   const domains=config.authorizedDomains;if(!Array.isArray(domains))throw Error('authorized_domains_unverified');
   const server=createPortal({candidateEmail,publicConfig,authorizedDomains:domains,auth:getAuth(),checkInventory,runDryRun:async uid=>{
-    execFileSync(process.execPath,[require('node:path').join(__dirname,'bootstrap_admin.js')],{env:{...process.env,GCLOUD_PROJECT:PROJECT,GOOGLE_CLOUD_PROJECT:PROJECT,VELNIX_BOOTSTRAP_CONFIRM_PROJECT:PROJECT,VELNIX_ADMIN_GOOGLE_UID:uid},stdio:['ignore','pipe','pipe'],timeout:60000});
+    execFileSync(process.execPath,[require('node:path').join(__dirname,'bootstrap_admin.js'),'--gcloud-session'],{env:{...process.env,GCLOUD_PROJECT:PROJECT,GOOGLE_CLOUD_PROJECT:PROJECT,VELNIX_BOOTSTRAP_CONFIRM_PROJECT:PROJECT,VELNIX_ADMIN_GOOGLE_UID:uid,VELNIX_OPERATOR_ACCOUNT:session.account},stdio:['ignore','pipe','pipe'],timeout:60000});
   },refreshDomains:async()=>{
     config=await get(`https://identitytoolkit.googleapis.com/v2/projects/${PROJECT}/config`);
     if(!Array.isArray(config.authorizedDomains))throw Error('authorized_domains_unverified');
@@ -113,7 +111,7 @@ async function main(){
   server.listen(8080,'127.0.0.1',()=>console.log('افتح Web Preview في Cloud Shell على المنفذ8080. إن كان النطاق غير مصرح ستظهر خطوة Console الدقيقة. لا روابط localhost عامة ولا نشر.'));
   setTimeout(()=>server.close(),30*60*1000).unref();
 }
-if(require.main===module)main().catch(e=>{const reason=['auth_inventory_not_clear','firestore_inventory_not_clear','enable_google_provider_in_console_first','web_registration_not_active','web_configuration_unverified','authorized_domains_unverified','candidate_required'].includes(e.message)?e.message:'google_access_or_configuration_required';console.error('توقف آمن: '+reason+'. لا إنشاء عضوية أو نشر أو تفعيل فوترة.');
+if(require.main===module)main().catch(e=>{const reason=['auth_inventory_not_clear','firestore_inventory_not_clear','enable_google_provider_in_console_first','web_registration_not_active','web_configuration_unverified','authorized_domains_unverified','candidate_required','gcloud_human_session_unavailable','gcloud_human_account_required','gcloud_auth_override_refused','gcloud_token_unavailable','live_operator_emulator_override_refused'].includes(e.message)?e.message:'google_access_or_configuration_required';console.error('توقف آمن: '+reason+'. لا إنشاء عضوية أو نشر أو تفعيل فوترة.');
  if(reason==='enable_google_provider_in_console_first')console.error('يلزم تفعيل Google من Firebase Console → Authentication → Sign-in method فقط، مع إبقاء Email/Password كما هو: https://console.firebase.google.com/project/velnix-6c1a2/authentication/providers');
  else console.error('راجع نتائج الجرد وصلاحية المشغل والتسجيل الحالي. لا تمسح العضويات أو القفل لتجاوز التوقف.');process.exitCode=1;});
 module.exports={createPortal,assertInventory};
