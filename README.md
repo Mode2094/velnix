@@ -16,3 +16,5 @@ flutter build apk --debug --dart-define=VELNIX_MODE=demo
 المحاكيات `demo-velnix` محلية؛ الاختبارات تمسح بياناتها. لا تشغلها على خدمات فعلية. الوضع الافتراضي live يتطلب إعداد Firebase؛ demo صريح لا يمثل تشغيل الإنتاج. لا تستخدم flutter create فوق تخصيصات المنصات.
 
 راجع [نتائج الاختبارات](docs/TEST_RESULTS.md)، [تقرير التدقيق](docs/AUDIT_REPORT.md)، [المعمارية](docs/ARCHITECTURE.md)، [الصلاحيات](docs/ROLE_PERMISSION_MATRIX.md)، [إعداد Firebase](docs/FIREBASE_SETUP.md)، [جاهزية الإنتاج](docs/PRODUCTION_READINESS.md) و[المتطلبات الخارجية](docs/REMAINING_EXTERNAL_REQUIREMENTS.md). التقارير المرقمة القديمة تاريخية وتسبق التحقق الحالي.
+
+المراجعة النهائية أضافت إكمالاً داخلياً موثقاً، retry محدوداً للدفع على الجدول الحالي، وصفحات بحث للإدارة، وباركود منفصل النص مع قراءة صور متعددة الدقات، وإصلاح خط جميع عناصر التحكم. QA Python يحتاج Poppler والمكتبات المثبتة في scripts/qa-requirements.txt. الصور والأدلة النهائية في docs/evidence، ونموذج الأداء والتكلفة في docs/PERFORMANCE_AND_COST.md. بناء Live المحلي يفحص compile فقط.

@@ -23,3 +23,5 @@
 | سجل عمليات/مزامنة/إعدادات | viewAudit/viewSync/manageSettings على التوالي |
 
 اختبرت حسابات الأدوار الخمسة منفصلة بالمحاكيات، وأمثلة رفض ومنح وتعارض، وليس كل احتمال في حاصل ضرب جميع الصلاحيات. طباعة ملف لا تمنح صلاحية مالية جديدة.
+
+الإكمال الداخلي delivered يتطلب ready وحق updateOrderStatus أو الدور warehouse/generalManager؛ لا شركة/hasDelivery ولا تتبع/remoteStatus ولا sending/sent/needs_review. completionSource=internal مع actor/time وسجل التدقيق. carrier delivery وحده يأتي من remote processor؛ terminal states لا تعاد فتحها. حالة قديمة delivered بلا مصدر تبقى بلا ادعاء مصدر. اختبارات policy تغطي كل الدور/الحالة/الهدف المذكور للإكمال، واختبار واجهة يفحص التأكيد وإزالة الفعل بعد الإكمال.

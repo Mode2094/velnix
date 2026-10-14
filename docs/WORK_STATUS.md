@@ -1,7 +1,7 @@
 # حالة المتابعة
 
-الفرع audit/production-readiness. انتهت الإصلاحات المستقلة والتحقق المحلي المتاح: source scripts/cloud-env.sh ثم scripts/validate.sh ناجح، Web/Android debug demo ناجحان، Chromium وصور وPDF في build/qa. النتائج الدقيقة في TEST_RESULTS وevidence/local-validation.json. لا نشر أو push أو بيانات إنتاج.
+الفرع audit/production-readiness مرتبط بـPR #1 الذي حدده المالك. انتهت الإصلاحات القابلة للتحقق المحلي: إكمال داخلي بمصدر، push retries/leases/fencing، صفحات إدارة، خط Cairo لكل عناصر التحكم، باركود منفصل النص، وتحسين CI.
 
-التالي يعتمد على المالك: مشروع staging العام وOAuth/App Check/KMS، شركة محددة ووثائق sandbox واعتمادات عبر وسيلة آمنة، أجهزة/توقيع/Mac وطابعة وماسح وسياسات التشغيل. راجع REMAINING_EXTERNAL_REQUIREMENTS وOPERATIONS_RUNBOOK؛ لا تبدأ التدقيق من الصفر أو تدعي أن نجاح unit يستبدل هذه البوابات.
+النسخة النظيفة النهائية من المصدر382ad34 اجتازت validate:271Flutter/45Node/36Emulator بلا فشل، و36فحص barcode مع4fallbacks معلنة. Web وAndroid Debug بُنيا بوضعَي Demo وLive؛ compile فقط. 30صورة فعلية في docs/evidence/screenshots؛ PDF وصور ورق ونتائج JSON في evidence. الأدلة في TEST_RESULTS والبوابات في PRODUCTION_READINESS. لا Merge أو Deploy أو بيانات إنتاج.
 
-إعداد البيئة محفوظ كمسودة ويحتاج review/save/publish من إعداداتها. local-only commits لا توجد لها نسخة remote مؤكدة؛ احتفظ بالـworkspace/snapshot. إعادة الاستعادة في مهمة جديدة غير مختبرة.
+التالي الخارجي: Firebase/OAuth/App Check/KMS/FCM/carrier sandbox، طابعة/ماسح/أجهزة/macOS/signing، فهارس وأداء وتكلفة وrestore على staging. GitHub API Forbidden لقراءةCI؛ GitPush والتحقق منSHA متاحان. لا تعِد التدقيق من البداية ولا تعتبر نجاح local tests قبول إنتاج.

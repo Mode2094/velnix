@@ -1,0 +1,212 @@
+[
+  {
+    "role": "generalManager",
+    "width": 390,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "generalManager",
+    "width": 390,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 390,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 390,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 390,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 390,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 390,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 390,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 390,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 390,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "generalManager",
+    "width": 768,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "generalManager",
+    "width": 768,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 768,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 768,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 768,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 768,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 768,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 768,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 768,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 768,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "generalManager",
+    "width": 1440,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "generalManager",
+    "width": 1440,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 1440,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "manager",
+    "width": 1440,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 1440,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "warehouse",
+    "width": 1440,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 1440,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "sales",
+    "width": 1440,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 1440,
+    "screen": "dashboard",
+    "mode": "demo",
+    "pageErrors": []
+  },
+  {
+    "role": "dataEntry",
+    "width": 1440,
+    "screen": "orders",
+    "mode": "demo",
+    "pageErrors": []
+  }
+]

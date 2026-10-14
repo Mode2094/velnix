@@ -1,0 +1,407 @@
+[
+  {
+    "suite": "node",
+    "name": "new orders expose immutable barcode in authorized order DTO",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "legacy orders can be reprinted with stable id-derived barcode",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "printing cannot reveal private amounts in the DTO",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "server search accepts scans of a VNX- barcode",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "createOrder is idempotent with atomic duplicate check",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "company secret patch is declared before it is checked when enabled",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "Firestore rules disable direct order write and Firebase routes require App Check",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "dashboard counts use index-backed aggregates rather than 1,000 order sample",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "only deployment-configured HTTPS delivery hosts are accepted",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "HMAC requires unexpired timestamp and correct body",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "late remote events never reopen delivered orders",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "other team cannot see amounts without viewAmounts",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "owner sees own order amount",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "explicit viewAmounts and general manager see amounts",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "five distinct roles and visible scopes",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "no remote status can be set manually",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "closed orders cannot be edited",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "invalid payloads rejected and integer fils used",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "unknown shipping states cannot be mapped",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "disabled member loses all permissions",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "Arabic numeral input is normalized for Jordanian phone and amounts",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "internal completion is ready-only and never bypasses carrier or terminal states",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "reference adapter performs real local health/create/status requests with idempotency",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "vendor errors, oversized bodies and malformed payloads fail closed",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "push token identity is deterministic and malformed registrations are rejected",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "push payload contains no customer data and checks scope and membership before send",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "shipment data is frozen during dispatch, uncertain dispatch and after sending",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "expired sending lock can be manually resolved, live lock cannot",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "invalid money values cannot silently become zero or lose precision",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "phone fields require digits and normalize both Arabic and Persian",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "remote mapping rejects internal states and prototype keys",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "document paths cannot escape their collection",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "Arabic and Persian phone search matches saved ASCII digits",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "date, creator, company and status filters apply together with exclusive end",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "server action DTO matches roles and shipping locks",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "missing active membership cannot grant permissions or access",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "new orders and edits index names and phone for backend search",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "search is authenticated and filtered through the visibility policy",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "required indexes for scoped search are recorded",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "ambiguous dispatch is blocked from automatic re-send",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "uncertain dispatch has audited manager-only recovery",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "archiving does not stop incoming updates for previously sent shipments",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "five role permissions remain distinct across every state",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "only operational staff/admin can move orders, never forge remote final states",
+    "passed": true
+  },
+  {
+    "suite": "node",
+    "name": "inactive accounts cannot view or modify orders across all roles",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "duplicate concurrent push triggers claim one send and preserve unread state",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "temporary failure backs off then succeeds without retrying an acknowledged device",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "expired processing lease is recovered and a previous completion is fenced",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "retry limit and permanent failures stop without storing raw error text",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "per-device failures clean invalid tokens and retry only the temporary device with current scope",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "existing schedule recovers due work and failures from old push implementation",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "exhausted partial delivery is failed rather than falsely marking the notice sent",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "real transactions handle duplicate concurrent webhooks and late states on archived carrier",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "early provider update is retryable until shipment confirmation, not burned as duplicate",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "unmatched orders and path injection never mutate data",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "own profile is readable, other profiles and profile mutation are denied",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "generalManager cannot access privileged collections through client SDK",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "manager cannot access privileged collections through client SDK",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "warehouse cannot access privileged collections through client SDK",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "sales cannot access privileged collections through client SDK",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "dataEntry cannot access privileged collections through client SDK",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "unauthenticated users cannot read a profile or order",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "all five accounts sign in through the real local Auth REST service",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "generalManager creates a real persisted order and sees it",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "manager creates a real persisted order and sees it",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "warehouse creates a real persisted order and sees it",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "sales creates a real persisted order and sees it",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "dataEntry creates a real persisted order and sees it",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "concurrent duplicate requests produce one order and one creation event",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "roles, private amounts and disabled accounts enforced by handlers",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "workflow blocks forged carrier states and revisions prevent lost updates",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "Arabic phone search and exact aggregates exceed 10000 records",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "settings are persisted by authorized administrators and forbidden for ordinary staff",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "removed sales role cannot use historical team arrays for lists or aggregate counts",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "historical orders transfer immediately with current employee membership without rewriting orders",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "team queries spanning more than 30 creators paginate without loss or duplication",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "employee creation honors inactive state and delegated managers cannot escalate",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "durable notices survive duplicate event delivery without resetting read state or leaking scope",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "concurrent mutual administrator deactivation preserves an active administrator",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "authorized internal completion records provenance and protects assigned and locked shipments",
+    "passed": true
+  },
+  {
+    "suite": "emulator",
+    "name": "directories paginate more than 100 records with stable name ties and scoped creator search",
+    "passed": true
+  }
+]
