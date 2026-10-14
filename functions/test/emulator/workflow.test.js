@@ -2,8 +2,11 @@
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict');
 if(!process.env.FIRESTORE_EMULATOR_HOST||!process.env.FIREBASE_AUTH_EMULATOR_HOST)throw Error('Auth and Firestore emulators are required');
 process.env.GCLOUD_PROJECT='demo-velnix';
-const functions=require('../../src/index'),admin=require('firebase-admin');
-const db=admin.firestore();
+const functions=require('../../src/index');
+const {getApp,deleteApp}=require('firebase-admin/app');
+const {getFirestore,Timestamp}=require('firebase-admin/firestore');
+const {getAuth}=require('firebase-admin/auth');
+const db=getFirestore();
 const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id}:null,data});
 const payload={customer:'عميل عربي',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
 const users={generalManager:'gm',manager:'manager',warehouse:'warehouse',sales:'sales',dataEntry:'entry'};
@@ -14,12 +17,24 @@ before(async()=>{
   const resetAuth=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/emulator/v1/projects/demo-velnix/accounts',{method:'DELETE'});if(!resetAuth.ok)throw Error('Auth emulator reset failed');
   const reset=await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-velnix/databases/(default)/documents',{method:'DELETE'});if(!reset.ok)throw Error('Emulator reset failed');
   for(const [role,id]of Object.entries(users)){
-    await admin.auth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
+    await getAuth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
     await db.doc('members/'+id).set({role,id,name:id,active:true,permissions:[],salesSupervisorId:role==='dataEntry'?'sales':null});
   }
   await db.doc('companies/company').set({name:'Local contract',enabled:true,archived:false,provider:'generic_v1',statusMap:{delivered:'delivered'}});
 });
-after(async()=>{await db.terminate();await admin.app().delete();});
+after(async()=>{await db.terminate();await deleteApp(getApp());});
+test('all five accounts sign in through the real local Auth REST service',async()=>{
+  for(const [role,id]of Object.entries(users)){
+    const response=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:id+'@velnix.test',password:'LocalTestingOnly123!',returnSecureToken:true})});
+    assert.equal(response.status,200);
+    const session=await response.json();
+    const verified=await getAuth().verifyIdToken(session.idToken);
+    assert.equal(verified.uid,id);
+    assert.equal((await invoke('me',verified.uid)).role,role);
+  }
+  const denied=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'entry@velnix.test',password:'WrongLocalPassword',returnSecureToken:true})});
+  assert.equal(denied.status,400);
+});
 for(const [role,id]of Object.entries(users))test(role+' creates a real persisted order and sees it',async()=>{
   const result=await invoke('createOrder',id,{...payload,requestKey:'create_order_for_'+id});
   const doc=await db.doc('orders/'+result.id).get();
@@ -60,30 +75,95 @@ test('workflow blocks forged carrier states and revisions prevent lost updates',
   const blocked=(await invoke('getOrder','gm',{id:orderId})).order;
   await assert.rejects(invoke('updateOrder','gm',{...payload,id:orderId,revision:blocked.revision}),{code:'permission-denied'});
   await assert.rejects(invoke('resolveDispatchException','manager',{id:orderId,outcome:'not_created',reason:'Verified locally'}),{code:'permission-denied'});
-  await ref.update({dispatchState:'sending',dispatchLockId:'old-lock',dispatchLockUntil:admin.firestore.Timestamp.fromMillis(Date.now()-1000)});
+  await ref.update({dispatchState:'sending',dispatchLockId:'old-lock',dispatchLockUntil:Timestamp.fromMillis(Date.now()-1000)});
   await invoke('resolveDispatchException','gm',{id:orderId,outcome:'shipment_exists',trackingNumber:'TRACK-1',reason:'Vendor confirmed shipment'});
   const resolved=(await ref.get()).data();assert.equal(resolved.status,'dispatched');assert.equal(resolved.trackingNumber,'TRACK-1');assert.equal(resolved.dispatchLockId,undefined);
 });
-test('Arabic phone search and exact aggregates exceed 1000 records',async()=>{
+test('Arabic phone search and exact aggregates exceed 10000 records',async()=>{
   const batch=db.bulkWriter();
-  for(let i=0;i<1005;i++)batch.set(db.doc('orders/load_'+i),{...payload,amountMinor:12345,phone:'0791234567',phoneDigits:'0791234567',customerKey:'عميل عربي',createdBy:'bulk',visibleTo:['bulk'],status:'created',hasDelivery:false,companyId:null,createdAt:admin.firestore.Timestamp.now()});
+  for(let i=0;i<10005;i++)batch.set(db.doc('orders/load_'+i),{...payload,amountMinor:12345,phone:'0791234567',phoneDigits:'0791234567',customerKey:'عميل عربي',createdBy:'bulk',visibleTo:['bulk'],status:'created',hasDelivery:false,companyId:null,createdAt:Timestamp.now()});
   await batch.close();
   const search=await invoke('searchOrders','entry',{query:'٠٧٩١٢٣٤٥٦٧'});assert.ok(search.items.some(o=>o.id===orderId));
   const stats=await invoke('dashboardStats','gm');const count=stats.counters.all.created.count;
-  assert.ok(count>=1005);assert.equal(stats.partial,false);
+  assert.ok(count>=10005);assert.equal(stats.partial,false);
   assert.equal(count,stats.counters.internal.created.count+stats.counters.delivery.created.count);
+});
+test('settings are persisted by authorized administrators and forbidden for ordinary staff',async()=>{
+  await assert.rejects(invoke('saveSettings','entry',{organizationName:'Unauthorized'}),{code:'permission-denied'});
+  await invoke('saveSettings','gm',{organizationName:'المؤسسة المحلية',supportPhone:'0791234567',receiptFooter:'سند طلب'});
+  const settings=await invoke('getSettings','entry');
+  assert.equal(settings.organizationName,'المؤسسة المحلية');assert.equal(settings.receiptFooter,'سند طلب');
+});
+test('removed sales role cannot use historical team arrays for lists or aggregate counts',async()=>{
+  await db.doc('members/sales').update({role:'manager',permissions:[]});
+  const list=await invoke('listOrders','sales');
+  assert.ok(list.items.every(item=>item.createdBy==='sales'));
+  const stats=await invoke('dashboardStats','sales');
+  const count=Object.values(stats.counters.all).reduce((n,item)=>n+item.count,0);
+  assert.equal(count,1);
+  await assert.rejects(invoke('getOrder','sales',{id:orderId}),{code:'permission-denied'});
+  await db.doc('members/sales').update({role:'sales'});
+});
+test('historical orders transfer immediately with current employee membership without rewriting orders',async()=>{
+  await getAuth().createUser({uid:'sales2',email:'sales2@velnix.test',password:'LocalTestingOnly123!'});
+  await db.doc('members/sales2').set({name:'Sales 2',role:'sales',active:true,permissions:[]});
+  const before=(await db.doc('orders/'+orderId).get()).data();
+  await invoke('saveMember','gm',{id:'entry',name:'Transferred employee',role:'dataEntry',permissions:[],active:true,salesSupervisorId:'sales2'});
+  await assert.rejects(invoke('getOrder','sales',{id:orderId}),{code:'permission-denied'});
+  assert.equal((await invoke('getOrder','sales2',{id:orderId})).order.id,orderId);
+  const after=(await db.doc('orders/'+orderId).get()).data();
+  assert.equal(after.barcodeValue,before.barcodeValue);assert.equal(after.salesSupervisorId,before.salesSupervisorId);
+  assert.ok((await db.doc('members/sales').get()).data().authorizationVersion>0);
+  await invoke('saveMember','gm',{id:'entry',name:'Warehouse employee',role:'warehouse',permissions:[],active:true,salesSupervisorId:null});
+  await assert.rejects(invoke('getOrder','sales2',{id:orderId}),{code:'permission-denied'});
+  await invoke('saveMember','gm',{id:'entry',name:'Entry employee',role:'dataEntry',permissions:[],active:true,salesSupervisorId:'sales'});
+});
+test('team queries spanning more than 30 creators paginate without loss or duplication',async()=>{
+  const batch=db.bulkWriter(),now=Date.now();
+  for(let i=0;i<35;i++){
+    batch.set(db.doc('members/team_'+i),{name:'Team '+i,role:'dataEntry',active:true,permissions:[],salesSupervisorId:'sales'});
+    batch.set(db.doc('orders/team_order_'+i),{...payload,createdBy:'team_'+i,createdByName:'Team',status:'created',companyId:null,hasDelivery:false,amountMinor:1000,createdAt:Timestamp.fromMillis(now+i)});
+  }
+  await batch.close();
+  let afterId=null;const ids=[];
+  for(let page=0;page<10;page++){
+    const result=await invoke('listOrders','sales',{pageSize:7,afterId});
+    ids.push(...result.items.map(item=>item.id));afterId=result.nextAfterId;
+    if(!afterId)break;
+  }
+  assert.equal(new Set(ids).size,ids.length);
+  for(let i=0;i<35;i++)assert.ok(ids.includes('team_order_'+i));
+  assert.equal(ids[0],'team_order_34');
+  const stats=await invoke('dashboardStats','sales');
+  assert.equal(Object.values(stats.counters.all).reduce((count,item)=>count+item.count,0),ids.length);
 });
 test('employee creation honors inactive state and delegated managers cannot escalate',async()=>{
   const result=await invoke('saveMember','gm',{name:'Disabled test',email:'disabled-test@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:false,permissions:[]});
   assert.equal((await db.doc('members/'+result.id).get()).data().active,false);
-  assert.equal((await admin.auth().getUser(result.id)).disabled,true);
+  assert.equal((await getAuth().getUser(result.id)).disabled,true);
   await db.doc('members/manager').update({permissions:['manageEmployees']});
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'generalManager',permissions:[]}),{code:'permission-denied'});
+  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'warehouse-escalation@velnix.test',password:'LocalTestingOnly123!',role:'warehouse',permissions:[]}),{code:'permission-denied'});
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',permissions:['manageCompanies']}),{code:'permission-denied'});
+});
+test('durable notices survive duplicate event delivery without resetting read state or leaking scope',async()=>{
+  await db.doc('members/manager').update({permissions:[]});
+  const snap=await db.collection('orders/'+orderId+'/events').limit(1).get();
+  const data=snap.docs[0],event={data,params:{orderId,eventId:data.id}};
+  await functions.orderEventNotice.run(event);
+  let notices=await db.collection('notices').where('orderId','==',orderId).get();
+  const recipients=notices.docs.map(d=>d.data().recipientId);
+  assert.ok(recipients.includes('entry'));assert.ok(recipients.includes('sales'));assert.ok(recipients.includes('warehouse'));
+  assert.equal(recipients.includes('manager'),false);
+  await notices.docs[0].ref.update({read:true});
+  await functions.orderEventNotice.run(event);
+  const repeated=await db.collection('notices').where('orderId','==',orderId).get();
+  assert.equal(repeated.size,notices.size);
+  assert.equal((await notices.docs[0].ref.get()).data().read,true);
 });
 test('concurrent mutual administrator deactivation preserves an active administrator',async()=>{
   for(const id of ['gmA','gmB']){
-    await admin.auth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
+    await getAuth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
     await db.doc('members/'+id).set({name:id,role:'generalManager',active:true,permissions:[]});
   }
   await db.doc('members/gm').update({active:false});

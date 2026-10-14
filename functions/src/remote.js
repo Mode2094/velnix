@@ -6,7 +6,7 @@ function createRemoteProcessor({db,FieldValue,addEvent,audit}) {
 return async function processRemote(companyId, payload, eventId, source) {
   const companyDoc=await db.doc(`companies/${companyId}`).get();if(!companyDoc.exists)return {ignored:'unknown_company'};
   let orderId;try{orderId=documentId(payload.reference||payload.orderId);}catch(_){return {ignored:'invalid_reference'};}
-  const raw=optional(payload.status,80), mapped=companyDoc.data().statusMap?.[raw];
+  const raw=optional(payload.status,80),map=companyDoc.data().statusMap||{},mapped=Object.hasOwn(map,raw)?map[raw]:null;
   if(!orderId||!mapped)return {ignored:'unknown_order_or_status'};
   const orderRef=db.doc(`orders/${orderId}`),eventRef=db.doc(`deliveryInbox/${companyId}/events/${eventId}`);
   return db.runTransaction(async tx=>{

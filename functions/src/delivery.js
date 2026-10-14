@@ -1,7 +1,8 @@
 'use strict';
 const crypto=require('node:crypto');
 const {KeyManagementServiceClient}=require('@google-cloud/kms');
-const kms=new KeyManagementServiceClient();
+let kms;
+const kmsClient=()=>kms??=new KeyManagementServiceClient();
 const KEY = process.env.VELNIX_KMS_KEY;
 function allowedUrl(input) {
   let url;
@@ -12,12 +13,12 @@ function allowedUrl(input) {
 }
 async function encryptSecret(secret) {
   if(!KEY || !secret || secret.length>2000) throw new Error('kms_not_configured_or_bad_secret');
-  const [resp]=await kms.encrypt({name:KEY,plaintext:Buffer.from(secret,'utf8')});
+  const [resp]=await kmsClient().encrypt({name:KEY,plaintext:Buffer.from(secret,'utf8')},{timeout:10000});
   return Buffer.from(resp.ciphertext).toString('base64');
 }
 async function decryptSecret(ciphertext) {
   if(!KEY || !ciphertext) throw new Error('kms_not_configured');
-  const [resp]=await kms.decrypt({name:KEY,ciphertext:Buffer.from(ciphertext,'base64')});
+  const [resp]=await kmsClient().decrypt({name:KEY,ciphertext:Buffer.from(ciphertext,'base64')},{timeout:10000});
   return Buffer.from(resp.plaintext).toString('utf8');
 }
 async function vendorRequest(company,token,method,route,body,transport=fetch) {

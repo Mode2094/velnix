@@ -9,13 +9,13 @@ const TRANSITIONS = Object.freeze({
   preparing:['ready','cancelled'], ready:['cancelled'], dispatched:[],
   inTransit:[], delivered:[], returned:[], cancelled:[],
 });
-function can(user, perm) {return !!(user && user.active !== false && (user.role === 'generalManager' || (user.permissions || []).includes(perm)));}
+function can(user, perm) {return !!(user && user.active === true && (user.role === 'generalManager' || (Array.isArray(user.permissions)&&user.permissions.includes(perm))));}
 function validRole(role) {return ROLES.includes(role);}
 function validPermissions(perms) {return Array.isArray(perms) && perms.length <= PERMISSIONS.length && perms.every(p=>PERMISSIONS.includes(p));}
 function canSeeOrder(user, order) {
-  if (!user || user.active === false) return false;
+  if (!user || user.active !== true) return false;
   if (user.role === 'generalManager' || user.role === 'warehouse' || can(user,'viewAllOrders')) return true;
-  return order.createdBy === user.id || (user.role === 'sales' && order.salesSupervisorId === user.id);
+  return order.createdBy === user.id || (user.role === 'sales' && (Array.isArray(user.authorizedCreatorIds)?user.authorizedCreatorIds.includes(order.createdBy):order.salesSupervisorId === user.id));
 }
 function canEditOrder(user, order) {
   if (!canSeeOrder(user, order) || !['created','review','preparing','ready'].includes(order.status) || dispatchBlocked(order)) return false;

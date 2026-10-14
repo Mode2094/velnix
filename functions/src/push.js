@@ -9,7 +9,10 @@ async function deliverNotice(admin,db,noticeId,notice,canSeeOrder) {
   if(!profile.exists||profile.data().active!==true)return {ignored:'inactive'};
   if(notice.orderId){
     const order=await db.doc('orders/'+notice.orderId).get();
-    if(!order.exists||!canSeeOrder({...profile.data(),id:profile.id},order.data()))return {ignored:'scope'};
+    if(!order.exists)return {ignored:'scope'};
+    const creator=await db.doc('members/'+order.data().createdBy).get();
+    const permitted=creator.data()?.role==='dataEntry'&&creator.data().salesSupervisorId===profile.id;
+    if(!canSeeOrder({...profile.data(),id:profile.id,authorizedCreatorIds:permitted?[order.data().createdBy]:[]},order.data()))return {ignored:'scope'};
   }
   const devices=await db.collection('devices').where('uid','==',notice.recipientId).limit(20).get();
   if(devices.empty)return {ignored:'no_devices'};

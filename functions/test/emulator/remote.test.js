@@ -1,8 +1,10 @@
 'use strict';
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict');
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Firestore emulator required');
-const admin=require('firebase-admin');admin.initializeApp({projectId:'demo-velnix'});
-const db=admin.firestore(),FieldValue=admin.firestore.FieldValue;
+const {initializeApp,getApp,deleteApp}=require('firebase-admin/app');
+const {getFirestore,FieldValue,Timestamp}=require('firebase-admin/firestore');
+initializeApp({projectId:'demo-velnix'});
+const db=getFirestore();
 const processRemote=require('../../src/remote').createRemoteProcessor({
   db,FieldValue,
   addEvent:async(id,action,actor,details,tx)=>tx.create(db.collection('orders/'+id+'/events').doc(),{action,actorId:actor.id,details}),
@@ -12,7 +14,7 @@ before(async()=>{
   await db.doc('companies/remote_company').set({archived:true,enabled:false,statusMap:{shipping:'inTransit',done:'delivered',return:'returned'}});
   await db.doc('orders/remote_order').set({status:'dispatched',dispatchState:'sent',companyId:'remote_company',revision:0});
 });
-after(async()=>{await db.terminate();await admin.app().delete();});
+after(async()=>{await db.terminate();await deleteApp(getApp());});
 test('real transactions handle duplicate concurrent webhooks and late states on archived carrier',async()=>{
   const payload={reference:'remote_order',status:'shipping'};
   const result=await Promise.all([processRemote('remote_company',payload,'remote_event1','webhook'),processRemote('remote_company',payload,'remote_event1','webhook')]);

@@ -65,3 +65,10 @@ test('server action DTO matches roles and shipping locks',()=>{
     assert.equal(actions.edit,false);assert.equal(actions.dispatch,false);assert.equal(actions.assign,false);assert.deepEqual(actions.statuses,[]);
   }
 });
+test('missing active membership cannot grant permissions or access',()=>{
+  const {can,canSeeOrder}=require('../src/policy');
+  const user={id:'gm',role:'generalManager'};
+  assert.equal(can(user,'manageEmployees'),false);
+  assert.equal(canSeeOrder(user,{createdBy:'gm'}),false);
+  assert.equal(can({id:'entry',role:'dataEntry',active:true,permissions:'manageEmployees'},'manageEmployees'),false);
+});

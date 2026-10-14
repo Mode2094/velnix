@@ -11,13 +11,13 @@ test('search is authenticated and filtered through the visibility policy',()=>{
   const search=src.slice(start,end);
   assert.match(search,/await requireAuth\(req\)/);
   assert.match(search,/canSeeOrder\(user/);
-  assert.match(search,/orderQueryable\(user\)/);
+  assert.match(search,/scopeQueries\(user,filters\)/);
   assert.match(search,/matchingFilters/);
 });
 test('required indexes for scoped search are recorded',()=>{
   const indexed=(paths)=>indexes.some(i=>i.collectionGroup==='orders'&&paths.every(p=>i.fields.some(f=>f.fieldPath===p)));
-  assert.ok(indexed(['visibleTo','customerKey']));
-  assert.ok(indexed(['visibleTo','phoneDigits']));
+  assert.ok(indexed(['createdBy','customerKey']));
+  assert.ok(indexed(['createdBy','phoneDigits']));
 });
 test('ambiguous dispatch is blocked from automatic re-send',()=>{
   assert.match(src,/o\.dispatchState==='needs_review'/);
