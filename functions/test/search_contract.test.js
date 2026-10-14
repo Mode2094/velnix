@@ -28,7 +28,7 @@ test('uncertain dispatch has audited manager-only recovery',()=>{
   const section=src.slice(begin,end);
   assert.ok(begin>0);
   assert.match(section,/user\.role!=='generalManager'/);
-  assert.match(section,/dispatchState!=='needs_review'/);
+  assert.match(section,/canResolveDispatch\(o\)/);
   assert.match(section,/order\.dispatch_exception_resolved/);
   assert.match(section,/trackingNumber/);
 });

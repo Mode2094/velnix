@@ -1,0 +1,28 @@
+'use strict';
+const {documentId}=require('./policy');
+const {remoteCanAdvance}=require('./delivery');
+const optional=(v,max)=>typeof v==='string'?v.trim().slice(0,max):'';
+function createRemoteProcessor({db,FieldValue,addEvent,audit}) {
+return async function processRemote(companyId, payload, eventId, source) {
+  const companyDoc=await db.doc(`companies/${companyId}`).get();if(!companyDoc.exists)return {ignored:'unknown_company'};
+  let orderId;try{orderId=documentId(payload.reference||payload.orderId);}catch(_){return {ignored:'invalid_reference'};}
+  const raw=optional(payload.status,80), mapped=companyDoc.data().statusMap?.[raw];
+  if(!orderId||!mapped)return {ignored:'unknown_order_or_status'};
+  const orderRef=db.doc(`orders/${orderId}`),eventRef=db.doc(`deliveryInbox/${companyId}/events/${eventId}`);
+  return db.runTransaction(async tx=>{
+    const [event,order]=await Promise.all([tx.get(eventRef),tx.get(orderRef)]);
+    if(event.exists)return {ignored:'duplicate'};
+    if(order.exists&&order.data().companyId===companyId&&order.data().status==='ready'&&['sending','needs_review'].includes(order.data().dispatchState))return {deferred:'awaiting_dispatch_confirmation'};
+    tx.create(eventRef,{companyId,orderId,raw,source,receivedAt:FieldValue.serverTimestamp()});
+    if(!order.exists||order.data().companyId!==companyId)return {ignored:'unmatched_order'};
+    if(!remoteCanAdvance(order.data().status,mapped))return {ignored:'out_of_order'};
+    if(order.data().status===mapped)return {ignored:'same_status'};
+    tx.update(orderRef,{revision:FieldValue.increment(1),status:mapped,remoteStatus:raw,updatedAt:FieldValue.serverTimestamp(),lastSyncAt:FieldValue.serverTimestamp(),syncError:null});
+    const actor={id:`delivery:${companyId}`,name:'شركة التوصيل'};
+    await addEvent(orderId,'remote_status',actor,{raw,mapped,source},tx);
+    await audit('order.remote_status',actor,orderId,{raw,mapped,companyId},tx);
+    return {updated:true};
+  });
+}
+}
+module.exports={createRemoteProcessor};
