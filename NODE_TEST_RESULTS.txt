@@ -1,0 +1,194 @@
+
+> velnix-functions@0.7.0 test
+> node --test test/*.test.js
+
+TAP version 13
+# Subtest: new orders expose immutable barcode in authorized order DTO
+ok 1 - new orders expose immutable barcode in authorized order DTO
+  ---
+  duration_ms: 1.659875
+  type: 'test'
+  ...
+# Subtest: legacy orders can be reprinted with stable id-derived barcode
+ok 2 - legacy orders can be reprinted with stable id-derived barcode
+  ---
+  duration_ms: 0.603321
+  type: 'test'
+  ...
+# Subtest: printing cannot reveal private amounts in the DTO
+ok 3 - printing cannot reveal private amounts in the DTO
+  ---
+  duration_ms: 0.546212
+  type: 'test'
+  ...
+# Subtest: server search accepts scans of a VNX- barcode
+ok 4 - server search accepts scans of a VNX- barcode
+  ---
+  duration_ms: 3.252745
+  type: 'test'
+  ...
+# Subtest: createOrder is idempotent with atomic duplicate check
+ok 5 - createOrder is idempotent with atomic duplicate check
+  ---
+  duration_ms: 0.763017
+  type: 'test'
+  ...
+# Subtest: company secret patch is declared before it is checked when enabled
+ok 6 - company secret patch is declared before it is checked when enabled
+  ---
+  duration_ms: 1.578508
+  type: 'test'
+  ...
+# Subtest: Firestore rules disable direct order write and Firebase routes require App Check
+ok 7 - Firestore rules disable direct order write and Firebase routes require App Check
+  ---
+  duration_ms: 1.245636
+  type: 'test'
+  ...
+# Subtest: dashboard counts use index-backed aggregates rather than 1,000 order sample
+ok 8 - dashboard counts use index-backed aggregates rather than 1,000 order sample
+  ---
+  duration_ms: 0.33294
+  type: 'test'
+  ...
+# Subtest: only deployment-configured HTTPS delivery hosts are accepted
+ok 9 - only deployment-configured HTTPS delivery hosts are accepted
+  ---
+  duration_ms: 4.246475
+  type: 'test'
+  ...
+# Subtest: HMAC requires unexpired timestamp and correct body
+ok 10 - HMAC requires unexpired timestamp and correct body
+  ---
+  duration_ms: 1.505863
+  type: 'test'
+  ...
+# Subtest: late remote events never reopen delivered orders
+ok 11 - late remote events never reopen delivered orders
+  ---
+  duration_ms: 0.345209
+  type: 'test'
+  ...
+# Subtest: other team cannot see amounts without viewAmounts
+ok 12 - other team cannot see amounts without viewAmounts
+  ---
+  duration_ms: 1.231947
+  type: 'test'
+  ...
+# Subtest: owner sees own order amount
+ok 13 - owner sees own order amount
+  ---
+  duration_ms: 0.22865
+  type: 'test'
+  ...
+# Subtest: explicit viewAmounts and general manager see amounts
+ok 14 - explicit viewAmounts and general manager see amounts
+  ---
+  duration_ms: 0.221846
+  type: 'test'
+  ...
+# Subtest: five distinct roles and visible scopes
+ok 15 - five distinct roles and visible scopes
+  ---
+  duration_ms: 1.894308
+  type: 'test'
+  ...
+# Subtest: no remote status can be set manually
+ok 16 - no remote status can be set manually
+  ---
+  duration_ms: 0.301324
+  type: 'test'
+  ...
+# Subtest: closed orders cannot be edited
+ok 17 - closed orders cannot be edited
+  ---
+  duration_ms: 0.25205
+  type: 'test'
+  ...
+# Subtest: invalid payloads rejected and integer fils used
+ok 18 - invalid payloads rejected and integer fils used
+  ---
+  duration_ms: 1.14747
+  type: 'test'
+  ...
+# Subtest: unknown shipping states cannot be mapped
+ok 19 - unknown shipping states cannot be mapped
+  ---
+  duration_ms: 1.925748
+  type: 'test'
+  ...
+# Subtest: disabled member loses all permissions
+ok 20 - disabled member loses all permissions
+  ---
+  duration_ms: 0.184678
+  type: 'test'
+  ...
+# Subtest: Arabic numeral input is normalized for Jordanian phone and amounts
+ok 21 - Arabic numeral input is normalized for Jordanian phone and amounts
+  ---
+  duration_ms: 0.661796
+  type: 'test'
+  ...
+# Subtest: new orders and edits index names and phone for backend search
+ok 22 - new orders and edits index names and phone for backend search
+  ---
+  duration_ms: 1.901632
+  type: 'test'
+  ...
+# Subtest: search is authenticated and filtered through the visibility policy
+ok 23 - search is authenticated and filtered through the visibility policy
+  ---
+  duration_ms: 0.372046
+  type: 'test'
+  ...
+# Subtest: required indexes for scoped search are recorded
+ok 24 - required indexes for scoped search are recorded
+  ---
+  duration_ms: 0.413827
+  type: 'test'
+  ...
+# Subtest: ambiguous dispatch is blocked from automatic re-send
+ok 25 - ambiguous dispatch is blocked from automatic re-send
+  ---
+  duration_ms: 0.126908
+  type: 'test'
+  ...
+# Subtest: uncertain dispatch has audited manager-only recovery
+ok 26 - uncertain dispatch has audited manager-only recovery
+  ---
+  duration_ms: 0.457195
+  type: 'test'
+  ...
+# Subtest: archiving does not stop incoming updates for previously sent shipments
+ok 27 - archiving does not stop incoming updates for previously sent shipments
+  ---
+  duration_ms: 0.164829
+  type: 'test'
+  ...
+# Subtest: five role permissions remain distinct across every state
+ok 28 - five role permissions remain distinct across every state
+  ---
+  duration_ms: 2.08233
+  type: 'test'
+  ...
+# Subtest: only operational staff/admin can move orders, never forge remote final states
+ok 29 - only operational staff/admin can move orders, never forge remote final states
+  ---
+  duration_ms: 1.550566
+  type: 'test'
+  ...
+# Subtest: inactive accounts cannot view or modify orders across all roles
+ok 30 - inactive accounts cannot view or modify orders across all roles
+  ---
+  duration_ms: 0.453204
+  type: 'test'
+  ...
+1..30
+# tests 30
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 292.654638

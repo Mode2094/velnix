@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    // Only a user's own non-secret profile is readable through the client SDK.
+    // All orders, delivery settings, audit events, and operations are mediated
+    // by authenticated Cloud Functions which implement the authorization policy.
+    match /members/{userId} {
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

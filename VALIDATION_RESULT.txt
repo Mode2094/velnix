@@ -1,0 +1,17 @@
+Velnix Smart Order Management v0.7 | 2026-10-14
+STATUS: NOT PRODUCTION READY / غير معتمد للإطلاق
+
+Executed here:
+  - Node.js syntax: PASS
+  - Node.js tests: 30/30 PASS (mostly unit/source-contract, not Firebase Emulator)
+  - Static Dart delimiter/import scan: PASS (does not check types/compile)
+  - Package assets and ZIP integrity: to be verified before delivery
+
+NOT EXECUTED HERE:
+  - flutter pub get / flutter analyze / flutter test / Flutter integration tests
+  - Real PDF generation / print preview / hardware printing and barcode scanning
+  - Firebase Emulator Rules tests, deployed Firebase login / IAM / AppCheck / KMS
+  - Real Google OAuth across platforms, delivery-company Sandbox/webhooks
+  - Production data load/backup recovery, accessibility golden screenshots
+
+See docs/23_FINAL_QA_AND_LIMITATIONS_AR.md for blockers.

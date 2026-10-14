@@ -1,0 +1,24 @@
+name: velnix
+description: Velnix Smart Order Management - Firebase integrated - engineering audit and fixes
+publish_to: none
+version: 0.7.0+7
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  firebase_core: ^4.15.0
+  firebase_auth: ^6.7.0
+  cloud_functions: ^6.5.0
+  firebase_app_check: ^0.4.8
+  google_sign_in: ^7.2.0
+  pdf: ^3.13.1
+  printing: ^5.15.1
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+flutter:
+  uses-material-design: true

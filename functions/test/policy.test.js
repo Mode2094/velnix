@@ -1,0 +1,43 @@
+const {test}=require('node:test'); const assert=require('node:assert/strict');
+const {canSeeOrder,canEditOrder,allowedTransition,validateOrderFields,safeStatusMap,can}=require('../src/policy');
+const users={ gm:{id:'admin',role:'generalManager',active:true}, manager:{id:'mgr',role:'manager',active:true,permissions:['viewAllOrders','updateOrderStatus']}, warehouse:{id:'wh',role:'warehouse',active:true}, sales:{id:'sales',role:'sales',active:true}, entry:{id:'entry',role:'dataEntry',active:true}, other:{id:'other',role:'dataEntry',active:true} };
+const order={createdBy:'entry',salesSupervisorId:'sales',status:'created'};
+test('five distinct roles and visible scopes',()=>{
+  assert.equal(canSeeOrder(users.gm,order),true);
+  assert.equal(canSeeOrder(users.manager,order),true);
+  assert.equal(canSeeOrder(users.warehouse,order),true);
+  assert.equal(canSeeOrder(users.sales,order),true);
+  assert.equal(canSeeOrder(users.entry,order),true);
+  assert.equal(canSeeOrder(users.other,order),false);
+});
+test('no remote status can be set manually',()=>{
+  assert.equal(allowedTransition(users.gm,order,'delivered'),false);
+  assert.equal(allowedTransition(users.gm,order,'inTransit'),false);
+  assert.equal(allowedTransition(users.gm,order,'review'),true);
+  assert.equal(allowedTransition(users.warehouse,order,'review'),true);
+  assert.equal(allowedTransition(users.entry,order,'review'),false);
+});
+test('closed orders cannot be edited',()=>{
+  assert.equal(canEditOrder(users.entry, {...order,status:'delivered'}),false);
+  assert.equal(canEditOrder(users.gm, {...order,status:'cancelled'}),false);
+});
+test('invalid payloads rejected and integer fils used',()=>{
+  const input={customer:'test',phone:'0791234567',city:'Amman',area:'X',address:'street',description:'box',amount:'12.345',quantity:1};
+  assert.equal(validateOrderFields(input).amountMinor,12345);
+  assert.throws(()=>validateOrderFields({...input,amount:-1}));
+  assert.throws(()=>validateOrderFields({...input,quantity:0}));
+});
+test('unknown shipping states cannot be mapped',()=>{
+  assert.deepEqual(safeStatusMap({'delivered':'delivered'}),{delivered:'delivered'});
+  assert.throws(()=>safeStatusMap({'delivered':'super-admin'}));
+});
+test('disabled member loses all permissions',()=>assert.equal(can({...users.gm,active:false},'manageEmployees'),false));
+test('Arabic numeral input is normalized for Jordanian phone and amounts',()=>{
+  const {validateOrderFields}=require('../src/policy');
+  const entry={customer:'محمد',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط البلد',address:'شارع',
+    description:'طرد',quantity:'٢',amount:'١٢٫٥٠٠',paymentMethod:'عند الاستلام'};
+  const order=validateOrderFields(entry);
+  assert.equal(order.phone,'0791234567');
+  assert.equal(order.quantity,2);
+  assert.equal(order.amountMinor,12500);
+});
