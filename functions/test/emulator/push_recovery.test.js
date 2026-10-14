@@ -57,3 +57,9 @@ test('existing schedule recovers due work and failures from old push implementat
  await recoverPushes({...options,deliver:async()=>({success:1,failure:0,delivered:['device']})});
  assert.equal((await ref.get()).data().pushState,'sent');assert.equal((await stuck.get()).data().pushState,'sent');
 });
+
+test('exhausted partial delivery is failed rather than falsely marking the notice sent',async()=>{
+ const ref=await notice('partial_exhausted',{pushAttempts:MAX_ATTEMPTS-1,pushDeliveredDevices:['already_sent']});
+ await processPush({...options,ref,deliver:async()=>({success:0,failure:1,retryable:true,delivered:[],lastError:'messaging/server-unavailable'})});
+ const n=(await ref.get()).data();assert.equal(n.pushState,'failed');assert.deepEqual(n.pushDeliveredDevices,['already_sent']);assert.equal(n.read,false);
+});

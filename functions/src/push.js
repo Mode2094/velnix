@@ -57,7 +57,7 @@ async function processPush({db,admin,ref,canSeeOrder,now=Date.now,deliver=delive
   const successful=outcome.success>0||(notice.pushDeliveredDevices||[]).length>0||outcome.ignored==='already_delivered';
   await db.runTransaction(async tx=>{
     const snap=await tx.get(ref);if(snap.data()?.pushClaimId!==claim)return;
-    tx.update(ref,{pushState:retry?'pending':successful?'sent':'failed',
+    tx.update(ref,{pushState:retry?'pending':outcome.failure>0?'failed':successful?'sent':'failed',
       pushDeliveredDevices:[...new Set([...(snap.data().pushDeliveredDevices||[]),...(outcome.delivered||[])])],
       pushLastError:outcome.lastError||outcome.ignored||null,
       pushOutcome:{success:outcome.success||0,failure:outcome.failure||0},pushProcessedAt:Timestamp.fromMillis(now()),
