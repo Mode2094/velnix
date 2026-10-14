@@ -18,6 +18,7 @@ const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
 const {CLICK_PROVIDER}=require('./click_delivery');
 const {directoryPage}=require('./directory');
+const {aggregateGroups}=require('./aggregations');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
 initializeApp();const db=getFirestore();
 const REGION='europe-west1';
@@ -140,7 +141,6 @@ exports.searchOrders=callable(async req=>{
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.
 async function sumOrders(query,showAmount){
-  if(Array.isArray(query)){const values=await Promise.all(query.map(item=>sumOrders(item,showAmount)));return values.reduce((total,value)=>({count:total.count+value.count,amountMinor:total.amountMinor+value.amountMinor}),{count:0,amountMinor:0});}
   const aggregation=query.aggregate({count:AggregateField.count(),
     ...(showAmount?{amountMinor:AggregateField.sum('amountMinor')}:{}),
   });
@@ -155,10 +155,10 @@ exports.dashboardStats=callable(async req=>{
   const showAmount=user.role==='generalManager'||can(user,'viewAmounts');
   const counter={all:{},delivery:{},internal:{}};
   // Use independent aggregations by state and bucket; avoid scanning client lists.
-  const values=await Promise.all(statuses.flatMap(status=>[
-    sumOrders(base.map(query=>query.where('status','==',status).where('hasDelivery','==',true)),showAmount),
-    sumOrders(base.map(query=>query.where('status','==',status).where('hasDelivery','==',false)),showAmount),
-  ]));
+  const values=await aggregateGroups(statuses.flatMap(status=>[
+    base.map(query=>query.where('status','==',status).where('hasDelivery','==',true)),
+    base.map(query=>query.where('status','==',status).where('hasDelivery','==',false)),
+  ]),query=>sumOrders(query,showAmount));
   for(let i=0;i<statuses.length;i++){
     const status=statuses[i],delivery=values[i*2],internal=values[i*2+1];
     counter.delivery[status]=delivery;counter.internal[status]=internal;
@@ -173,8 +173,8 @@ exports.companyStats=callable(async req=>{
   if(!company.exists)fail('not-found','الشركة غير موجودة');
   const statuses=require('./policy').STATUSES;
   const showAmount=user.role==='generalManager'||can(user,'viewAmounts');
-  const values=await Promise.all(statuses.map(status=>sumOrders(
-    scopeQueries(user,{...filters,status:null,companyId:null,bucket:'all'}).map(query=>query.where('companyId','==',companyId).where('status','==',status)),showAmount)));
+  const values=await aggregateGroups(statuses.map(status=>
+    scopeQueries(user,{...filters,status:null,companyId:null,bucket:'all'}).map(query=>query.where('companyId','==',companyId).where('status','==',status))),query=>sumOrders(query,showAmount));
   const counts={};statuses.forEach((status,i)=>counts[status]=values[i]);
   return {counts,partial:false};
 });

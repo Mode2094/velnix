@@ -70,6 +70,14 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - run: npm run test:emulator
+      - name: Retain Firestore emulator failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: firestore-emulator-failure
+          path: functions/firestore-debug.log
+          retention-days: 7
+          if-no-files-found: warn
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 45

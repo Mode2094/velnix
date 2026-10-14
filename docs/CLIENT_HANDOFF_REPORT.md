@@ -1,5 +1,7 @@
 # تحقق التسليم — 14 أكتوبر 2026
 
+> تحديث ثبات CI بعد8fa8d99: [تقرير المعالجة وبوابة إغلاق المرحلة الرابعة](STAGE4_CI_STABILITY_CLOSURE_AR.md). الأصل: Push ناجح وPR فاشل بحسب المالك. الإصلاح اجتاز3تكرارات و318Flutter/58Node/48محاكي/12Python/36PDF محلياً، لكن الإغلاق معلق حتى تأكيد Push وPR على SHA الإصلاح نفسه؛ الوصول إلى GitHub CI محجوب حالياً. لا اعتماد مرحلةخامسة أو إنتاج من النجاح المحلي وحده.
+
 ## المرحلة الرابعة: التسليم الآمن
 
 بدأت من e005c66 على فرع التطوير. [تقرير المرحلة الرابعة](SAFE_HANDOFF_STAGE4_REPORT_AR.md) يسجل الإصلاحات الأمنية المحدودة: محاولة إبطال FCM token حتى مع فشل unregister، وإخفاء خطأ تهيئة SDK الخام، وفصل نية البيئة مع preflight offline واختيار runtime identity. لا IAM/موارد أو Deploy. [تهيئة وتسليم المصدر](SAFE_CONFIGURATION_HANDOFF_AR.md) و[النسخ والاستعادة والتراجع](BACKUP_RESTORE_ROLLBACK_AR.md) و[قبول المرحلة الخامسة](STAGING_ACCEPTANCE_PLAN.md) هي المراجع الحالية. Click محجوب ولا generic بديل.

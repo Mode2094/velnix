@@ -1,0 +1,65 @@
+{
+  "baseline": "8fa8d99e079797290d9eaa0971f61a1872e9315d",
+  "originalCI": {
+    "source": "owner report; original log inaccessible here",
+    "pushRun": 38603105895,
+    "push": "reported success",
+    "prRun": 38603110856,
+    "pr": "reported failure"
+  },
+  "localReproduction": {
+    "cleanGitClone": true,
+    "project": "demo-velnix loopback only",
+    "baselineMaxChildRssKiB": 5920040,
+    "constrained": {
+      "jvmHeapMiB": 1536,
+      "activeProcessors": 2,
+      "outcome": "confirmed Java heap OOM and GC stall during aggregation; diagnostic interrupted, not a completed assertion failure",
+      "stackLocation": "FirestoreEmulatorQueryExecutor.materializeIndexTable / runAggregationQuery"
+    }
+  },
+  "fix": {
+    "maximumConcurrentAggregations": 4,
+    "queryFiltersPermissionsExpectedResultsChanged": false,
+    "timeoutsRaised": false,
+    "originalWorkflowTestSha256": "07d8073f8f84c207373b44f17d2e84f2d095b409ed8550ead509ccf7fbe82e9e"
+  },
+  "repeatWorkflowRuns": [
+    {
+      "exit": 0,
+      "durationSeconds": 88.32,
+      "maxChildRssKiB": 1806328,
+      "run": 1,
+      "targetDurationMs": 34844.437747
+    },
+    {
+      "exit": 0,
+      "durationSeconds": 82.38,
+      "maxChildRssKiB": 1804232,
+      "run": 2,
+      "targetDurationMs": 37878.207672
+    },
+    {
+      "exit": 0,
+      "durationSeconds": 77.69,
+      "maxChildRssKiB": 1808132,
+      "run": 3,
+      "targetDurationMs": 33701.353583
+    }
+  ],
+  "fullValidation": {
+    "flutter": 318,
+    "node": 58,
+    "authFirestoreEmulator": 48,
+    "python": 12,
+    "digitalPdf": 36,
+    "result": "passed",
+    "logSha256": "2870a035c5d85ced7a2649a16f70457b0afcdfd5608c88549cd4dffede99db6a"
+  },
+  "finalGithubCI": {
+    "result": "unverified until final SHA Push and PR can be read",
+    "blocker": "API CONNECT403; repository/run HTML404"
+  },
+  "phase4Closed": false,
+  "forbiddenActionsExecuted": []
+}
