@@ -30,7 +30,8 @@ test('only operational staff/admin can move orders, never forge remote final sta
    for(const state of STATUSES){
      const order={...base,status:state};
      for(const target of ['dispatched','inTransit','delivered','returned']){
-       assert.equal(allowedTransition(users[role],order,target),false,`${role}: ${state} -> ${target}`);
+       const internal=state==='ready'&&target==='delivered'&&['generalManager','warehouse','manager'].includes(role);
+       assert.equal(allowedTransition(users[role],order,target),internal,`${role}: ${state} -> ${target}`);
      }
    }
  }

@@ -6,7 +6,7 @@ const CLOSED = new Set(['delivered','returned','cancelled']);
 const REMOTE = new Set(['inTransit','delivered','returned']);
 const TRANSITIONS = Object.freeze({
   created:['review','cancelled'], review:['preparing','cancelled'],
-  preparing:['ready','cancelled'], ready:['cancelled'], dispatched:[],
+  preparing:['ready','cancelled'], ready:['delivered','cancelled'], dispatched:[],
   inTransit:[], delivered:[], returned:[], cancelled:[],
 });
 function can(user, perm) {return !!(user && user.active === true && (user.role === 'generalManager' || (Array.isArray(user.permissions)&&user.permissions.includes(perm))));}
@@ -25,6 +25,7 @@ function canEditOrder(user, order) {
 function allowedTransition(user, order, target) {
   if (!STATUSES.includes(target) || !canSeeOrder(user, order) || dispatchBlocked(order)) return false;
   if (!can(user,'updateOrderStatus') && !['generalManager','warehouse'].includes(user.role)) return false;
+  if (target === 'delivered' && (order.status !== 'ready' || order.companyId || order.hasDelivery === true || order.trackingNumber || order.remoteStatus)) return false;
   return (TRANSITIONS[order.status] || []).includes(target);
 }
 function arabicDigits(value) {

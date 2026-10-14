@@ -1,7 +1,7 @@
 'use strict';
 const crypto=require('node:crypto');
 const {onDocumentCreated}=require('firebase-functions/v2/firestore');
-const {deviceId,deliverNotice}=require('./push');
+const {deviceId,processPush,recoverPushes}=require('./push');
 const {initializeApp}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
 const {getMessaging}=require('firebase-admin/messaging');
@@ -13,6 +13,7 @@ const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor}=require('./providers');
+const {directoryPage}=require('./directory');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
 initializeApp();const db=getFirestore();
 const REGION='europe-west1';
@@ -83,7 +84,7 @@ async function oneOrder(user,id) {
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'المحافظة مطلوبة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'المحافظة مطلوبة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(['delivery_host_not_allowed','kms_not_configured','kms_not_configured_or_bad_secret','unsupported_delivery_provider'].includes(e?.message))fail('failed-precondition','إعداد شركة التوصيل أو خدمة تشفير مفاتيحها غير مكتمل؛ راجع إعدادات المؤسسة');
@@ -244,8 +245,10 @@ exports.changeOrderStatus=callable(async req=>{
     const latest=await tx.get(ref);
     if(!latest.exists)fail('not-found','الطلب غير موجود');
     if(!allowedTransition(user,{...latest.data(),id:ref.id},target))fail('failed-precondition','هذا الانتقال غير مسموح');
-    tx.update(ref,{status:target,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    await addEvent(ref.id,'status_changed',user,{status:target},tx);await audit('order.status_changed',user,ref.id,{status:target},tx);
+    const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
+    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={status:target,...(target==='delivered'?{completionSource:'internal'}:{})};
+    await addEvent(ref.id,'status_changed',user,detail,tx);await audit('order.status_changed',user,ref.id,detail,tx);
   });
   return {ok:true};
 });
@@ -265,10 +268,10 @@ exports.assignCompany=callable(async req=>{
 });
 
 exports.listCompanies=callable(async req=>{
-  const user=await requireAuth(req);const snap=await db.collection('companies').orderBy('name').limit(100).get();
-  return {items:snap.docs.map(d=>({id:d.id,name:d.data().name,apiUrl:can(user,'manageCompanies')?d.data().apiUrl:null,
+  const user=await requireAuth(req);const collection=db.collection('companies');const page=await directoryPage(collection,collection,req.data);
+  return {more:page.more,afterId:page.afterId,items:page.docs.map(d=>({id:d.id,name:d.data().name,apiUrl:can(user,'manageCompanies')?d.data().apiUrl:null,
     provider:d.data().provider,enabled:d.data().enabled,archived:d.data().archived||false,
-    statusMap:d.data().statusMap||{},lastHealthCheck:safeDate(d.data().lastHealthCheck)}))};
+    statusMap:d.data().statusMap||{},lastHealthCheck:safeDate(d.data().lastHealthCheck),lastHealthConnected:d.data().lastHealthConnected??null,lastHealthError:d.data().lastHealthError||null}))};
 });
 exports.saveCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
@@ -317,9 +320,9 @@ exports.testCompanyConnection=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
   const id=idValue(req.data?.id);const {company,secrets}=await companyCredentials(id,{allowInactive:true});
   try{const json=await providerFor(company).health(company,await decryptSecret(secrets.apiTokenCiphertext));
-    await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp()});
-    return {connected:true,provider:company.provider,serviceStatus:json.status||'ok'};
-  }catch(e){logger.warn('delivery health check failed',{companyId:id,code:e.code||'unknown'});return {connected:false,error:'فشل اختبار الاتصال بالمزود؛ تحقق من إعداداته'};}
+    await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:true,lastHealthError:null});
+    return {connected:true,provider:company.provider,serviceStatus:'ok'};
+  }catch(e){await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:false,lastHealthError:'تعذر الاتصال بالمزود؛ تحقق من إعداداته'});logger.warn('delivery health check failed',{companyId:id,code:e.code||'unknown'});return {connected:false,error:'فشل اختبار الاتصال بالمزود؛ تحقق من إعداداته'};}
 });
 exports.sendOrderToDelivery=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
@@ -386,8 +389,8 @@ exports.resolveDispatchException=callable(async req=>{
 
 exports.listMembers=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
-  const snap=await db.collection('members').limit(100).get();
-  return {items:snap.docs.map(d=>({id:d.id,name:d.data().name,email:d.data().email,role:d.data().role,active:d.data().active,
+  const collection=db.collection('members');const page=await directoryPage(collection,collection,req.data);
+  return {more:page.more,afterId:page.afterId,items:page.docs.map(d=>({id:d.id,name:d.data().name,email:d.data().email,role:d.data().role,active:d.data().active,
     permissions:d.data().permissions||[],salesSupervisorId:d.data().salesSupervisorId||null}))};
 });
 exports.saveMember=callable(async req=>{
@@ -495,9 +498,12 @@ exports.deliveryWebhook=onRequest({region:REGION,invoker:'public',maxInstances:1
 });
 // Bounded reconciliation for missed webhooks. Firebase Scheduler requires billing.
 exports.reconcileDeliveryStatuses=onSchedule({schedule:'every 15 minutes',region:REGION,timeZone:'Etc/UTC',timeoutSeconds:300},async()=>{
+  // Reuse the existing reconciliation schedule; no additional billed scheduler is created.
+  const reconcileDeadline=Date.now()+240000;
+  await recoverPushes({db,admin:{messaging:getMessaging},canSeeOrder});
   const snap=await db.collection('orders').where('status','in',['dispatched','inTransit'])
     .where('nextPollAt','<=',Timestamp.now()).orderBy('nextPollAt','asc').limit(100).get();
-  let checked=0,errors=0;const deadline=Date.now()+240000;
+  let checked=0,errors=0;const deadline=reconcileDeadline;
   for(const doc of snap.docs){
     if(Date.now()>=deadline)break;
     const o=doc.data();
@@ -530,21 +536,22 @@ exports.unregisterDevice=callable(async req=>{
   const user=await requireAuth(req);let id;try{id=deviceId(req.data?.token);}catch(e){return firebaseError(e);}
   await db.runTransaction(async tx=>{const ref=db.doc('devices/'+id),device=await tx.get(ref);if(device.exists&&device.data().uid===user.id)tx.delete(ref);});return {ok:true};
 });
-exports.pushNotice=onDocumentCreated({document:'notices/{noticeId}',region:REGION,retry:false},async event=>{
-  if(!event.data)return;
-  const claimed=await db.runTransaction(async tx=>{const current=await tx.get(event.data.ref);if(['sending','completed'].includes(current.data()?.pushState))return false;tx.update(event.data.ref,{pushState:'sending'});return true;});
-  if(!claimed)return;
-  try{const outcome=await deliverNotice({messaging:getMessaging},db,event.params.noticeId,event.data.data(),canSeeOrder);await event.data.ref.update({pushState:'completed',pushOutcome:outcome,pushProcessedAt:FieldValue.serverTimestamp()});}
-  catch(e){logger.warn('push failed',{code:e.code||'unknown'});await event.data.ref.update({pushState:'completed',pushOutcome:{failure:true},pushProcessedAt:FieldValue.serverTimestamp()});}
+exports.pushNotice=onDocumentCreated({document:'notices/{noticeId}',region:REGION,retry:true},async event=>{
+  if(event.data)await processPush({db,admin:{messaging:getMessaging},ref:event.data.ref,canSeeOrder});
 });
 
 exports.listOrderCreators=callable(async req=>{
-  const user=await requireAuth(req);const items=new Map([[user.id,{id:user.id,name:user.name}]]);
-  let query=null;
-  if(user.role==='generalManager'||user.role==='warehouse'||can(user,'viewAllOrders'))query=db.collection('members');
-  else if(user.role==='sales')query=db.collection('members').where('salesSupervisorId','==',user.id).where('role','==','dataEntry');
-  if(query){const result=await query.limit(100).get();for(const d of result.docs)items.set(d.id,{id:d.id,name:d.data().name});}
-  return {items:[...items.values()]};
+  const user=await requireAuth(req);const collection=db.collection('members');
+  let query=collection;
+  if(user.role!=='generalManager'&&user.role!=='warehouse'&&!can(user,'viewAllOrders')){
+    if(user.role==='sales')query=query.where('salesSupervisorId','==',user.id).where('role','==','dataEntry');
+    else query=query.where(FieldPath.documentId(),'==',user.id);
+  }
+  const page=await directoryPage(collection,query,req.data);
+  const items=page.docs.map(d=>({id:d.id,name:d.data().name}));
+  // A sales supervisor's own name is available on page one without duplicating team cursors.
+  if(user.role==='sales'&&!req.data?.afterId&&!(req.data?.query||'').trim()&& !items.some(m=>m.id===user.id))items.unshift({id:user.id,name:user.name});
+  return {items,more:page.more,afterId:page.afterId};
 });
 
 exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();return {organizationName:snap.data()?.organizationName||'Velnix',receiptFooter:snap.data()?.receiptFooter||'',supportPhone:snap.data()?.supportPhone||''};});

@@ -6,8 +6,8 @@ function publicOrder(d) {
   return {id:d.id,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
-    companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,
-    syncError:o.syncError||null,dispatchState:o.dispatchState||'idle',revision:o.revision||0,
+    companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,completionSource:o.completionSource||null,
+    syncError:o.syncError||null,lastSyncAt:safeDate(o.lastSyncAt),lastSyncAttemptAt:safeDate(o.lastSyncAttemptAt),dispatchState:o.dispatchState||'idle',revision:o.revision||0,
     createdAt:safeDate(o.createdAt),updatedAt:safeDate(o.updatedAt)};
 }
 function orderForUser(user,d) {

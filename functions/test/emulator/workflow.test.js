@@ -174,3 +174,35 @@ test('concurrent mutual administrator deactivation preserves an active administr
   assert.ok(remaining.size>=1);
   await db.doc('members/gm').update({active:true});
 });
+
+test('authorized internal completion records provenance and protects assigned and locked shipments',async()=>{
+  const created=await invoke('createOrder','warehouse',{...payload,requestKey:'internal_completion_journey'});
+  for(const status of ['review','preparing','ready','delivered'])await invoke('changeOrderStatus','warehouse',{id:created.id,status});
+  const doc=await db.doc('orders/'+created.id).get();assert.equal(doc.data().completionSource,'internal');assert.equal(doc.data().completedBy,'warehouse');assert.ok(doc.data().completedAt);
+  const view=(await invoke('getOrder','warehouse',{id:created.id})).order;assert.equal(view.completionSource,'internal');assert.deepEqual(view.actions.statuses,[]);
+  const events=await db.collection('orders/'+created.id+'/events').where('details.completionSource','==','internal').get();assert.equal(events.size,1);
+  await assert.rejects(invoke('changeOrderStatus','gm',{id:created.id,status:'ready'}),{code:'failed-precondition'});
+  for(const patch of [{companyId:'company'},{hasDelivery:true},{dispatchState:'sending'},{dispatchState:'sent'},{dispatchState:'needs_review'}]){
+    const ref=db.collection('orders').doc();await ref.set({createdBy:'warehouse',status:'ready',amountMinor:1000,...patch});
+    await assert.rejects(invoke('changeOrderStatus','gm',{id:ref.id,status:'delivered'}),{code:'failed-precondition'});
+  }
+});
+
+test('directories paginate more than 100 records with stable name ties and scoped creator search',async()=>{
+ const batch=db.batch();
+ for(let i=0;i<137;i++){
+  const number=String(i).padStart(3,'0');
+  batch.set(db.doc('companies/directory_'+number),{name:'صفحة شركة '+number,enabled:false});
+  batch.set(db.doc('members/directory_'+number),{name:'صفحة موظف '+number,role:'dataEntry',active:true,salesSupervisorId:i<120?'sales':'other_sales',permissions:[],email:number+'@example.test'});
+ }
+ await batch.commit();
+ for(const [endpoint,query,total,actor]of [['listCompanies','صفحة شركة',137,'entry'],['listMembers','صفحة موظف',137,'gm'],['listOrderCreators','صفحة موظف',120,'sales']]){
+  let afterId;const ids=[];let page;
+  do{page=await invoke(endpoint,actor,{query,pageSize:23,afterId});ids.push(...page.items.map(x=>x.id));afterId=page.afterId;}while(page.more);
+  assert.equal(ids.length,total);assert.equal(new Set(ids).size,total);
+ }
+ await assert.rejects(invoke('listMembers','entry',{pageSize:100}),{code:'permission-denied'});
+ await assert.rejects(invoke('listCompanies','gm',{pageSize:101}),{code:'invalid-argument'});
+ const a=db.doc('companies/directory_tie_a'),b=db.doc('companies/directory_tie_b');await a.set({name:'متساوي'});await b.set({name:'متساوي'});
+ const first=await invoke('listCompanies','gm',{query:'متساوي',pageSize:1});const next=await invoke('listCompanies','gm',{query:'متساوي',pageSize:1,afterId:first.afterId});assert.notEqual(first.items[0].id,next.items[0].id);
+});

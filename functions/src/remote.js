@@ -17,7 +17,7 @@ return async function processRemote(companyId, payload, eventId, source) {
     if(!order.exists||order.data().companyId!==companyId)return {ignored:'unmatched_order'};
     if(!remoteCanAdvance(order.data().status,mapped))return {ignored:'out_of_order'};
     if(order.data().status===mapped)return {ignored:'same_status'};
-    tx.update(orderRef,{revision:FieldValue.increment(1),status:mapped,remoteStatus:raw,updatedAt:FieldValue.serverTimestamp(),lastSyncAt:FieldValue.serverTimestamp(),syncError:null});
+    tx.update(orderRef,{revision:FieldValue.increment(1),status:mapped,...(mapped==='delivered'?{completionSource:'carrier'}:{}),remoteStatus:raw,updatedAt:FieldValue.serverTimestamp(),lastSyncAt:FieldValue.serverTimestamp(),syncError:null});
     const actor={id:`delivery:${companyId}`,name:'شركة التوصيل'};
     await addEvent(orderId,'remote_status',actor,{raw,mapped,source},tx);
     await audit('order.remote_status',actor,orderId,{raw,mapped,companyId},tx);
