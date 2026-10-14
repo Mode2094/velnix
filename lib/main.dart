@@ -14,64 +14,100 @@ import 'screens/shell_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const mode = String.fromEnvironment('VELNIX_MODE', defaultValue: 'live');
-  if (mode == 'demo') { runApp(const VelnixApp()); return; }
+  if (mode == 'demo') {
+    runApp(const VelnixApp());
+    return;
+  }
   try {
     const apiKey = String.fromEnvironment('FIREBASE_API_KEY');
     if (apiKey.isNotEmpty) {
-      await Firebase.initializeApp(options: const FirebaseOptions(
-        apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
-        appId: String.fromEnvironment('FIREBASE_APP_ID'),
-        messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID'),
-        projectId: String.fromEnvironment('FIREBASE_PROJECT_ID'),
-        authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
-      ));
+      await Firebase.initializeApp(
+        options: const FirebaseOptions(
+          apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
+          appId: String.fromEnvironment('FIREBASE_APP_ID'),
+          messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID'),
+          projectId: String.fromEnvironment('FIREBASE_PROJECT_ID'),
+          authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
+        ),
+      );
     } else {
       await Firebase.initializeApp();
     }
     const webSiteKey = String.fromEnvironment('FIREBASE_APPCHECK_SITE_KEY');
     const debugAppCheck = bool.fromEnvironment('VELNIX_DEBUG_APPCHECK');
+    if (debugAppCheck && kReleaseMode) {
+      throw StateError('App Check debug غير مسموح في إصدار الإنتاج');
+    }
     if (kIsWeb && webSiteKey.isEmpty) {
       throw StateError('FIREBASE_APPCHECK_SITE_KEY مطلوب لنسخة الويب الحية');
     }
     if (!kIsWeb || webSiteKey.isNotEmpty) {
       await FirebaseAppCheck.instance.activate(
-        androidProvider: debugAppCheck ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-        appleProvider: debugAppCheck ? AppleProvider.debug : AppleProvider.deviceCheck,
-        webProvider: kIsWeb ? ReCaptchaV3Provider(webSiteKey) : null,
+        providerAndroid: debugAppCheck
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+        providerApple: debugAppCheck
+            ? const AppleDebugProvider()
+            : const AppleDeviceCheckProvider(),
+        providerWeb: kIsWeb ? ReCaptchaV3Provider(webSiteKey) : null,
       );
     }
     runApp(const VelnixLiveApp());
   } catch (e) {
-    runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text('تعذر تهيئة Firebase. تحقق من إعدادات المشروع وApp Check.\n$e',textAlign:TextAlign.center),
-    )))));
+    runApp(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'تعذر تهيئة Firebase. تحقق من إعدادات المشروع وApp Check.\n$e',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
 class VelnixApp extends StatefulWidget {
   const VelnixApp({super.key});
-  @override State<VelnixApp> createState()=>_VelnixAppState();
+  @override
+  State<VelnixApp> createState() => _VelnixAppState();
 }
+
 class _VelnixAppState extends State<VelnixApp> {
-  final DemoStore _store=DemoStore();
-  bool _loggedIn=false;
-  @override void dispose(){_store.dispose();super.dispose();}
-  @override Widget build(BuildContext context)=>StoreScope(
-    store:_store,
-    child:MaterialApp(
-      title:'Velnix – Smart Order Management',debugShowCheckedModeBanner:false,
-      theme:velnixTheme(),
-      locale:const Locale('ar'),
-      supportedLocales:const [Locale('ar'),Locale('en')],
+  final DemoStore _store = DemoStore();
+  bool _loggedIn = false;
+  @override
+  void dispose() {
+    _store.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => StoreScope(
+    store: _store,
+    child: MaterialApp(
+      title: 'Velnix – Smart Order Management',
+      debugShowCheckedModeBanner: false,
+      theme: velnixTheme(),
+      locale: const Locale('ar'),
+      supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder:(context,child)=>Directionality(textDirection:TextDirection.rtl,child:child??const SizedBox.shrink()),
-      home:_loggedIn?ShellScreen(onLogout:()=>setState(()=>_loggedIn=false)):
-        LoginScreen(onDemoLogin:()=>setState(()=>_loggedIn=true)),
+      builder: (context, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: child ?? const SizedBox.shrink(),
+      ),
+      home: _loggedIn
+          ? ShellScreen(onLogout: () => setState(() => _loggedIn = false))
+          : LoginScreen(onDemoLogin: () => setState(() => _loggedIn = true)),
     ),
   );
 }

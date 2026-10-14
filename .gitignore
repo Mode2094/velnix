@@ -6,6 +6,11 @@
 .pub/
 build/
 coverage/
+*-debug.log
+functions/node_modules/
+config/firebase.public.json
+web/firebase-messaging-sw.js
+!functions/package-lock.json
 .idea/
 .vscode/
 *.iml
@@ -26,3 +31,6 @@ build/
 *.jks
 *.keystore
 service-account*.json
+
+# Flutter applications retain their resolved dependency versions.
+!pubspec.lock
