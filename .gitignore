@@ -36,3 +36,5 @@ service-account*.json
 !pubspec.lock
 
 __pycache__/
+
+test/failures/

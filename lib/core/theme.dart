@@ -62,6 +62,7 @@ ThemeData velnixTheme() {
       elevation: 0,
       centerTitle: false,
       titleTextStyle: TextStyle(
+        fontFamily: 'Cairo',
         fontSize: 18,
         fontWeight: FontWeight.w900,
         color: VColors.ink,
@@ -80,7 +81,11 @@ ThemeData velnixTheme() {
       filled: true,
       fillColor: Colors.white,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      hintStyle: const TextStyle(fontSize: 12, color: VColors.muted),
+      hintStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 12,
+        color: VColors.muted,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: VColors.line),
@@ -109,10 +114,22 @@ ThemeData velnixTheme() {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
+        textStyle: const TextStyle(
+          fontFamily: 'Cairo',
+          fontWeight: FontWeight.w700,
+        ),
         foregroundColor: VColors.ink,
         side: const BorderSide(color: VColors.line),
         minimumSize: const Size(0, 46),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        textStyle: const TextStyle(
+          fontFamily: 'Cairo',
+          fontWeight: FontWeight.w700,
+        ),
       ),
     ),
     chipTheme: ChipThemeData(
@@ -122,7 +139,11 @@ ThemeData velnixTheme() {
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: VColors.line),
       ),
-      labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+      labelStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
     ),
     dividerTheme: const DividerThemeData(color: VColors.line, thickness: 1),
   );

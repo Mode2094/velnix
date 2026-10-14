@@ -108,8 +108,12 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final loader = FontLoader('Cairo')
-      ..addFont(rootBundle.load('assets/fonts/Cairo-Regular.ttf'));
+      ..addFont(rootBundle.load('assets/fonts/Cairo-Regular.ttf'))
+      ..addFont(rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
     await loader.load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
     await tester.pumpWidget(
       app(
         LiveDashboard(
