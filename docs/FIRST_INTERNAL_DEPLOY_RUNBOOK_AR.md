@@ -248,7 +248,7 @@ npm --prefix build/first-internal/functions ci --omit=dev --ignore-scripts
 CLI؛ bundle نفسه يحتوي dependencies الإنتاج المثبتة فقط.
 
 Firebase CLI يحتاج تسجيله الرسمي بنفس الحساب، وليس مجرد نجاح gcloud auth.
-إن كان غير مسجل، تكون firebase login --no-localhost --no-collect-usage خطوة
+إن كان غير مسجل، تكون functions/node_modules/.bin/firebase login --no-localhost خطوة
 تفاعلية رسمية للمالك، دون مشاركة code/token في المحادثة. ليست إنشاء مستخدم Velnix.
 إلى أن تستوفى بوابات IAM/بناء/APIs/App Check ويصدر تفويض نشر محدد، **لا تشغل**:
 
