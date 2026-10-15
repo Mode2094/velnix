@@ -20,7 +20,7 @@ async function login(role){
   if(['127.0.0.1','localhost'].includes(u.hostname))return route.continue();
   return route.abort();
  });
- const p=await ctx.newPage();p.on('pageerror',e=>pageErrors.push({role,error:e.message}));
+ const p=await ctx.newPage();p.on('pageerror',e=>pageErrors.push({role,error:e.message,stack:e.stack}));
  await p.goto('http://127.0.0.1:8767',{waitUntil:'networkidle'});await p.locator('flt-glass-pane').waitFor({state:'attached',timeout:60000});await p.evaluate(()=>document.querySelector('flt-semantics-placeholder')?.click());
  await p.getByRole('button',{name:'المتابعة باستخدام Google'}).waitFor({timeout:60000});
  const popup=ctx.waitForEvent('page',{timeout:30000});await p.mouse.click(720,600);const pop=await popup;
@@ -143,7 +143,23 @@ async function main(){
   await p.screenshot({path:path.join(out,'offline-ui.png')});await p.unroute('**/europe-west1/dashboardStats');await click(p,'إعادة المحاولة');await p.getByText('كل الطلبات',{exact:true}).waitFor();
  });
  await scenario('authorization changes immediately block an existing data-entry UI session',async()=>{
-  const p=sessions.dataEntry.p;await nav(p,'orders');await okay(sessions.generalManager.p,'saveMember',{id:'qa-dataEntry',name:names.dataEntry,role:'dataEntry',permissions:[],salesSupervisorId:'qa-sales',active:false});
+  const p=sessions.dataEntry.p;await nav(p,'orders');
+  // Reproduce a background tab: the policy refresh completes before Flutter's
+  // next frame can subscribe to its future. No sleep and no error filtering.
+  await p.evaluate(()=>{
+   const request=window.requestAnimationFrame.bind(window),cancel=window.cancelAnimationFrame.bind(window),pending=new Map();let id=0;
+   window.requestAnimationFrame=callback=>{pending.set(--id,callback);return id;};
+   window.cancelAnimationFrame=key=>{if(!pending.delete(key))cancel(key);};
+   window.resumeAuthorizationFrames=()=>{window.requestAnimationFrame=request;window.cancelAnimationFrame=cancel;for(const callback of pending.values())request(callback);delete window.resumeAuthorizationFrames;};
+  });
+  let releaseRefresh;const memberSaved=new Promise(resolve=>{releaseRefresh=resolve;});
+  const refreshRoute=async route=>{await memberSaved;await route.continue();};
+  await p.route('**/europe-west1/joinSession',refreshRoute);
+  try{
+   const refreshed=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/joinSession')&&r.request().method()==='POST');
+   await okay(sessions.generalManager.p,'saveMember',{id:'qa-dataEntry',name:names.dataEntry,role:'dataEntry',permissions:[],salesSupervisorId:'qa-sales',active:false});
+   releaseRefresh();const response=await refreshed;assert.equal(response.status(),400);await response.finished();
+  }finally{releaseRefresh();await p.unroute('**/europe-west1/joinSession',refreshRoute);await p.evaluate(()=>window.resumeAuthorizationFrames());}
   await p.getByText(/حسابك معطل|يلزم حساب Google موثق وفعال/).first().waitFor({timeout:15000});await denied(p,'getOrder',{id:orders.dataEntry.id});assert.equal(await p.getByText('إدارة الطلبات',{exact:true}).count(),0);await p.screenshot({path:path.join(out,'disabled-live-session.png')});
   await okay(sessions.generalManager.p,'decideJoinRequest',{id:'qa-pending',decision:'rejected'});await sessions.pending.p.getByText('تم رفض طلب انضمامك. راجع المدير العام',{exact:true}).waitFor({timeout:15000});await denied(sessions.pending.p,'getOrder',{id:orders.generalManager.id});
  });

@@ -265,7 +265,15 @@ class AuthenticatedWorkspace extends StatefulWidget {
 }
 
 class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
-  late Future<Map<String, dynamic>> session;
+  late Future<Map<String, dynamic>> _session;
+  Future<Map<String, dynamic>> get session => _session;
+  set session(Future<Map<String, dynamic>> next) {
+    // A policy refresh can fail before the next frame attaches FutureBuilder.
+    // Observe it immediately, retaining the same error for the blocking UI.
+    next.ignore();
+    _session = next;
+  }
+
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? joinDecision;
 
   Future<Map<String, dynamic>> loadSession() async {
