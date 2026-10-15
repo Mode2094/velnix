@@ -84,3 +84,45 @@ test('missing native OAuth configuration is a blocker rather than invented clien
  const f=fixture({get:p=>p.endsWith('/androidApps/'+ids.android+'/config')?{configFileContents:Buffer.from(JSON.stringify({project_info:{project_id:project},client:[{client_info:{mobilesdk_app_id:ids.android,android_client_info:{package_name:'com.mode2094.velnix'}},oauth_client:[{client_type:3}]}]})).toString('base64')}:undefined});
  const r=await operationalReadiness(f.args);assert.equal(r.services.androidSdk.googleServerClientPresent,false);assert.ok(r.blockers.includes('android_google_oauth_incomplete'));
 });
+test('index 400 and Functions 403 expose structured causes while billing stays unknown',async()=>{
+ const {readGoogleJson}=require('../scripts/google_read');
+ const f=fixture({get:async p=>{
+  const code=p.endsWith('/indexes')?400:p.endsWith('/functions')||p.endsWith('/billingInfo')?403:null;
+  if(code===null)return undefined;
+  const error={code,status:code===400?'INVALID_ARGUMENT':'PERMISSION_DENIED',message:'PRIVATE_ERROR_BODY',details:[]};
+  if(p.endsWith('/functions'))error.details.push({'@type':'type.googleapis.com/google.rpc.ErrorInfo',domain:'googleapis.com',reason:'SERVICE_DISABLED',metadata:{token:'PRIVATE_TOKEN'}});
+  return readGoogleJson(new Response(JSON.stringify({error}),{status:code}));
+ }});
+ const r=await operationalReadiness(f.args);
+ assert.equal(r.services.indexes.error.category,'invalid_request');assert.equal(r.services.functions.error.category,'service_disabled');
+ assert.equal(r.services.billing.status,'unverified');assert.equal(Object.hasOwn(r.services.billing,'billingEnabled'),false);
+ assert.equal(r.blockers.includes('functions_v2_deployment_requires_separate_blaze_approval'),false);
+ assert.equal(JSON.stringify(r).includes('PRIVATE_ERROR_BODY'),false);assert.equal(JSON.stringify(r).includes('PRIVATE_TOKEN'),false);
+});
+test('published rules drift includes original hashes and source, with credentials withheld',()=>{
+ const {publishedRules}=require('../scripts/published_rules'),crypto=require('node:crypto');
+ const text='rules_version = "2";\n// changed source\nallow read: if false;';
+ const r=publishedRules([{name:'firestore.rules',content:text}],plan.rulesSha256);
+ assert.equal(r.matchesSource,false);assert.equal(r.publishedFileCount,1);assert.equal(r.files[0].content,text);
+ assert.equal(r.publishedSha256,crypto.createHash('sha256').update(text).digest('hex'));
+ const secret=publishedRules([{name:'firestore.rules',content:'password = "PRIVATE_PASSWORD";\n-----BEGIN '+ 'PRIVATE'+' KEY-----\nPRIVATE_KEY_BODY\n-----END '+ 'PRIVATE'+' KEY-----'},{name:'other.rules',content:'x'.repeat(300000)}],plan.rulesSha256);
+ assert.equal(secret.publishedFileCount,2);assert.equal(secret.publishedSha256,null);assert.equal(secret.files[0].redacted,true);assert.equal(secret.files[1].truncated,true);assert.equal(JSON.stringify(secret).includes('PRIVATE_PASSWORD'),false);assert.equal(JSON.stringify(secret).includes('PRIVATE_KEY_BODY'),false);
+ assert.throws(()=>publishedRules([{content:null}],plan.rulesSha256));
+ assert.equal(Object.hasOwn(publishedRules([{content:plan.rules}],plan.rulesSha256),'files'),false);
+});
+test('entire readiness inventory uses GET-only Google transport and read-only IAM, never bootstrap transaction',async()=>{
+ const f=fixture(),methods=[],commands=[];
+ const session=createGcloudSession({env:{},expectedAccount:owner,run:args=>{
+  commands.push(args);return args[0]==='projects'?'{}':args[0]==='config'?'(unset)':args[1]==='list'?owner:'PRIVATE_TOKEN';
+ },fetchImpl:async(url,options)=>{methods.push(options.method);return new Response(JSON.stringify(await f.args.get(url)));}});
+ const r=await operationalReadiness({...f.args,get:session.get,readIam:()=>({bindings:[]})});
+ assert.ok(methods.length>20);assert.ok(methods.every(m=>m==='GET'));assert.equal(r.bootstrapExecuted,false);
+ session.readProjectIam();assert.ok(commands.every(a=>a[0]==='auth'||a[0]==='config'||a[1]==='get-iam-policy'));
+ assert.equal(JSON.stringify(r).includes('PRIVATE_TOKEN'),false);
+});
+test('transport diagnostics expose the fixed failing route, never request tokens or raw bodies',async()=>{
+ const session=createGcloudSession({env:{},run:args=>args[0]==='config'?'(unset)':args[1]==='list'?owner:'PRIVATE_ACCESS_TOKEN',fetchImpl:async()=>new Response(JSON.stringify({error:{code:400,status:'INVALID_ARGUMENT',message:'PRIVATE_ERROR_BODY'}}),{status:400})});
+ await assert.rejects(session.get('https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/collectionGroups/-/indexes?pageSize=100&pageToken=PRIVATE_PAGE_TOKEN'),e=>{
+  assert.equal(e.diagnostic.request.method,'GET');assert.equal(e.diagnostic.request.pageSize,100);assert.equal(e.diagnostic.request.route,'projects/{project}/databases/(default)/collectionGroups/-/indexes');assert.equal(JSON.stringify(e).includes('PRIVATE_'),false);return true;
+ });
+});

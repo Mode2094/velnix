@@ -23,7 +23,16 @@ function createGcloudSession({run=args=>execFileSync('gcloud',args,{encoding:'ut
   const url=new URL(input);
   if(url.protocol!=='https:'||url.username||url.password||url.port||!['identitytoolkit.googleapis.com','firebase.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','firebaserules.googleapis.com','serviceusage.googleapis.com','cloudbilling.googleapis.com','cloudkms.googleapis.com'].includes(url.hostname))throw Error('google_read_destination_refused');
   const response=await fetchImpl(url.href,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+accessToken(),'X-Goog-User-Project':PROJECT},signal:AbortSignal.timeout(20000)});
-  return readGoogleJson(response);
+  try{return await readGoogleJson(response);}catch(e){
+   if(e.diagnostic){
+    e.diagnostic.request={method:'GET',service:url.hostname};
+    // Fixed route labels only: never URLs, UID paths, page tokens or arbitrary query values.
+    if(url.pathname.endsWith('/collectionGroups/-/indexes'))e.diagnostic.request.route='projects/{project}/databases/(default)/collectionGroups/-/indexes';
+    if(url.hostname==='cloudfunctions.googleapis.com'&&url.pathname.endsWith('/locations/europe-west1/functions'))e.diagnostic.request.route='projects/{project}/locations/europe-west1/functions';
+    if(url.searchParams.get('pageSize')==='100')e.diagnostic.request.pageSize=100;
+   }
+   throw e;
+  }
  }
  async function firestoreTransaction(action,body){
   if(!['beginTransaction','batchGet','runQuery','commit','rollback'].includes(action))throw Error('firestore_action_refused');
