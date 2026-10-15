@@ -1,0 +1,259 @@
+{
+  "baseCommit": "ab6842e6a486daded410182488b7bf7ae8399adf",
+  "evidenceType": "local SDK discovery; not cloud deployment or live event delivery",
+  "node": "v22.23.3",
+  "firestoreLocation": {
+    "value": "nam5",
+    "source": "owner reported; no cloud request in this task"
+  },
+  "endpoints": [
+    {
+      "name": "joinSession",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listJoinRequests",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "decideJoinRequest",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "me",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listOrders",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "searchOrders",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "dashboardStats",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "companyStats",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "getOrder",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "createOrder",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "updateOrder",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "changeOrderStatus",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listCompanies",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listMembers",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "saveMember",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listNotices",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "markNoticeRead",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listSyncEvents",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listAudit",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "listOrderCreators",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "getSettings",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "saveSettings",
+      "region": [
+        "europe-west1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "callable"
+    },
+    {
+      "name": "orderEventNotice",
+      "region": [
+        "us-central1"
+      ],
+      "platform": "gcfv2",
+      "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+      "kind": "event",
+      "eventTrigger": {
+        "eventType": "google.cloud.firestore.document.v1.created",
+        "eventFilters": {
+          "database": "(default)",
+          "namespace": "(default)"
+        },
+        "eventFilterPathPatterns": {
+          "document": "orders/{orderId}/events/{eventId}"
+        },
+        "retry": true
+      }
+    }
+  ],
+  "endpointCount": 23,
+  "requiredAPIs": [],
+  "forbiddenExportsAbsent": true,
+  "sourceSha256": {
+    "functions/src/index.js": "142021f77898f6b6d42cf435a7cafefd199bff55f49d6d7f178c1815a96c8bf8",
+    "config/first-internal-deploy.json": "92a9fa498e2a295d4ad4afc486baa481d3cffa63cef52038a4436e0752eea6e9",
+    "functions/scripts/operational_readiness.js": "1d81f2d0427a5a194b5388ed9238ee9556c8fcddbf8bb92a36acc62c6cd6e2f9",
+    "functions/test/first_internal_deploy.test.js": "f86fedd944064c66c99d0acf6d0d3ccd5d5daca0badd829519a68f2b0ee14264",
+    "functions/test/operational_readiness.test.js": "f511ed10adb4f25f7ed4d4aea88f18346ab841a2d5bd5b98a299c0d9a4f9104b",
+    "docs/FIRST_INTERNAL_DEPLOY_RUNBOOK_AR.md": "7c27ef9b95200ad034a163ff5eb37d910ad50a0d8eae6a77ca690652d86572db"
+  },
+  "cloudDeploymentExecuted": false,
+  "cloudMutationsExecuted": false,
+  "clickCallsExecuted": false,
+  "validation": {
+    "command": "source scripts/cloud-env.sh; scripts/validate.sh",
+    "javaLocalResourceLimits": "-Xmx1536m -XX:ActiveProcessorCount=2",
+    "exitCode": 0,
+    "flutterTestsPassed": 325,
+    "nodeTestsPassed": 128,
+    "firebaseEmulatorTestsPassed": 68,
+    "pythonConfigurationTestsPassed": 12,
+    "pdfBarcodeChecksPassed": 36,
+    "analyzer": "no issues",
+    "secretScanFindings": 0,
+    "npmProductionAuditVulnerabilities": 0,
+    "skippedNodeOrEmulatorTests": 0,
+    "githubCI": "not verified; stop after pushing for independent verification",
+    "logSha256": "08667e528314d47054d4719bd9826fb62a2dad94682f269fafac86ab55a56884"
+  }
+}

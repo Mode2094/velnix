@@ -1,5 +1,16 @@
 # أول نشر داخلي — مقترح للمراجعة فقط
 
+> تحديث نطاق العمل بعد ab6842e: بحسب المالك، 22 callable داخلية أصبحت ACTIVE
+> على Node.js22 في europe-west1 بهوية runtime المعتمدة أدناه. لا تعِد نشرها
+> أو تعديل IAM لها. المتبقي فقط orderEventNotice؛ موقع تنفيذه us-central1 لأن
+> Firestore في nam5. موقع مصدر حدث Eventarc هو nam5، وليس europe-west1؛
+> لا تغيّر document path أو retry أو منطق الإشعارات. هذه الجلسة إصلاح كود محلي فقط.
+> بقية جرد «لا دوال منشورة» وخطوات IAM/الفهارس/القواعد أدناه سجل التحضير السابق،
+> وليست أوامر التنفيذ الحالية. لا قواعد أو فهارس أو IAM أو Deploy في هذا الطلب.
+> ملف config يحتفظ region=europe-west1 للـ22 callable، وfunctionRegions يحدد الاستثناء.
+> الحزمة المعزولة تظل 23 export بالضبط لتجنب اكتشاف Scheduler/Push/Click؛
+> أمر النشر المستقبلي المحدود أدناه يستهدف المحفز الناقص وحده بعد موافقة منفصلة.
+
 **No-Go للتنفيذ الآن.** المصدر الأساسي f7ff33b، والفرع audit/production-readiness.
 الأوامر أدناه **لم تُشغّل**؛ ليست script تطبيقيًا ولا تفويضًا. لا Deploy أو IAM
 أو فهارس أو قواعد أو APIs أو enforcement من هذه الجلسة.
@@ -253,7 +264,7 @@ Firebase CLI يحتاج تسجيله الرسمي بنفس الحساب، ولي
 إلى أن تستوفى بوابات IAM/بناء/APIs/App Check ويصدر تفويض نشر محدد، **لا تشغل**:
 
 ```bash
-functions/node_modules/.bin/firebase deploy --project velnix-6c1a2 --account moderohe8@gmail.com --config build/first-internal/firebase.json --only functions:joinSession,functions:listJoinRequests,functions:decideJoinRequest,functions:me,functions:listOrders,functions:searchOrders,functions:dashboardStats,functions:companyStats,functions:getOrder,functions:createOrder,functions:updateOrder,functions:changeOrderStatus,functions:listCompanies,functions:listMembers,functions:saveMember,functions:listNotices,functions:markNoticeRead,functions:listSyncEvents,functions:listAudit,functions:listOrderCreators,functions:getSettings,functions:saveSettings,functions:orderEventNotice --non-interactive
+functions/node_modules/.bin/firebase deploy --project velnix-6c1a2 --account moderohe8@gmail.com --config build/first-internal/firebase.json --only functions:orderEventNotice --non-interactive
 ```
 
 لا تستخدم root firebase.json لنشر الدوال، ولا functions عامة، ولا --force.
@@ -264,13 +275,14 @@ functions/node_modules/.bin/firebase deploy --project velnix-6c1a2 --account mod
 تحقق من اسم Cloud Run الفعلي للمحفز، ثم binding الضيق المصرح به، **قبل أي حدث قبول**:
 
 ```bash
-gcloud functions describe orderEventNotice --gen2 --project=velnix-6c1a2 --region=europe-west1 --format='value(serviceConfig.service)'
+gcloud functions describe orderEventNotice --gen2 --project=velnix-6c1a2 --region=us-central1 --format='value(serviceConfig.service)'
 # VELNIX_NOTICE_SERVICE هو آخر جزء من المسار الفعلي أعلاه بعد التحقق، لا اسم مخمّن.
 test -n "$VELNIX_NOTICE_SERVICE" || { echo 'Missing verified service name; stop'; exit 1; }
-gcloud run services add-iam-policy-binding "$VELNIX_NOTICE_SERVICE" --project=velnix-6c1a2 --region=europe-west1 --member='serviceAccount:velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com' --role=roles/run.invoker
+gcloud run services add-iam-policy-binding "$VELNIX_NOTICE_SERVICE" --project=velnix-6c1a2 --region=us-central1 --member='serviceAccount:velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com' --role=roles/run.invoker
 ```
 
-تحقق أن23 دالة فقط ACTIVE/GEN_2/nodejs22 فيeurope-west1، وbuildConfig.serviceAccount
+تحقق أن22 callable تبقى ACTIVE/GEN_2/nodejs22 فيeurope-west1، وأن
+orderEventNotice وحدها فيus-central1 ومصدر الحدث nam5، وbuildConfig.serviceAccount
 بالحساب المعتمد، وserviceConfig.serviceAccountEmail/runtime وEventarc trigger
 identity/location، وأن Scheduler ما زال غير مفعل ولا job/Push/webhook جديد.
 لا تقبل أسماء الدوال دليلًا على commit المصدر؛ احتفظ بـbuild/revision/source digest.
@@ -308,7 +320,7 @@ VELNIX_DEBUG_APPCHECK=false، والمشروع/التسجيل الحاليان. 
 | IAM | احفظ bindings/conditions/etag قبل وبعد، وأزل فقط كل binding أضيف لهذا الإصدار بنفس condition. لا replace-policy أوحذف منح سابقة. احذف/عطل role وSA الجديدين فقط بعد إزالة dependencies وإذا ثبت أنهما أُنشئا لهذه الدفعة؛ لا تمس حساب المدير |
 | build/storage IAM | أزل grants المضافة على الهوية الفعلية فقط؛ لا تسحب دورًا كان يخدم بناء آخر، ولا تمس خدمة Cloud Build أو Compute الافتراضية أو service agents |
 | الفهرسان | الأفضل إبقاؤهما عند التراجع لأنهما إضافة غير مدمرة. أي حذف لاحق يقتصر على IDs التي ثبت إنشاؤها بهذه الدفعة وبعد فحص المستخدمين؛ لا حذف بقية109 أو fieldOverrides |
-| أول23 دالة | لا إصدار سابق للرجوع إليه حسب الجرد. احفظ سجل الموارد التي نجح إنشاؤها وrevision/build أولًا؛ containment/حذف هذه الدوال الجديدة فقط بقرار منفصل، دون بيانات Auth/Firestore. لا تدعي rollback لحاوية قديمة غير موجودة. gcloud functions delete NAME --gen2 --region=europe-west1 --project=velnix-6c1a2 أمر مراجعة فقط لكل NAME مثبت |
+| المحفز الناقص فقط | لا تمس الـ22 callable النشطة ولا حساب runtime. هذا التغيير المحلي يمكن التراجع عنه بـcommit عكسي دون نشر. إذا أجيز نشر المحفز لاحقًا وفشل، احفظ build/revision/trigger IDs؛ أي احتواء أو حذف يقتصر على orderEventNotice في us-central1 وبموافقة منفصلة. لا حذف بيانات أو bootstrap أو تراجع جماعي للـ23 |
 | القواعد | أعد نشر ملف/إصدار deny-all المحفوظ إذا فشل القبول؛ يغلق streams الخاصة بالواجهة. **لا يوقف Admin SDK أو HTTPS Backend وحده**؛ احتواء الدوال خطوة مستقلة إذا كان الخطر منها |
 | اختبار القبول | إرجاع الكود/القواعد لا يمحو طلبًا أوAudit أوتحديث Auth. لا مسح بيانات ولا إعادة bootstrap؛ احتفظ بوسم الاختبار واطلب معالجة منفصلة إذا لزم |
 
@@ -349,3 +361,14 @@ assertions النهائية؛ ونجح npm ci الإنتاجي للحزمة با
 هذه ليست Cloud Build ولا نشرًا أوتجربة المدير الحقيقي أوتشخيص400 فعليًا.
 تفاصيل قابلة للمراجعة: docs/evidence/first-internal-deploy-preparation.json.
 نتائج CI للـcommit النهائي تُراجع بعد الرفع، ولا تستنتج من هذه النتائج المحلية.
+
+## دليل موقع المحفز
+
+[Firebase: supported locations](https://firebase.google.com/docs/functions/locations)
+يربط nam5 بـus-central1 للدوال. إعداد region هنا موقع تنفيذ الدالة؛ موضع
+Eventarc لمصدر Firestore يجب أن يوافق قاعدة البيانات nam5. لا نفرض triggerRegion
+جديدًا في المصدر ولا ننشئ Trigger من هذه الجلسة. الـSDK المحلي يثبت metadata
+فقط؛ نجاح النشر وتسليم الحدث يحتاجان قبولًا سحابيًا لاحقًا.
+
+دليل SDK المحلي لهذا التصحيح: docs/evidence/order-event-notice-region-validation.json؛
+دليل التحضير السابق محفوظ تاريخيًا ولا يثبت مواقع النسخة الحالية.

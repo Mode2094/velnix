@@ -584,7 +584,7 @@ exports.saveSettings=callable(async req=>{
   await db.runTransaction(async tx=>{await currentActor(tx,user);tx.set(db.doc('settings/system'),{organizationName,receiptFooter,supportPhone,updatedAt:FieldValue.serverTimestamp()});await audit('settings.updated',user,'system',{},tx);});return {ok:true};
 });
 
-exports.orderEventNotice=onDocumentCreated({document:'orders/{orderId}/events/{eventId}',region:REGION,retry:true},async event=>{
+exports.orderEventNotice=onDocumentCreated({document:'orders/{orderId}/events/{eventId}',region:'us-central1',retry:true},async event=>{
   if(!event.data)return;
   const order=await db.doc('orders/'+event.params.orderId).get();if(!order.exists)return;
   const members=await db.collection('members').where('role','in',['generalManager','manager','warehouse']).get();

@@ -19,7 +19,13 @@ test('actual SDK discovery sees only 23 internal endpoints and no Scheduler requ
   assert.deepEqual(Object.keys(m.endpoints).sort(),[...plan.functions].sort());assert.equal(Object.keys(m.endpoints).length,23);
   assert.ok((m.requiredAPIs||[]).every(a=>!['cloudscheduler.googleapis.com','fcm.googleapis.com','cloudkms.googleapis.com'].includes(a.api)));
   assert.ok(forbidden.every(n=>!m.endpoints[n]));
-  for(const endpoint of Object.values(m.endpoints)){assert.deepEqual(endpoint.region,['europe-west1']);assert.equal(endpoint.serviceAccountEmail,plan.runtimeServiceAccount);assert.equal(endpoint.platform,'gcfv2');}
+  assert.equal(Object.values(m.endpoints).filter(e=>e.callableTrigger).length,22);
+  assert.equal(Object.values(m.endpoints).filter(e=>e.eventTrigger).length,1);
+  assert.equal(plan.firestoreLocation,'nam5');
+  assert.deepEqual(m.endpoints.orderEventNotice.region,['us-central1']);
+  assert.equal(m.endpoints.orderEventNotice.eventTrigger.retry,true);
+  assert.equal(m.endpoints.orderEventNotice.eventTrigger.eventFilterPathPatterns.document,'orders/{orderId}/events/{eventId}');
+  for(const [name,endpoint] of Object.entries(m.endpoints)){assert.deepEqual(endpoint.region,[name==='orderEventNotice'?'us-central1':'europe-west1']);assert.deepEqual(endpoint.region,[plan.functionRegions[name]||plan.region]);assert.equal(endpoint.serviceAccountEmail,plan.runtimeServiceAccount);assert.equal(endpoint.platform,'gcfv2');}
   assert.equal(fs.existsSync(path.join(dest,'functions/node_modules')),false);
   assert.equal(fs.existsSync(path.join(dest,'functions/scripts')),false);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dest,'firebase.json'))).firestore.indexes,undefined);

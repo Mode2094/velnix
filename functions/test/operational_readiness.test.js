@@ -17,7 +17,7 @@ function fixture(overrides={}){
   if(p.endsWith('/releases/cloud.firestore'))return {rulesetName:'projects/'+project+'/rulesets/fixture'};
   if(p.includes('/rulesets/'))return {source:{files:[{name:'firestore.rules',content:plan.rules}]}};
   if(p.endsWith('/collectionGroups/-/indexes'))return {indexes:plan.indexes.map((i,n)=>({...i,name:`projects/${project}/databases/(default)/collectionGroups/${i.collectionGroup}/indexes/${n}`,state:'READY',fields:[...i.fields,{fieldPath:'__name__',order:i.fields.filter(f=>f.order).at(-1)?.order||'ASCENDING'}]}))};
-  if(p.endsWith('/locations/europe-west1/functions'))return {functions:plan.functions.map(f=>({name:`projects/${project}/locations/europe-west1/functions/${f.name}`,state:'ACTIVE',environment:'GEN_2',buildConfig:{runtime:'nodejs22',environmentVariables:{secret:'SENSITIVE_SENTINEL'}},serviceConfig:{serviceAccountEmail:'runtime@'+project+'.iam.gserviceaccount.com',environmentVariables:{secret:'SENSITIVE_SENTINEL'}}}))};
+  if(p.endsWith('/functions'))return {functions:plan.functions.filter(f=>p.includes('/locations/'+f.region+'/')).map(f=>({name:`projects/${project}/locations/${f.region}/functions/${f.name}`,state:'ACTIVE',environment:'GEN_2',buildConfig:{runtime:'nodejs22',environmentVariables:{secret:'SENSITIVE_SENTINEL'}},serviceConfig:{serviceAccountEmail:'runtime@'+project+'.iam.gserviceaccount.com',environmentVariables:{secret:'SENSITIVE_SENTINEL'}}}))};
   if(p.endsWith('/documents/companies'))return {};
   for(const platform of ['android','ios','web']){
    if(p.endsWith('/'+platform+'Apps'))return {apps:[{appId:ids[platform],state:'ACTIVE',packageName:platform==='android'?'com.mode2094.velnix':undefined,bundleId:platform==='ios'?'com.mode2094.velnix':undefined}]};
@@ -162,4 +162,16 @@ test('a missing join callable remains a concrete Backend blocker even when every
  const f=fixture();const base=f.args.get;
  f.args.get=async url=>{const response=await base(url);return new URL(url).pathname.endsWith('/functions')?{functions:response.functions.filter(fn=>!fn.name.endsWith('/joinSession'))}:response;};
  const r=await operationalReadiness(f.args);assert.deepEqual(r.services.functions.missing,['joinSession']);assert.ok(r.blockers.includes('backend_missing_or_inactive'));
+});
+
+test('source plan and read-only inventory preserve the nam5 trigger region exception',async()=>{
+ assert.equal(plan.functions.find(f=>f.name==='orderEventNotice').region,'us-central1');
+ assert.ok(plan.functions.filter(f=>f.kind==='callable').every(f=>f.region==='europe-west1'));
+ const f=fixture(),r=await operationalReadiness(f.args);
+ assert.deepEqual(r.services.functions.missing,[]);
+ assert.equal(f.calls.filter(url=>new URL(url).pathname.endsWith('/functions')).length,2);
+ assert.equal(r.services.functions.functions.find(f=>f.name==='orderEventNotice').region,'us-central1');
+ const bad=fixture({get:p=>p.includes('/locations/us-central1/functions')?{functions:[{name:`projects/${project}/locations/europe-west1/functions/orderEventNotice`,state:'ACTIVE'}]}:undefined});
+ const result=await operationalReadiness(bad.args);
+ assert.deepEqual(result.services.functions.missing,['orderEventNotice']);
 });
