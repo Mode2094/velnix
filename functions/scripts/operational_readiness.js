@@ -11,8 +11,20 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const text=fs.readFileSync(path.join(root,'functions/src/index.js'),'utf8');
  const functions=[...text.matchAll(/exports\.(\w+)=(callable|onRequest|onSchedule|onDocumentCreated)\(/g)].map(m=>({name:m[1],kind:m[2],region:'europe-west1'}));
  if(!functions.length||functions.length!==[...text.matchAll(/exports\.\w+\s*=/g)].length)throw Error('source_manifest_requires_review');
+ // These callables are exported through the existing join factory, not exports.foo.
+ // Fail closed if the factory binding or export shape changes; never import handlers
+ // (or initialize Admin SDK) merely to produce an offline source plan.
+ const joins=fs.readFileSync(path.join(root,'functions/src/join_requests.js'),'utf8');
+ const factory="const joins=require('./join_requests')({db,auth:getAuth(),FieldValue,FieldPath,requireAuth,currentActor,audit,fail});";
+ const binding='for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler);';
+ const returned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(joins);
+ if(!text.includes(factory)||!text.includes(binding)||[...text.matchAll(/exports\s*\[/g)].length!==1||!returned)throw Error('source_manifest_requires_review');
+ const names=returned[1].split(',').map(n=>n.trim());
+ if(names.length!==3||new Set(names).size!==names.length||names.some(n=>!['joinSession','listJoinRequests','decideJoinRequest'].includes(n)))throw Error('source_manifest_requires_review');
+ functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
+ if(new Set(functions.map(f=>f.name)).size!==functions.length)throw Error('source_manifest_requires_review');
  const rules=fs.readFileSync(path.join(root,'firestore.rules'),'utf8'),indexes=JSON.parse(fs.readFileSync(path.join(root,'firestore.indexes.json'),'utf8'));
- return {functions,backendSha256:hash(text),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
+ return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
 }
 function indexKey(index){return JSON.stringify({collectionGroup:index.collectionGroup,queryScope:index.queryScope,documentNameOrder:(index.fields||[]).find(f=>f.fieldPath==='__name__')?.order||(index.fields||[]).filter(f=>f.order).at(-1)?.order||'ASCENDING',fields:(index.fields||[]).filter(f=>f.fieldPath!=='__name__').map(({fieldPath,order,arrayConfig})=>({fieldPath,...(order?{order}:{}),...(arrayConfig?{arrayConfig}:{})}))});}
 async function operationalReadiness({get,auth,readIam,plan}){
@@ -49,7 +61,7 @@ async function operationalReadiness({get,auth,readIam,plan}){
  for(const platform of ['android','ios','web'])await check(platform+'Apps',async()=>{const list=await pages(`https://firebase.googleapis.com/v1beta1/projects/${PROJECT}/${platform}Apps?pageSize=100`,'apps');const registrations=list.map(a=>({appId:a.appId,state:a.state,identifier:a.packageName||a.bundleId||null}));for(const app of list)if(app.state==='ACTIVE'&&app.appId===APP_IDS[platform])apps.push({...app,platform});return {registrations,expectedRegistrationActive:list.some(a=>a.state==='ACTIVE'&&a.appId===APP_IDS[platform]&&(platform==='web'||(a.packageName||a.bundleId)==='com.mode2094.velnix'))};});
  if(project.status==='read'){
   const number=project.projectNumber;
-  await check('enabledApis',async()=>{const services=await pages(`https://serviceusage.googleapis.com/v1/projects/${number}/services?filter=state:ENABLED&pageSize=200`,'services');const enabled=services.map(s=>s.config?.name||s.name?.split('/').at(-1));return {requiredApiState:Object.fromEntries(['identitytoolkit.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','fcm.googleapis.com','run.googleapis.com','eventarc.googleapis.com','cloudbuild.googleapis.com','artifactregistry.googleapis.com','cloudscheduler.googleapis.com'].map(name=>[name,enabled.includes(name)]))};});
+  await check('enabledApis',async()=>{const services=await pages(`https://serviceusage.googleapis.com/v1/projects/${number}/services?filter=state:ENABLED&pageSize=200`,'services');const enabled=services.map(s=>s.config?.name||s.name?.split('/').at(-1));return {requiredApiState:Object.fromEntries(['identitytoolkit.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','fcm.googleapis.com','run.googleapis.com','eventarc.googleapis.com','cloudbuild.googleapis.com','artifactregistry.googleapis.com','pubsub.googleapis.com','storage.googleapis.com','firebaserules.googleapis.com','cloudscheduler.googleapis.com'].map(name=>[name,enabled.includes(name)]))};});
   await check('appCheck',async()=>{const services=await pages(`https://firebaseappcheck.googleapis.com/v1/projects/${number}/services?pageSize=100`,'services');return {enforcement:services.map(s=>({name:s.name?.split('/').at(-1),mode:s.enforcementMode||null})),callableEnforcementInSource:true,realAttestationTest:'not_executed'};});
   for(const app of apps){
    await check(app.platform+'Sdk',async()=>{

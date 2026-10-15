@@ -30,7 +30,7 @@ function fixture(overrides={}){
   if(p.endsWith('/sha'))return {certificates:[{certType:'SHA_1'},{certType:'SHA_256'}]};
   if(/\/(playIntegrityConfig|deviceCheckConfig|recaptchaV3Config)$/.test(p))return {name:p,secret:'SENSITIVE_SENTINEL'};
   if(u.hostname==='firebaseappcheck.googleapis.com'&&p.endsWith('/services'))return {services:[{name:p+'/firestore.googleapis.com',enforcementMode:'ENFORCED'}]};
-  if(u.hostname==='serviceusage.googleapis.com')return {services:['identitytoolkit.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','fcm.googleapis.com','run.googleapis.com','eventarc.googleapis.com','cloudbuild.googleapis.com','artifactregistry.googleapis.com','cloudscheduler.googleapis.com'].map(name=>({config:{name}}))};
+  if(u.hostname==='serviceusage.googleapis.com')return {services:['identitytoolkit.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','fcm.googleapis.com','run.googleapis.com','eventarc.googleapis.com','cloudbuild.googleapis.com','artifactregistry.googleapis.com','pubsub.googleapis.com','storage.googleapis.com','firebaserules.googleapis.com','cloudscheduler.googleapis.com'].map(name=>({config:{name}}))};
   if(p.endsWith('/locations/europe-west1/keyRings'))return {};
   if(p==='/v1beta1/projects/'+project)return {projectId:project,projectNumber:'948196868655',state:'ACTIVE'};
   throw Error('Unexpected read: '+p);
@@ -69,8 +69,8 @@ test('only the current registered web app and matching mobile packages qualify',
 test('project IAM read uses the pinned official human session and redacts unrelated identities',()=>{
  const calls=[],s=createGcloudSession({env:{},expectedAccount:owner,run:args=>{calls.push(args);return args[0]==='projects'?'{}':args[0]==='config'?'(unset)':owner;}});assert.deepEqual(s.readProjectIam(),{});const args=calls.at(-1);assert.equal(args[1],'get-iam-policy');assert.ok(args.includes('--account='+owner));assert.ok(args.includes('--billing-project='+project));
 });
-test('source manifest includes all 32 exports, existing scheduler, and deny-by-default rules; index normalization preserves real filters',()=>{
- assert.equal(plan.functions.length,32);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,1);assert.equal(plan.indexes.length,109);assert.equal(plan.bootstrapForbidden,true);
+test('source manifest includes all 35 exports, existing scheduler, and deny-by-default rules; index normalization preserves real filters',()=>{
+ assert.equal(plan.functions.length,35);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,1);assert.equal(plan.indexes.length,109);assert.equal(plan.bootstrapForbidden,true);
  assert.notEqual(indexKey(plan.indexes[0]),indexKey({...plan.indexes[0],queryScope:'COLLECTION_GROUP'}));
  assert.notEqual(indexKey(plan.indexes[0]),indexKey({...plan.indexes[0],fields:[...plan.indexes[0].fields,{fieldPath:'__name__',order:'DESCENDING'}]}));
 });
@@ -125,4 +125,41 @@ test('transport diagnostics expose the fixed failing route, never request tokens
  await assert.rejects(session.get('https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/collectionGroups/-/indexes?pageSize=100&pageToken=PRIVATE_PAGE_TOKEN'),e=>{
   assert.equal(e.diagnostic.request.method,'GET');assert.equal(e.diagnostic.request.pageSize,100);assert.equal(e.diagnostic.request.route,'projects/{project}/databases/(default)/collectionGroups/-/indexes');assert.equal(JSON.stringify(e).includes('PRIVATE_'),false);return true;
  });
+});
+
+// CLI prepare.js requires Pub/Sub and Storage for every v2 deployment. Rules
+// publishing also needs Rules API; missing services must not produce a green gate.
+test('v2 deployment and rules APIs are inventoried read-only and missing services block readiness',async()=>{
+ for(const missing of ['pubsub.googleapis.com','storage.googleapis.com','firebaserules.googleapis.com']){
+  const f=fixture();const base=f.args.get;
+  f.args.get=async url=>{const response=await base(url);return new URL(url).hostname==='serviceusage.googleapis.com'?{services:response.services.filter(s=>s.config.name!==missing)}:response;};
+  const r=await operationalReadiness(f.args);
+  assert.equal(r.services.enabledApis.requiredApiState[missing],false);
+  assert.ok(r.blockers.includes('api_not_enabled:'+missing));
+  assert.equal(r.deployed,false);assert.equal(r.deployment.resourcesChanged,false);
+  assert.ok(f.calls.every(url=>!/:enable|:batchEnable|:setIamPolicy/.test(url)));
+ }
+});
+
+test('offline manifest matches actual deployed exports, including protected join callables',()=>{
+ const {spawnSync}=require('node:child_process');
+ const r=spawnSync(process.execPath,['-e',"const api=require('./src/index'); console.log(JSON.stringify(Object.keys(api).sort()));"],{cwd:require('node:path').resolve(__dirname,'..'),encoding:'utf8',env:{PATH:process.env.PATH,GCLOUD_PROJECT:'demo-velnix',FIRESTORE_EMULATOR_HOST:'127.0.0.1:8080',FIREBASE_AUTH_EMULATOR_HOST:'127.0.0.1:9099',METADATA_SERVER_DETECTION:'none'}});
+ assert.equal(r.status,0,r.stderr);
+ assert.deepEqual(plan.functions.map(f=>f.name).sort(),JSON.parse(r.stdout));
+ for(const name of ['joinSession','listJoinRequests','decideJoinRequest'])assert.equal(plan.functions.find(f=>f.name===name).kind,'callable');
+});
+test('unrecognized dynamic source exports fail offline planning instead of silently disappearing',()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'velnix-manifest-'));
+ try{
+  fs.mkdirSync(path.join(dir,'functions/src'),{recursive:true});
+  for(const name of ['index.js','join_requests.js'])fs.copyFileSync(path.join(__dirname,'../src',name),path.join(dir,'functions/src',name));
+  fs.appendFileSync(path.join(dir,'functions/src/index.js'),"\nexports['unexpectedHandler']=callable(()=>{});\n");
+  assert.throws(()=>sourcePlan(dir),/source_manifest_requires_review/);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('a missing join callable remains a concrete Backend blocker even when every other function is active',async()=>{
+ const f=fixture();const base=f.args.get;
+ f.args.get=async url=>{const response=await base(url);return new URL(url).pathname.endsWith('/functions')?{functions:response.functions.filter(fn=>!fn.name.endsWith('/joinSession'))}:response;};
+ const r=await operationalReadiness(f.args);assert.deepEqual(r.services.functions.missing,['joinSession']);assert.ok(r.blockers.includes('backend_missing_or_inactive'));
 });
