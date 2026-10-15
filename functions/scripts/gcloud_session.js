@@ -21,7 +21,7 @@ function createGcloudSession({run=args=>execFileSync('gcloud',args,{encoding:'ut
  }};
  async function get(input){
   const url=new URL(input);
-  if(url.protocol!=='https:'||url.username||url.password||url.port||!['identitytoolkit.googleapis.com','firebase.googleapis.com','firestore.googleapis.com'].includes(url.hostname))throw Error('google_read_destination_refused');
+  if(url.protocol!=='https:'||url.username||url.password||url.port||!['identitytoolkit.googleapis.com','firebase.googleapis.com','firestore.googleapis.com','cloudfunctions.googleapis.com','firebaseappcheck.googleapis.com','firebaserules.googleapis.com','serviceusage.googleapis.com','cloudbilling.googleapis.com','cloudkms.googleapis.com'].includes(url.hostname))throw Error('google_read_destination_refused');
   const response=await fetchImpl(url.href,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+accessToken(),'X-Goog-User-Project':PROJECT},signal:AbortSignal.timeout(20000)});
   return readGoogleJson(response);
  }
@@ -34,6 +34,7 @@ function createGcloudSession({run=args=>execFileSync('gcloud',args,{encoding:'ut
   }
   return readGoogleJson(response);
  }
- return {account,credential,get,firestoreTransaction};
+ function readProjectIam(){return JSON.parse(invoke(['projects','get-iam-policy',PROJECT,'--account='+account,'--billing-project='+PROJECT,'--format=json','--quiet']));}
+ return {account,credential,get,firestoreTransaction,readProjectIam};
 }
 module.exports={PROJECT,createGcloudSession};
