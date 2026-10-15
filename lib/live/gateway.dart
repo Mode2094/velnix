@@ -21,13 +21,7 @@ class VelnixGateway {
       final result = await functions.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {
-      throw VelnixException(
-        e.code == 'unavailable'
-            ? 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة'
-            : e.code == 'aborted'
-            ? 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ'
-            : (e.message ?? 'حدث خطأ أثناء الاتصال بالخادم'),
-      );
+      throw VelnixException(callableErrorMessage(e.code, e.message));
     } on FirebaseAuthException catch (e) {
       throw VelnixException(authErrorMessage(e.code));
     }
@@ -163,6 +157,19 @@ class VelnixException implements Exception {
   @override
   String toString() => message;
 }
+
+/// Transport failures can surface as SDK `internal [0]`, not `unavailable`.
+/// Keep raw transport diagnostics out of UI while retaining business denials.
+String callableErrorMessage(
+  String code,
+  String? serverMessage,
+) => switch (code) {
+  'unavailable' => 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة',
+  'internal' =>
+    'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
+  'aborted' => 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ',
+  _ => serverMessage ?? 'حدث خطأ أثناء الاتصال بالخادم',
+};
 
 String authErrorMessage(String code) => switch (code) {
   'invalid-credential' ||

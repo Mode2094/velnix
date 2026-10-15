@@ -47,6 +47,40 @@ Future<void> loadPresentationFonts() async {
 }
 
 void main() {
+  test(
+    'callable transport errors never display raw internal SDK diagnostics',
+    () {
+      final message = callableErrorMessage(
+        'internal',
+        'internal [0] PRIVATE_DIAGNOSTIC',
+      );
+      expect(message, contains('تحقق من الاتصال'));
+      expect(message, isNot(matches(RegExp('[a-zA-Z]'))));
+      expect(message, isNot(contains('PRIVATE_DIAGNOSTIC')));
+      expect(
+        callableErrorMessage('unavailable', 'fetch failed'),
+        contains('تعذر الاتصال'),
+      );
+    },
+  );
+  test(
+    'callable mapping preserves business denials and stale revision guidance',
+    () {
+      expect(
+        callableErrorMessage('permission-denied', 'الصلاحية غير متاحة'),
+        'الصلاحية غير متاحة',
+      );
+      expect(
+        callableErrorMessage('failed-precondition', 'هذا الانتقال غير مسموح'),
+        'هذا الانتقال غير مسموح',
+      );
+      expect(
+        callableErrorMessage('aborted', 'aborted'),
+        contains('أعد تحميله قبل الحفظ'),
+      );
+    },
+  );
+
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
   test(
