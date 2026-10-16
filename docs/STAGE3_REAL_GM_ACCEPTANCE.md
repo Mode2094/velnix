@@ -1,88 +1,99 @@
-# Stage 3 real general-manager acceptance — BLOCKED before live access
+# Stage 3 — Enterprise Web build and real GM acceptance procedure
 
-Base reviewed: `e3689c58743d58d386f8fc68c636623f00c754cf` on
+Base reviewed: `aa1a9163887ae310adbea7f1a9d676951ed3c9eb` on
 `audit/production-readiness`. This is an operator plan, not an executed live test
 or permission to change cloud configuration. Keep PR #1 draft and unmerged.
 
-## Proven local blocker and minimum next input
+## Enterprise provider and deployment boundary
 
-The existing ignored `config/firebase.web.public.json` selects project
-`velnix-6c1a2`, Web app `1:948196868655:web:ace9b264b4fae48ac43cda`,
-auth domain `velnix-6c1a2.firebaseapp.com`, Live mode and staging environment.
-Its `FIREBASE_APPCHECK_SITE_KEY` is empty and `VELNIX_GOOGLE_ENABLED` is false.
-Debug App Check and Push are false. No configuration values were changed.
+Reviewed base for this migration: `aa1a9163887ae310adbea7f1a9d676951ed3c9eb`.
+The owner independently verified the existing Web app
+`1:948196868655:web:ace9b264b4fae48ac43cda` is registered in Firebase App Check
+with Fraud Defense / reCAPTCHA Enterprise, and supplied its public site key.
+This is owner-provided cloud evidence, not a new Console/API read by Codex.
 
-- `lib/main.dart` refuses Live Web startup without the site key and activates
-  `ReCaptchaV3Provider(webSiteKey)`. Missing key leads to `SetupFailureApp`.
-- `lib/live/live_app.dart` disables the only login button until
-  `VELNIX_GOOGLE_ENABLED=true`; Web login uses Firebase Google popup sign-in.
-- `functions/src/index.js` wraps every callable with `enforceAppCheck:true`.
-  Google authentication does not replace App Check. A compiled Web artifact,
-  emulator JWT or Firebase client API key does not prove real attestation.
-- The existing offline `scripts/check_runtime_config.py` rejects this file for
-  missing required Web configuration. No new runtime code or bypass is needed.
+Installed `firebase_app_check 0.4.8` exports `ReCaptchaEnterpriseProvider`;
+`firebase_app_check_web 0.2.6+1` maps it to the Enterprise JavaScript provider.
+No dependency upgrade is needed. Web now uses that provider exclusively.
+Android Play Integrity/debug selection and Apple DeviceCheck/debug selection
+are unchanged. Debug is still rejected for release/production. Activation
+failure still shows the setup failure screen, never an unprotected workspace.
+A missing/blank Enterprise key shows an explicit setup error with no login.
 
-**Provide next:** the **public reCAPTCHA v3 site key** registered with Firebase
-App Check for this exact Web app, and the exact approved browser origin
-(scheme/hostname/port). Confirm in Console that the key's allowed hostname and
-Firebase Auth Authorized Domains already cover that origin. Do not send the
-reCAPTCHA secret, App Check/debug tokens, Google authorization codes, cookies,
-ID/refresh tokens or service-account credentials.
+The existing public field **FIREBASE_APPCHECK_SITE_KEY** is retained to avoid
+renaming local platform configs and their preservation tooling. Its Web meaning
+is now **Enterprise public site key only**. It is not the Firebase API key or a
+secret key. There is no Classic/v3 fallback. Offline validation verifies presence
+and build intent, not a key's remote provider/type or valid attestation.
+`enforceAppCheck:true` remains unchanged for all callables.
 
-In Firebase Console → project `velnix-6c1a2` → App Check → Apps → the active Web
-app above: read its provider/registration status. If registration is missing,
-the owner must separately authorize/configure **reCAPTCHA v3**, with its secret
-entered only in the official Console. This code does not use Enterprise or v2
-keys. Do not change enforcement or Auth provider settings for this task. Merely
-supplying a nonempty site key does not prove registration, token issuance,
-domain authorization or real callable access. Cloud App Check state and domain
-lists have **not** been read by Codex; absence is not inferred from the local
-blank key. If the approved origin/provider needs changes, stop for that precise
-separate approval. Do not reuse/re-add a temporary Cloud Shell domain.
-
-## Local preparation after the input arrives — no deploy
-
-Preserve the current ignored file. Make a new ignored copy named
-`config/firebase.stage3.public.json` only if it does not already exist. Retain
-its verified Firebase SDK fields. Set just the real supplied
-`FIREBASE_APPCHECK_SITE_KEY` and `VELNIX_GOOGLE_ENABLED=true`; require:
+The ignored `config/firebase.stage3.production.public.json` is prepared from
+the existing verified SDK configuration, preserving its project/app/API key,
+sender, storage and authDomain fields. It contains the supplied PUBLIC Enterprise
+key and the following build intent (this fragment is not a complete SDK config):
 
 ```json
 {
   "VELNIX_MODE": "live",
-  "VELNIX_ENVIRONMENT": "staging",
-  "VELNIX_DEBUG_APPCHECK": false,
+  "VELNIX_ENVIRONMENT": "production",
   "VELNIX_GOOGLE_ENABLED": true,
-  "VELNIX_PUSH_ENABLED": false
+  "VELNIX_PUSH_ENABLED": false,
+  "VELNIX_DEBUG_APPCHECK": false
 }
 ```
 
-This is a fragment, not a complete SDK config or a replacement of its fields.
-The staging label does **not** isolate the shared real database. Leave VAPID
-empty and do not enable notifications on the device. No debug App Check,
-emulator entrypoint, custom token provider or synthetic sign-in is permitted.
-Use Node.js22 and the repository Flutter toolchain. Before opening a browser:
+Do not commit this file, print its contents, put a secret key in it, regenerate
+Firebase registrations, or replace existing SDK fields. Its site key was supplied
+for this app by the owner; no key was invented. Runtime files must be transferred
+locally by the owner if running from another checkout, not through Git. Do not
+run the generic config generator afterward: review the final flags before build.
+
+## Exact local build and proposed Hosting-only deployment
+
+Production preflight (never prints config values), then build:
 
 ```bash
-python3 scripts/check_runtime_config.py config/firebase.stage3.public.json --environment staging --platform web --expected-project velnix-6c1a2
-flutter build web --release --no-web-resources-cdn --no-wasm-dry-run --dart-define-from-file=config/firebase.stage3.public.json
+python3 scripts/check_runtime_config.py config/firebase.stage3.production.public.json --environment production --platform web --expected-project velnix-6c1a2
+flutter build web --release --no-web-resources-cdn --no-wasm-dry-run --dart-define-from-file=config/firebase.stage3.production.public.json
 node scripts/emulator-preview/assert-production.cjs
 ```
 
-These prepare local files only. Start a local file server for `build/web` using
-an **already approved origin**, not the emulator preview server; it must not
-rewrite SDK URLs or initialize emulator/Auth/App Check shims. An authorized
-localhost origin can use `python3 -m http.server PORT --bind 127.0.0.1 --directory
-build/web` with the approved hostname/port in the browser. Otherwise use the
-owner's existing approved HTTPS serving arrangement; do not publish Hosting,
-add a domain, tunnel or create a new hosted resource here. Never claim localhost
-is already authorized. Do not log browser request headers, response tokens,
-network HAR or SDK configuration contents. A public-only configuration file is
-still kept out of Git; never add private credentials to it.
+`firebase.hosting.json` is a standalone Hosting-only configuration, with existing
+default site `velnix-6c1a2`, public directory `build/web` and SPA fallback to
+`/index.html`. It contains no Functions, Firestore rules/indexes, hooks or
+additional site/target. Root `firebase.json` is unchanged. Existing origins:
+`https://velnix-6c1a2.web.app` and `https://velnix-6c1a2.firebaseapp.com`.
+The SDK authDomain remains its registered firebaseapp.com value; Hosting origin
+is not a new Firebase SDK field.
+
+**DO NOT RUN in this task.** Only after independent review and explicit approval
+of the Hosting release (not Functions/rules deployment), the exact proposed
+command is:
+
+```bash
+functions/node_modules/.bin/firebase deploy --project velnix-6c1a2 --account moderohe8@gmail.com --config firebase.hosting.json --only hosting --non-interactive
+```
+
+Use the official authorized human Firebase CLI session; never supply credentials
+in chat. Review `build/web` from the approved SHA and the successful preflight
+immediately before that future command. It updates the existing Hosting release,
+not a new site. Preserve the prior Hosting release/version ID for owner-authorized
+Console rollback; if there is no prior release, do not invent a rollback target.
+Hosting rollback does not undo database changes or delete acceptance evidence.
+Hosting uploads/storage/traffic and real Firebase calls can consume billed quotas;
+no services, billing changes or resource creation are authorized here.
+
+Before acceptance, the owner must confirm both intended hostnames are permitted
+by the Enterprise key and the selected hostname is in Auth Authorized Domains.
+Do not modify these settings or enforcement in this task. If permission/domain
+configuration is missing, stop and request the precise separate authorization.
+Do not use localhost, Cloud Shell domains, tunnels or emulator scripts to claim
+this Hosting acceptance. A compiled release and a registered key do not prove
+real token issuance, Google login, callable access or Eventarc delivery.
 
 ## Acceptance gates and the single allowed order
 
-Do not execute while BLOCKED. After the public configuration and origin are
+Do not execute before Hosting approval/deployment and origin checks. Once those are
 verified, first confirm in Auth Console that the existing Google-linked UID
 still matches the prior bootstrap/readback evidence and its existing member;
 if this cannot be established, do not attempt login. The owner then personally
@@ -141,9 +152,10 @@ Matching intended policy is not a fresh ruleset/hash readback from the cloud.
 Use existing regression coverage: `first_internal_deploy.test.js`,
 `operational_readiness.test.js`, emulator `rules.test.js`, `google_join.test.js`,
 `test/google_join_test.dart`, `test_runtime_config.py` and the production-build
-isolation assertion. No application/security code change or new duplicate test
-is needed for this configuration blocker. Run `scripts/validate.sh` on the
-reviewed tree and report actual results separately from real acceptance.
+isolation assertion. Enterprise provider, missing-key, Google runtime gate, production debug rejection
+and Hosting-only regressions supplement these existing tests. Run
+`scripts/validate.sh` on the reviewed tree and report actual results separately
+from real acceptance.
 
 Click/generic_v1, all delivery handlers/webhooks, Scheduler, FCM/device Push,
 KMS, printer, deployments, IAM/rules/index/provider/enforcement mutations,
@@ -151,19 +163,37 @@ bootstrap, identity changes and merge are outside this acceptance. Existing
 company directory metadata reads made by the UI are not shipping approval;
 never select a company or invoke any dispatch/company mutation endpoint.
 
-**Decision: BLOCKED.** Next action is the owner's public reCAPTCHA v3 site key
-and approved origin/registration confirmation. No real sign-in, callable
-acceptance, order creation or cloud writes were performed by this preparation.
+**Decision: prepared for independent build/source review; real acceptance remains
+UNTESTED and requires a separately approved Hosting release.** No real sign-in,
+App Check token request, callable acceptance, order creation or cloud write is
+performed by this preparation. The 23 deployed functions, current GM identity,
+Firestore policy and all deployment restrictions remain unchanged.
 
-## Local verification for this documentation change
+## Local migration verification (not real acceptance)
 
-`source scripts/cloud-env.sh` (Node22.23.3), then
-`export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Xmx1536m -XX:ActiveProcessorCount=2"`
-and `scripts/validate.sh`: exit 0; Flutter325, Node128, Firebase emulator68,
-configuration12 and PDF/barcode36 passed, zero skipped Node/emulator tests.
-Analysis/format/syntax passed, production dependency audit found zero
-vulnerabilities. Existing first-batch SDK discovery and rule regressions passed.
-No new test was needed for unchanged, already covered code. These are local
-regressions, not real acceptance. Base commit Push CI38797194488 and PR
-CI38797205288 are successful; CI for the new documentation commit must be
-reported separately after push. No real App Check token was requested or tested.
+- Node22.23.3; firebase_app_check0.4.8 unchanged; no lockfile/dependency upgrades.
+- `scripts/validate.sh`: exit0; analysis, formatting, syntax, secret scan and
+  production dependency audit passed (zero vulnerabilities); Flutter328, Node128,
+  emulator68, Python configuration14 and PDF/barcode36 passed. No skipped tests.
+- `flutter test test/firebase_configuration_test.dart --reporter expanded`
+  passed7 with default Google flag false; the same test with
+  `--dart-define=VELNIX_GOOGLE_ENABLED=true` passed7.
+- `bash scripts/emulator-preview/run-qa.sh`: all21 browser scenarios passed,
+  zero page errors, backend readback passed; synthetic demo-velnix-preview only.
+- `flutter build web --no-web-resources-cdn --no-wasm-dry-run` with
+  `--dart-define=VELNIX_MODE=demo` and separately `VELNIX_MODE=live`: both built.
+  `node scripts/browser_smoke.cjs` passed30 Demo checks across5 roles/3 widths,
+  using a loopback file server; `node scripts/emulator-preview/assert-production.cjs`
+  passed for Live. No real production browser/App Check execution.
+- `flutter build apk --debug --dart-define=VELNIX_MODE=demo` and separately
+  `--dart-define=VELNIX_MODE=live`: both built. Native App Check option blocks
+  are byte-for-byte unchanged from the base source.
+- The exact production preflight/build/isolation commands above passed with
+  the supplied public key and existing SDK fields. Final `build/web` is the
+  configured production release (not the Demo/blank-config build). Its
+  `main.dart.js` SHA256 is `912e899da3620e1b4532bd767f54f12871f6c1b159ee16d01f7617a24534c064`.
+- The production config is Git-ignored; no real key/config is added to Git.
+  Root firebase.json, Functions (including enforceAppCheck, regions, trigger
+  document/retry/logic), rules, indexes, IAM, Auth and GM state are unchanged.
+- No Hosting/Functions/rules deploy or cloud mutation was performed. Stop for
+  independent source/build review before the proposed Hosting-only command.

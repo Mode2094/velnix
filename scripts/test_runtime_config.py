@@ -1,4 +1,5 @@
 """Regression checks for configuration boundary mistakes, entirely offline."""
+import json
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,31 @@ class ConfigSafetyTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate({**config(), "VELNIX_ENVIRONMENT": "production", "FIREBASE_PROJECT_ID": "demo-velnix"},
                      environment="production", platform="web", expected_project="demo-velnix")
+
+    def test_production_enterprise_config_and_missing_key(self):
+        data = {**config(), "VELNIX_ENVIRONMENT": "production", "VELNIX_GOOGLE_ENABLED": True}
+        validate(data, environment="production", platform="web", expected_project="velnix-fixture")
+        for value in ["", "   "]:
+            with self.assertRaisesRegex(ValueError, "Enterprise"):
+                validate({**data, "FIREBASE_APPCHECK_SITE_KEY": value}, environment="production",
+                         platform="web", expected_project="velnix-fixture")
+        with self.assertRaises(ValueError):
+            validate({**data, "VELNIX_DEBUG_APPCHECK": True}, environment="production",
+                     platform="web", expected_project="velnix-fixture", release=False)
+
+    def test_hosting_is_default_site_spa_and_cannot_include_other_resources(self):
+        root = Path(__file__).resolve().parents[1]
+        target = json.loads((root / "firebase.hosting.json").read_text())
+        self.assertEqual(set(target), {"hosting"})
+        hosting = target["hosting"]
+        self.assertEqual(set(hosting), {"site", "public", "ignore", "rewrites"})
+        self.assertEqual(hosting["site"], "velnix-6c1a2")
+        self.assertEqual(hosting["public"], "build/web")
+        self.assertEqual(hosting["rewrites"], [{"source": "**", "destination": "/index.html"}])
+        self.assertIn("**/.*", hosting["ignore"])
+        main = (root / "lib/main.dart").read_text()
+        self.assertNotIn("ReCaptchaV3Provider", main)
+        self.assertIn("FirebaseConfiguration.webAppCheckProvider(webSiteKey)", main)
 
     def test_cli_failure_does_not_echo_private_input(self):
         with tempfile.TemporaryDirectory() as directory:

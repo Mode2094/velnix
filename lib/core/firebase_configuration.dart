@@ -1,9 +1,19 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 
 /// Public options are supplied by a local file for the selected platform.
 /// No project credentials or generated private configuration live in source.
 class FirebaseConfiguration {
+  // Keep the existing public field name; its Web semantics are Enterprise only.
+  static const enterpriseSiteKeyRequired =
+      'يلزم مفتاح reCAPTCHA Enterprise العام في FIREBASE_APPCHECK_SITE_KEY لتشغيل Web الحي.';
+
+  static ReCaptchaEnterpriseProvider webAppCheckProvider(String siteKey) {
+    if (siteKey.trim().isEmpty) throw StateError(enterpriseSiteKeyRequired);
+    return ReCaptchaEnterpriseProvider(siteKey);
+  }
+
   static const supplied = FirebaseOptions(
     apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
     appId: String.fromEnvironment('FIREBASE_APP_ID'),

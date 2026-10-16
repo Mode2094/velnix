@@ -53,8 +53,13 @@ Future<void> main() async {
     if (debugAppCheck && kReleaseMode) {
       throw StateError('App Check debug غير مسموح في إصدار الإنتاج');
     }
-    if (kIsWeb && webSiteKey.isEmpty) {
-      throw StateError('FIREBASE_APPCHECK_SITE_KEY مطلوب لنسخة الويب الحية');
+    if (kIsWeb && webSiteKey.trim().isEmpty) {
+      runApp(
+        const SetupFailureApp(
+          message: FirebaseConfiguration.enterpriseSiteKeyRequired,
+        ),
+      );
+      return;
     }
     if (!kIsWeb || webSiteKey.isNotEmpty) {
       await FirebaseAppCheck.instance.activate(
@@ -64,7 +69,9 @@ Future<void> main() async {
         providerApple: debugAppCheck
             ? const AppleDebugProvider()
             : const AppleDeviceCheckProvider(),
-        providerWeb: kIsWeb ? ReCaptchaV3Provider(webSiteKey) : null,
+        providerWeb: kIsWeb
+            ? FirebaseConfiguration.webAppCheckProvider(webSiteKey)
+            : null,
       );
     }
     runApp(const VelnixLiveApp());
@@ -74,21 +81,23 @@ Future<void> main() async {
 }
 
 class SetupFailureApp extends StatelessWidget {
-  const SetupFailureApp({super.key});
+  const SetupFailureApp({
+    super.key,
+    this.message =
+        'تعذر بدء التطبيق. راجع إعدادات بيئة التشغيل وFirebase وApp Check مع مسؤول المؤسسة.',
+  });
+  final String message;
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: velnixTheme(),
-    home: const Directionality(
+    home: Directionality(
       textDirection: TextDirection.rtl,
       child: Scaffold(
         body: Center(
           child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text(
-              'تعذر بدء التطبيق. راجع إعدادات بيئة التشغيل وFirebase وApp Check مع مسؤول المؤسسة.',
-              textAlign: TextAlign.center,
-            ),
+            padding: const EdgeInsets.all(24),
+            child: Text(message, textAlign: TextAlign.center),
           ),
         ),
       ),

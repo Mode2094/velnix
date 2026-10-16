@@ -1,4 +1,4 @@
-"""Offline public configuration preflight. Never prints configuration values."""
+"""Offline public preflight. Web FIREBASE_APPCHECK_SITE_KEY is Enterprise-only; never print values."""
 import argparse
 import json
 import re
@@ -30,6 +30,8 @@ def validate(data, *, environment, platform, expected_project, release=True):
         raise ValueError("Debug App Check is forbidden for this build")
     required = ["FIREBASE_PROJECT_ID", "FIREBASE_APP_ID", "FIREBASE_API_KEY", "FIREBASE_SENDER_ID"]
     if platform == "web":
+        if not data.get("FIREBASE_APPCHECK_SITE_KEY", "").strip():
+            raise ValueError("Web requires a PUBLIC reCAPTCHA Enterprise site key; Classic/v3 is not supported")
         required += ["FIREBASE_AUTH_DOMAIN", "FIREBASE_APPCHECK_SITE_KEY"]
         if data.get("VELNIX_PUSH_ENABLED"):
             required.append("FIREBASE_VAPID_KEY")
