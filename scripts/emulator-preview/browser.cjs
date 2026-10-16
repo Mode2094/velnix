@@ -7,6 +7,9 @@ const results=[],traffic=[],pageErrors=[],sessions={},orders={};let browser;
 const stamp=Date.now();
 async function scenario(name,fn){const start=Date.now();try{await fn();results.push({name,status:'passed',ms:Date.now()-start});console.log('PASS',name);}catch(e){results.push({name,status:'failed',error:e.message,ms:Date.now()-start});console.error('FAIL',name,e.message);throw e;}}
 const frame=p=>p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+// macOS binds Ctrl+A to "move to line start"; select-all is Cmd+A, so the
+// key must follow the host platform or existing field text is never replaced.
+const selectAll=p=>p.keyboard.press(process.platform==='darwin'?'Meta+A':'Control+A');
 async function activate(p,locator){await p.bringToFront();await p.waitForTimeout(60);await locator.evaluate(el=>(el.closest('[flt-tappable]')||el).click());await frame(p);}
 async function click(p,name){await activate(p,p.getByRole('button',{name,exact:true}).first());}
 async function back(p){await activate(p,p.getByRole('button',{name:/رجوع|Back/}).first());}
@@ -34,14 +37,14 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  const customer=`طلب اصطناعي ${role} ${stamp}`,amount={generalManager:'11.101',manager:'22.202',warehouse:'33.303',sales:'44.404',dataEntry:'55.505'}[role];
  const fields={'اسم المستلم':customer,'رقم الهاتف':'0790000000','المحافظة':'عمان','المنطقة':'اختبار محلي','العنوان التفصيلي':'عنوان اصطناعي فقط','وصف محتويات الطلب':'طرد اختبار دون شحن','الكمية':'2','المبلغ (دينار أردني)':amount,'ملاحظات':'محاكيات فقط'};
  const points={'اسم المستلم':[890,185],'رقم الهاتف':[300,185],'المحافظة':[300,276],'المنطقة':[890,367],'العنوان التفصيلي':[300,367],'وصف محتويات الطلب':[890,470],'الكمية':[300,458],'المبلغ (دينار أردني)':[890,574],'ملاحظات':[300,585]};
- for(const [label,value] of Object.entries(fields)){await p.mouse.click(...points[label]);await frame(p);await p.keyboard.press('Control+A');await p.keyboard.insertText(value);await frame(p);}
+ for(const [label,value] of Object.entries(fields)){await p.mouse.click(...points[label]);await frame(p);await selectAll(p);await p.keyboard.insertText(value);await frame(p);}
  const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/createOrder')&&r.request().method()==='POST',{timeout:60000});await p.mouse.dblclick(600,814,{delay:5});const res=await response,body=await res.json();assert.equal(res.status(),200);assert.ok(body.result?.id);
  await p.getByText(customer,{exact:false}).first().waitFor({timeout:30000});
  orders[role]={id:body.result.id,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
 }
 async function search(p,customer){
  const directory=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listOrderCreators')&&r.request().method()==='POST');await nav(p,'orders');await directory;await frame(p);await p.getByText('إدارة الطلبات',{exact:true}).waitFor();
- const box=await p.getByRole('textbox',{name:'بحث في كل الطلبات المسموح لك بها',exact:true}).boundingBox();await p.mouse.click(600,box.y+box.height/2);await frame(p);await p.keyboard.press('Control+A');await p.keyboard.insertText(customer);await frame(p);
+ const box=await p.getByRole('textbox',{name:'بحث في كل الطلبات المسموح لك بها',exact:true}).boundingBox();await p.mouse.click(600,box.y+box.height/2);await frame(p);await selectAll(p);await p.keyboard.insertText(customer);await frame(p);
  const found=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/searchOrders')&&r.request().method()==='POST');await p.keyboard.press('Enter');const response=await found;assert.equal(response.request().postDataJSON().data.query,customer);assert.equal(response.status(),200);return (await response.json()).result.items;
 }
 async function openOrder(p,o){
@@ -87,7 +90,7 @@ async function main(){
   await openOrder(p,o);await click(p,'تعديل');await p.getByRole('textbox',{name:'ملاحظات',exact:true}).waitFor();
   await p.screenshot({path:path.join(out,'editing.png')});
   // Full-screen edit route has a 56px app bar and no navigation rail.
-  const noteBox=await p.getByRole('textbox',{name:'ملاحظات',exact:true}).boundingBox();await p.mouse.click(300,noteBox.y+noteBox.height/2);await frame(p);await p.keyboard.press('Control+A');await p.keyboard.insertText('تم تعديل الطلب عبر الواجهة');await frame(p);
+  const noteBox=await p.getByRole('textbox',{name:'ملاحظات',exact:true}).boundingBox();await p.mouse.click(300,noteBox.y+noteBox.height/2);await frame(p);await selectAll(p);await p.keyboard.insertText('تم تعديل الطلب عبر الواجهة');await frame(p);
   let changed=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/updateOrder')&&r.request().method()==='POST');await click(p,'حفظ الطلب');assert.equal((await changed).status(),200);
   let latest=await okay(p,'getOrder',{id:o.id});assert.equal(latest.order.note,'تم تعديل الطلب عبر الواجهة');
   await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();
