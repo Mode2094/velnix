@@ -1,0 +1,10 @@
+# Original client material — NEVER commit.
+# May contain credentials (Click text has User_Name/User_Pass examples) or
+# private/copyrighted client files (video, signed agreement).
+click/*
+video/*
+agreement/*
+!.gitignore
+!README_AR.md
+!KNOWN_GOOD.sha256
+!MANIFEST.json
