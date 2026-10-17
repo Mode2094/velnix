@@ -82,15 +82,20 @@ async function goBack(p) {
 }
 
 /** Flutter exposes shell destinations as role=tab or role=button depending on width. */
-const tap = async (p, name, exact = true) => {
+const activate = (p, locator) => locator.evaluate(el => (el.closest('[flt-tappable]') || el).click());
+
+const tap = async (p, name) => {
   await p.bringToFront();
   await p.waitForTimeout(80);
-  const asTab = p.getByRole('tab', { name, exact });
-  if (await asTab.count()) await asTab.first().evaluate(el => (el.closest('[flt-tappable]') || el).click());
-  else await p.getByRole('button', { name, exact }).first().evaluate(el => (el.closest('[flt-tappable]') || el).click());
+  // Flutter names a rail destination "المزيد علامة التبويب 6 من 6", so the
+  // accessible name is a superset of the label. Matching it exactly always
+  // timed out; substring matching is what the real semantics expose.
+  const asTab = p.getByRole('tab', { name }).first();
+  if (await asTab.count()) { await activate(p, asTab); await p.waitForTimeout(1100); return; }
+  const asButton = p.getByRole('button', { name }).first();
+  await asButton.evaluate(el => (el.closest('[flt-tappable]') || el).click());
   await p.waitForTimeout(1100);
 };
-const activate = (p, locator) => locator.evaluate(el => (el.closest('[flt-tappable]') || el).click());
 
 async function openMembers(p) {
   await tap(p, 'المزيد');
@@ -106,10 +111,12 @@ async function openMembers(p) {
  * correctness bug: the edit would land on whichever employee happened to be
  * second in the list.
  */
-async function openFormFor(p, memberName) {
-  const nameNode = p.getByText(memberName, { exact: false }).first();
+async function openFormFor(p, memberEmail) {
+  // The email is unique and stable. The display name also appears in the
+  // greeting line, so matching on it can resolve to a node that is not the row.
+  const nameNode = p.getByText(memberEmail, { exact: false }).first();
   const nb = await nameNode.boundingBox();
-  if (!nb) throw new Error(`member "${memberName}" is not displayed in the roster`);
+  if (!nb) throw new Error(`member "${memberEmail}" is not displayed in the roster`);
   const buttons = p.getByRole('button', { name: 'إعدادات الموظف' });
   const n = await buttons.count();
   for (let i = 0; i < n; i++) {
@@ -117,12 +124,28 @@ async function openFormFor(p, memberName) {
     // Same rendered row: the settings control sits beside its member's name.
     if (bb && Math.abs(bb.y - nb.y) < 70) return { index: i, box: bb };
   }
-  throw new Error(`no settings control found on the row for "${memberName}"`);
+  throw new Error(`no settings control found on the row for "${memberEmail}"`);
 }
 
-async function scenario(name, fn) {
+async function scenario(name, fn, pageRef) {
   try { await fn(); results.push({ name, status: 'passed' }); console.log('PASS', name); }
-  catch (e) { results.push({ name, status: 'failed', error: e.message }); console.error('FAIL', name, e.message); }
+  catch (e) {
+    // Preserve evidence automatically so a failure is never diagnosed by
+    // guesswork on the next run.
+    let shot = null, semantics = null;
+    try {
+      if (pageRef) {
+        shot = path.join(out, `FAIL-${name.replace(/[^a-z0-9]+/gi, '-').slice(0, 50)}.png`);
+        await pageRef.screenshot({ path: shot });
+        semantics = await pageRef.evaluate(() => [...document.querySelectorAll('flt-semantics')]
+          .map(n => ({ role: n.getAttribute('role'), label: (n.getAttribute('aria-label') || '').slice(0, 60) }))
+          .filter(x => x.label).slice(0, 40));
+      }
+    } catch { }
+    results.push({ name, status: 'failed', error: e.message, screenshot: shot, semanticsAtFailure: semantics });
+    console.error('FAIL', name, e.message);
+    if (semantics) console.error('  semantics at failure:', JSON.stringify(semantics.slice(0, 12)));
+  }
 }
 
 async function readMembers(p) { return (await call(p, 'listMembers', {})).data.items; }
@@ -131,20 +154,21 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
   browser = await chromium.launch();
   const gm = await login('generalManager');
 
+
   await scenario('the roster opens and lists the synthetic members', async () => {
     await openMembers(gm);
     await gm.getByText('فريق العمل والصلاحيات', { exact: false }).first().waitFor({ timeout: 20000 });
     evidence.roster = (await readMembers(gm)).length;
-  });
+  }, gm);
 
   // Choose a target that is editable by a general manager and is not the GM.
   const members = await readMembers(gm);
   const target = members.find(m => m.role === 'dataEntry' && m.active === true && m.id !== 'qa-generalManager');
   if (!target) throw new Error('no editable synthetic member found');
-  evidence.target = { id: target.id, name: target.name, role: target.role, permissions: target.permissions || [], active: target.active };
+  evidence.target = { id: target.id, name: target.name, email: target.email, role: target.role, permissions: target.permissions || [], active: target.active };
 
   await scenario('the employee form for the identified member opens and is pre-filled', async () => {
-    const { index } = await openFormFor(gm, target.name);
+    const { index } = await openFormFor(gm, target.email);
     evidence.formIndex = index;
     const buttons = gm.getByRole('button', { name: 'إعدادات الموظف' });
     await activate(gm, buttons.nth(index));
@@ -158,7 +182,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     if (!shownName.includes(target.name.split(' ')[0])) {
       throw new Error(`the form shows "${shownName}" but "${target.name}" was requested`);
     }
-  });
+  }, gm);
 
   await scenario('an empty required name is refused before any backend call', async () => {
     const nameField = gm.getByRole('textbox', { name: 'اسم الموظف', exact: true }).first();
@@ -172,7 +196,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     const after = (await readMembers(gm)).find(m => m.id === target.id).name;
     if (after !== before) throw new Error('an invalid save mutated the member');
     evidence.emptySaveRefused = true;
-  });
+  }, gm);
 
   // ---- defect 3: a genuine role and permission change --------------------
   await scenario('role and permission are genuinely changed and persist', async () => {
@@ -180,7 +204,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     await goBack(gm);
     await gm.waitForTimeout(1200);
     await openMembers(gm);
-    const { index } = await openFormFor(gm, target.name);
+    const { index } = await openFormFor(gm, target.email);
     const buttons = gm.getByRole('button', { name: 'إعدادات الموظف' });
     await activate(gm, buttons.nth(index));
     await gm.waitForTimeout(1800);
@@ -207,7 +231,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     const dropdown = gm.getByRole('button').filter({ hasText: /مدخل بيانات|مدير عام|مستودع|مبيعات|^مدير$/ }).first();
     await activate(gm, dropdown);
     await gm.waitForTimeout(900);
-    const targetRoleOption = gm.getByText('مبيعات', { exact: true }).first();
+    const targetRoleOption = gm.getByRole('menuitem', { name: 'مبيعات', exact: true }).first();
     await activate(gm, targetRoleOption);
     await gm.waitForTimeout(900);
 
@@ -231,7 +255,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     await goBack(gm);
     await gm.waitForTimeout(1200);
     await openMembers(gm);
-    const again = await openFormFor(gm, target.name);
+    const again = await openFormFor(gm, target.email);
     const buttons2 = gm.getByRole('button', { name: 'إعدادات الموظف' });
     await activate(gm, buttons2.nth(again.index));
     await gm.waitForTimeout(1800);
@@ -242,7 +266,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
       throw new Error('permissions did not persist across a reopen');
     }
     await gm.screenshot({ path: path.join(out, 'after-role-change.png') });
-  });
+  }, gm);
 
   await scenario('suspension and reactivation are verified on the backend', async () => {
     const id = target.id;
@@ -256,7 +280,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
     if (!s.ok) throw new Error('reactivate refused');
     if ((await read()).active !== true) throw new Error('active=true did not persist');
     evidence.suspendReactivate = true;
-  });
+  }, gm);
 
   await scenario('an unchanged save is not mistaken for a successful edit', async () => {
     // Guards the defect where saving without changing anything looked like
@@ -267,7 +291,7 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
       JSON.stringify([...(before.permissions || [])].sort()) === JSON.stringify([...(after.permissions || [])].sort());
     if (!identical) throw new Error('precondition failed: state should be stable here');
     evidence.unchangedIsDistinct = true;
-  });
+  }, gm);
 
   await scenario('role escalation and foreign management are refused', async () => {
     const gmMember = members.find(m => m.role === 'generalManager');
@@ -283,15 +307,20 @@ async function readMembers(p) { return (await call(p, 'listMembers', {})).data.i
       evidence[`${role}Denied`] = `${l.code}/${s.code}`;
       await p.context().close();
     }
-  });
+  }, gm);
 
   await scenario('onboarding is a join request, not a direct create', async () => {
-    const r = await call(gm, 'saveMember', { id: 'stage4d-never-existed', role: 'sales', name: 'محاولة', permissions: [], active: true });
+    const gm2 = await login('generalManager');
+    // Move this check ahead of everything else: saveMember with a non-existent
+    // id must be refused, and joinSession must create a pending request.
+    const r = await call(gm2, 'saveMember', { id: 'stage4d-never-existed', role: 'sales', name: 'محاولة', permissions: [], active: true });
     if (r.ok) throw new Error('saveMember must not create an account from nothing');
     evidence.createFromNothing = r.code;
-    const joins = await call(gm, 'listJoinRequests', {});
+    const joins = await call(gm2, 'listJoinRequests', {});
     evidence.joinRequestsServed = joins.ok;
+    if (!joins.ok) throw new Error('listJoinRequests must be served to the general manager');
   });
+
 
   const passed = results.filter(r => r.status === 'passed').length;
   const failed = results.filter(r => r.status === 'failed');

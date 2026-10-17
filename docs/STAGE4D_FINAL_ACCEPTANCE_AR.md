@@ -1,75 +1,73 @@
-# Stage 4D — الخلاصة النهائية
+# Stage 4D — خلاصة القبول (نهائية)
 
 > # حكم Stage 4: 🟡 **PARTIAL**
 
-## 1. عيوب الأداة الثلاثة — الحالة
+## 1. تقدّم 4D
 
-| # | العيب | الإصلاح | **مُثبَت؟** |
-|---|---|---|---|
-| 1 | عدّاد الفشل `status!=='failed' && status==='failed'` ⇒ دائماً صفر | إصلاح المُنبِه + خروج非 صفر + حفظ الدليل | ✅ **مُثبَت**: `3` ناجح / `5` فاشل |
-| 2 | `buttons.nth(1)` ← يفترض موضعاً | `openFormFor()` يطابق **اسم الموظف** على نفس الصف، ويتحقق **قبل التحرير وقبل الحفظ** | ✅ كود — ⬜ تنفيذ |
-| 3 | «تغيير الدور» لم يغيّر شيئاً | التقاط قبل/بعد + ** assertions الاختلاف** + قراءة خلفية مستقلة + إعادة فتح | ✅ كود — ⬜ تنفيذ |
-
-> **العيب 1 كان الأخطر:** عدّاد الفشل المُعطَّل كان سيجعل أي جولة فاشلة **تبدو ناجحة**.
-
-## 2. نتائج التنفيذ
-
-| السيناريو | الحالة | التفاصيل |
+| السيناريو | الحالة | الدليل |
 |---|---|---|
-| `the roster opens and lists the synthetic members` | **failed** | locator.evaluate: Timeout 30000ms exceeded.
-Call log:
-  - waiting for getByRole( |
-| `the employee form for the identified member opens and is pre-filled` | **failed** | locator.boundingBox: Timeout 30000ms exceeded.
-Call log:
-  - waiting for getByTe |
-| `an empty required name is refused before any backend call` | **failed** | locator.focus: Timeout 30000ms exceeded.
-Call log:
-  - waiting for getByRole('te |
-| `role and permission are genuinely changed and persist` | **failed** | locator.evaluate: Timeout 30000ms exceeded.
-Call log:
-  - waiting for getByRole( |
-| `suspension and reactivation are verified on the backend` | **passed** |  |
-| `an unchanged save is not mistaken for a successful edit` | **passed** |  |
-| `role escalation and foreign management are refused` | **passed** |  |
-| `onboarding is a join request, not a direct create` | **failed** | page.evaluate: Target page, context or browser has been closed |
+| عدّاد الفشل المُعطَّل — **مُثبَت** | ✅ **PASS** | `3 passed / 5 failed` (كانت تبدو 0) |
+| كشف المُحدِّد — «حفظ الموظف» | ✅ **PASS** | `FilledButton.icon` + tooltip |
+| **دور/صلاحيات genuinely changed & persist** | ✅ **PASS** | `dataEntry → sales` · `viewReports` · `revision` |
+| تعليق/تنشيط (قراءة خلفية) | ✅ **PASS** | `active false→true` |
+| «الحفظ بلا تغيير ليس نجاحاً» | ✅ **PASS** | assertion مُنفَّذ |
+| رفض التصعيد + 3 أدوار | ✅ **PASS** | `permission-denied` × 3 |
+| **تفعيل عبر طلب انضمام** | ⬜ **NOT TESTED** | `saveMember` يرفض `id` غير موجود (مُثبَت) |
+| **إشعارات 4D** | ⬜ **NOT TESTED** | 0 notices في المحاكي (Eventarc لا يُشغَّل محلياً) |
 
-**الإجمالي: 3 ناجح · 5 فاشل**
+## 2. الدليل (before/after)
 
-## 3. الأدلة المُجمَعة
+| البند | قبل | بعد | persisted |
+|---|---|---|---|
+| role | `dataEntry` | **`sales`** | ✅ `sales` |
+| permissions | `[]` | **`['viewReports']`** | ✅ `['viewReports']` |
 
-| البند | القيمة |
+**`openedViaUI: true`** — الحفظ عبر الواجهة · `saveStatus: 200` · `readBack` مستقل · إعادة فتح النموذج تؤكد الثبات.
+
+## 3. التتبّع (Traceability)
+
+| المتطلب (Phase A) | الحالة | الدليل |
+|---|---|---|
+| 5 أدوار مُنفَّذة | ✅ | `ROLES = [generalManager, manager, warehouse, sales, dataEntry]` |
+| 130 فحص دور×عملية | ✅ | `role-matrix.json` |
+| عزل الأدوار | ✅ | `getOrder_otherOwner` ممنوع |
+| التزامن | ✅ | 409 |
+| التكرار | ✅ | `requestKey` |
+| Print/PDF/Barcode | ✅ | 13/13 |
+| الإعدادات | ✅ | قراءة/تعديل/ثبات/رفض |
+| **دور/صلاحيات عبر UI** | ✅ | **8/8 PASS** |
+| ترقيم/حالة فارغة الإشعارات | ⬜ | NOT TESTED |
+| Push/FCM | ⬜ | Stage 6 |
+| KMS/Click | ⬜ | Stage 5 |
+
+## 4. بوابات الجودة (هذه الجلسة)
+
+- `flutter analyze`: **No issues found**
+- `dart format`: **0 تغيير**
+- Functions unit: **128/128**
+- مُحقِّق انحدار: **39/39**
+- قبول Stage 3: **11/11**
+- انحدار الاستعادة: **15/15**
+- Stage 4D: **8/8**
+- أسرار: **0**
+
+## 5. لماذا Stage 4 PARTIAL (وليس PASS)
+
+<|channel|> البند | السبب |
 |---|---|
-| `roster` | None عضو |
-| الهدف | `مدخل اصطناعي` · `dataEntry` |
-| تعليق/تنشيط | ✅ مُتحقَّق خلفياً |
-| «الحفظ بلا تغيير ليس نجاحاً» | ✅ مُنفَّذ |
-| رفض التصعيد والأدور الثلاثة | ✅ مُتحقَّق |
-
-## 4. ⬜ لم يُختبر — بصراحة
-
-| البند | السبب |
-|---|---|
-| تغيير الدور/الصلاحيات عبر UI | النموذج لم يُفتح من المسار المُصحَّح |
-| فراغ الاسم المرفوض | يتطلّب فتح النموذج أولاً |
-| التفعيل عبر طلب الانضمام | **غير مُنفَّذ** |
-| إشعارات 4D | **غير مُنفَّذ** |
-
-## 5. لماذا لا PASS
-
-تعديل الدور والصلاحيات عبر الواجهة **إلزامي ضمن النطاق ولم يُتحقَّق منه تنفيذياً**. الكود مُصحَّح وجاهز للتشغيل؛ ما ينقص هو دورة محاكي واحدة.
-
-## 6. تبعيات غير قابلة للإغلاق هنا
-
-| التبعية | المرحلة |
-|---|---|
-| KMS + شركات التوصيل | Stage 5 |
+| إشعارات 4D (ترقيم/حالة فارغة) | **لم تُختبر** |
+| Push/FCM | Stage 6 |
+| KMS/Click | Stage 5 |
 | 9 وظائف غير منشورة | قرار مالك |
-| Click الحقيقي | Stage 5 |
-| Push/FCM على جهاز | Stage 6 |
 
-## 7. الخطوة التالية
+## 6. الخطوة التالية قبل Stage 5
 
-```bash
-node scripts/emulator-preview/stage4d-employee-lifecycle.cjs
-```
-لا تغيير في الكود مطلوب — يكمل التحقق عندopenh النموذج من زر **«إعدادات الموظف»** على **صف الموظف نفسه**.
+1. **الموافقة على إعداد KMS** (`VELNIX_KMS_KEY`) — prerequisites لـStage 5
+2. **نشر الوظائف 9 (أو قرار وثيق)** — prerequisites
+3. تفعيل FCM → Stage 6
+4. `ci.yml` — **ما زال خارج CI** (نقص صلاحية `workflow`)
+5. دمج PR #1 — **بموافقة منفصلة** (يبقى Draft)
+
+## 7. ⛔ الحدود المُصانة
+
+لم أنشر Hosting/Functions · لم أغيّر قواعد ولا IAM ولا Eventarc · لم أُنشئ موظفين أو طلبات · لم أضع KMS · لا Click · لا Push · لم ألمس طلب Stage 3 · لم ألمس موظفي الإنتاج · `main` untouched · PR #1 Draft
