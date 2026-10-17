@@ -59,6 +59,13 @@ const notice = (orderId, read) => doc({
   orderId: { stringValue: orderId }, read: { booleanValue: read }
 }, 'projects/p/databases/(default)/documents/notices/n1');
 
+
+// The mandatory B2r gate requires an idempotency record that points at THIS order,
+// so one-order fixtures must carry a matching record rather than an empty stub.
+const idemFor = (orderId, fields = {}) =>
+  doc({ orderId: { stringValue: orderId }, payloadHash: { stringValue: 'h' }, createdBy: { stringValue: 'u1' }, ...fields },
+       'projects/p/databases/(default)/documents/idempotency/i1');
+
 const base = (over = {}) => ({
   members: [gmDoc()], users, orders: [], idempotency: [],
   notices: [], audit: [], orderEvents: {}, errors: {}, ...over
@@ -74,18 +81,20 @@ test('B1: zero tagged orders is NOT TESTED, never PASS', () => {
 });
 
 test('B1: exactly one tagged order is PASS', () => {
-  const out = evaluate(base({ orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempency/i1')] }));
+  const out = evaluate(base({ orders: [goodOrder()], idempotency: [idemFor('order1')] }));
   assert.equal(row(out, 'B1').status, 'PASS');
-  assert.equal(row(out, 'B2').status, 'PASS');
+  assert.equal(row(out, 'B2r').status, 'PASS', 'the idempotency record belongs to this order');
 });
 
 test('B1: more than one tagged order is FAIL and blocks every later gate', () => {
   const out = evaluate(base({
     orders: [goodOrder(), goodOrder(NAME('order2'))],
-    idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')]
+    idempotency: [idemFor('order1')]
   }));
   assert.equal(row(out, 'B1').status, 'FAIL');
-  assert.equal(out.decision, 'DUPLICATE_FOUND');
+  // A conclusive FAIL outranks the gates that short-circuited, so the verdict
+  // is FAIL rather than NOT_EXECUTED.
+  assert.equal(out.decision, 'FAIL');
   assert.equal(row(out, 'B3').status, 'FAIL', 'B3 is the duplicate detector row itself');
   for (const id of ['B4', 'B5', 'B6']) assert.equal(row(out, id).status, 'NOT TESTED');
   assert.equal(out.orderId, null, 'no single order is nominated when a duplicate exists');
@@ -113,7 +122,7 @@ test('pagination: a repeated page token is rejected rather than silently trusted
 // --------------------------------------------- 3. notice read is observed
 test('E1/E2: missing notice is NOT TESTED, not PASS', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1')
   }));
   assert.equal(row(out, 'E1').status, 'FAIL');
@@ -122,7 +131,7 @@ test('E1/E2: missing notice is NOT TESTED, not PASS', () => {
 
 test('E2: notice present but unread is NOT TESTED, never an unconditional PASS', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1'),
     notices: [notice('order1', false)]
   }));
@@ -133,7 +142,7 @@ test('E2: notice present but unread is NOT TESTED, never an unconditional PASS',
 
 test('E2: notice present and read is PASS from the observed flag', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1'),
     notices: [notice('order1', true)]
   }));
@@ -143,7 +152,7 @@ test('E2: notice present and read is PASS from the observed flag', () => {
 
 test('E2: a notice belonging to another order is not counted', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1'),
     notices: [notice('someoneElse', true)]
   }));
@@ -161,7 +170,7 @@ test('documentIdFromName: only orders/<id> is accepted', () => {
 
 test('C0: a document whose name cannot be parsed is FAIL, not silently accepted', () => {
   const bad = { name: 'not/a/document/name', fields: { customer: { stringValue: TAG } } };
-  const out = evaluate(base({ orders: [bad], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')] }));
+  const out = evaluate(base({ orders: [bad], idempotency: [idemFor('order1')] }));
   assert.equal(row(out, 'C0').status, 'FAIL');
 });
 
@@ -171,7 +180,7 @@ test('C1: a wrong fixture amount or quantity is FAIL', () => {
     quantity: { integerValue: 5 }, amountMinor: { integerValue: 250 },
     hasDelivery: { booleanValue: false }
   }, NAME('o1'));
-  const out = evaluate(base({ orders: [wrong], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')] }));
+  const out = evaluate(base({ orders: [wrong], idempotency: [idemFor('o1')] }));
   assert.equal(row(out, 'C1').status, 'FAIL');
 });
 
@@ -181,7 +190,7 @@ test('C1: a real-looking phone number would be FAIL, never reported', () => {
     quantity: { integerValue: 1 }, amountMinor: { integerValue: 0 },
     hasDelivery: { booleanValue: false }
   }, NAME('o1'));
-  const out = evaluate(base({ orders: [leaky], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')] }));
+  const out = evaluate(base({ orders: [leaky], idempotency: [idemFor('o1')] }));
   assert.equal(row(out, 'C1').status, 'FAIL');
   assert.match(row(out, 'C1').actual, /phone=UNEXPECTED/);
 });
@@ -195,7 +204,7 @@ test('C3/C4: a half-finished workflow is NOT TESTED, never PASS', () => {
     revision: { integerValue: 2 }, note: { stringValue: TAG }
   }, NAME('o1'));
   const out = evaluate(base({
-    orders: [partial], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [partial], idempotency: [idemFor('o1')],
     orderEvents: { o1: [doc({ action: { stringValue: 'created' } })] }
   }));
   assert.equal(row(out, 'C3').status, 'NOT TESTED');
@@ -206,7 +215,7 @@ test('C3/C4: a half-finished workflow is NOT TESTED, never PASS', () => {
 
 test('D1/D2: a complete workflow is PASS', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1'),
     notices: [notice('order1', true)]
   }));
@@ -218,7 +227,7 @@ test('D1/D2: a complete workflow is PASS', () => {
 
 test('audit for a different order does not satisfy this order gates', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('someOtherOrder')
   }));
   assert.equal(row(out, 'D2').status, 'FAIL');
@@ -249,7 +258,7 @@ test('the client-SDK gate is always reported, even before an order exists', () =
 
 test('FCM is never claimed as tested; only the internal notice is assessed', () => {
   const out = evaluate(base({
-    orders: [goodOrder()], idempotency: [doc({}, 'projects/p/databases/(default)/documents/idempotency/i1')],
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
     orderEvents: { order1: events() }, audit: audit('order1'),
     notices: [notice('order1', true)]
   }));
@@ -286,4 +295,78 @@ test('UI exposes the internal-completion confirmation the journey depends on', (
   const src = fs.readFileSync(UI, 'utf8');
   assert.match(src, /تأكيد إكمال الطلب الداخلي/, 'terminal completion is explicitly confirmed');
   assert.match(src, /إكمال الطلب الداخلي/, 'the internal-completion action is labelled');
+});
+
+// -------------------------------------------- 9. honest overall reporting
+test('reporting: all gates unverified can never produce an overall PASS', () => {
+  const out = evaluate(base());
+  assert.equal(out.decision, 'NOT_EXECUTED');
+  assert.ok(out.decision !== 'PASS');
+  assert.ok(out.mandatoryPassed < out.mandatoryGates);
+  assert.match(out.why, /not evaluated/);
+});
+
+test('reporting: identity gates passing is still not an overall PASS', () => {
+  const out = evaluate(base());
+  for (const id of ['A1', 'A2', 'A3']) assert.equal(row(out, id).status, 'PASS');
+  assert.equal(out.decision, 'NOT_EXECUTED', 'passing identity alone must not accept the journey');
+});
+
+test('reporting: a failed read makes the verdict UNVERIFIED', () => {
+  const out = evaluate(base({ errors: { orders: 'permission denied' } }));
+  assert.equal(out.decision, 'UNVERIFIED');
+  assert.match(out.why, /failed or was not fully paged/);
+});
+
+test('reporting: an incomplete page scan makes the verdict UNVERIFIED', () => {
+  const out = evaluate(base({ complete: { orders: false } }));
+  assert.equal(out.decision, 'UNVERIFIED');
+});
+
+test('reporting: an idempotency record pointing at another order is a FAIL', () => {
+  const out = evaluate(base({
+    orders: [goodOrder()],
+    idempotency: [idemFor('some-other-order')],
+    orderEvents: { order1: events() }, audit: audit('order1'),
+    notices: [notice('order1', true)]
+  }));
+  assert.equal(row(out, 'B2r').status, 'FAIL');
+  assert.equal(out.decision, 'FAIL');
+});
+
+test('reporting: a fully verified journey is PASS despite F1 outstanding', () => {
+  const out = evaluate(base({
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
+    orderEvents: { order1: events() }, audit: audit('order1'),
+    notices: [notice('order1', true)]
+  }));
+  assert.equal(out.decision, 'PASS');
+  assert.equal(out.mandatoryPassed, out.mandatoryGates);
+  assert.deepEqual(out.observationalOutstanding, ['F1'],
+    'F1 is reported as outstanding but does not block acceptance');
+});
+
+test('reporting: every row states whether it is frontend or backend evidence', () => {
+  const out = evaluate(base({ orders: [goodOrder()], idempotency: [idemFor('order1')] }));
+  for (const r of out.rows) {
+    assert.ok(['frontend', 'backend'].includes(r.source), `${r.id} has source ${r.source}`);
+  }
+});
+
+test('reporting: the duplicate verdict is FAIL even though later gates never ran', () => {
+  const out = evaluate(base({ orders: [goodOrder(), goodOrder(NAME('order2'))] }));
+  assert.equal(out.decision, 'FAIL');
+  assert.ok(!out.mandatoryGates || out.mandatoryPassed < out.mandatoryGates,
+    'short-circuited gates must not be counted as satisfied');
+});
+
+test('A3: a genuine google-linked verified user is required, not a single user globally', () => {
+  const many = Array.from({ length: 4 }, () => users[0]);
+  assert.equal(row(evaluate(base({ users: many })), 'A3').status, 'PASS',
+    'several legitimate employees must not fail the identity gate');
+  assert.equal(row(evaluate(base({ users: [] })), 'A3').status, 'FAIL',
+    'no Google-linked identity must still fail');
+  const unverified = [{ disabled: false, emailVerified: false, providerUserInfo: [{ providerId: 'google.com' }] }];
+  assert.equal(row(evaluate(base({ users: unverified })), 'A3').status, 'FAIL',
+    'an unverified identity must fail');
 });

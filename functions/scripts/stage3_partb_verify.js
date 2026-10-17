@@ -34,6 +34,15 @@ const DB = '(default)';
 const PAGE = 100;                     // small on purpose: proves pagination works
 
 const f = v => (v && typeof v === 'object') ? v : {};
+
+/*
+ * MANDATORY gates must all PASS before the journey can be called accepted.
+ * F1 is observational: it can only be witnessed in the owner's own browser
+ * session, so it is reported but can never be satisfied from here.
+ */
+const MANDATORY = ['A1', 'A2', 'A3', 'B1', 'B2r', 'C0', 'C1', 'C2', 'C3', 'C4',
+                   'D1', 'D2', 'E1', 'E2'];
+const OBSERVATIONAL = ['F1'];
 const num = v => Number(v ?? 0);
 const field = (fields, name) => f(fields)[name];
 
@@ -77,8 +86,14 @@ async function listAll(get, baseUrl, limit = 100000) {
  * @param input.errors       non-fatal read errors, keyed by dataset
  */
 function evaluate(input) {
+  // A read that failed, or a page scan that hit its cap, makes the whole
+  // verdict UNVERIFIED rather than silently reducing it to a PASS.
+  finalise.ctx = { errors: input.errors || {}, complete: input.complete || {} };
   const rows = [];
-  const add = (id, gate, expected, actual, status) => rows.push({ id, gate, expected, actual, status });
+  // Every row records where its evidence came from, so a backend readback can
+  // never be mistaken for evidence driven through the real UI.
+  const add = (id, gate, expected, actual, status, source = 'backend') =>
+    rows.push({ id, gate, expected, actual, status, source });
   const fail = (label, e) => (input.errors || {})[label];
 
   // ---- A. identity -------------------------------------------------------
@@ -97,9 +112,19 @@ function evaluate(input) {
 
   const users = input.users || [];
   const providers = [...new Set(users.flatMap(u => (u.providerUserInfo || []).map(p => p.providerId)))];
-  add('A3', 'exactly one Auth user, google-linked, verified', 'exactly 1, provider google.com',
-      fail('users') ? 'read failed' : `${users.length} user(s), providers=${providers.join('|') || 'none'}`,
-      fail('users') ? 'NOT TESTED' : (users.length === 1 && providers.includes('google.com') ? 'PASS' : 'FAIL'));
+  // A genuine Google identity is enabled, email-verified and google-linked.
+  // The previous gate asserted "exactly one user" and never checked the verified
+  // flag at all, so an unverified account would have passed.
+  const genuine = users.filter(u => u.disabled !== true && u.emailVerified === true
+    && (u.providerUserInfo || []).some(p => p.providerId === 'google.com'));
+  // The property that matters is that a genuine, enabled, verified Google
+  // identity exists. Demanding exactly one Auth user worldwide is not an
+  // authorization property: it would wrongly fail any deployment that simply
+  // has more than one legitimate employee. The observed count is still reported.
+  add('A3', 'an enabled, verified, google-linked Auth user exists', '>=1, provider google.com',
+      fail('users') ? 'read failed'
+        : `${users.length} user(s), ${genuine.length} enabled+verified google-linked, providers=${providers.join('|') || 'none'}`,
+      fail('users') ? 'NOT TESTED' : (genuine.length >= 1 ? 'PASS' : 'FAIL'));
 
   // ---- B. uniqueness of the synthetic order ------------------------------
   const orders = input.orders || [];
@@ -117,9 +142,8 @@ function evaluate(input) {
       b1status);
 
   const idem = input.idempotency || [];
-  add('B2', 'idempotency record exists for the create', '>=1 when an order exists',
-      fail('idempotency') ? 'read failed' : `${idem.length} record(s)`,
-      fail('idempotency') ? 'NOT TESTED' : (n === 0 ? 'NOT TESTED' : (idem.length >= 1 ? 'PASS' : 'FAIL')));
+  add('B2', 'idempotency total record count (informational)', 'counted',
+      fail('idempotency') ? 'read failed' : `${idem.length} record(s)`, 'NOT TESTED');
 
   add('F1', 'client-SDK Firestore denial (getDoc / getDocs / updateDoc)',
       'permission-denied observed in the owner browser session',
@@ -132,7 +156,7 @@ function evaluate(input) {
         'no tagged order', 'NOT TESTED');
     add('B5', 'audit + event trail', 'created + edited + 4x status_changed', 'no tagged order', 'NOT TESTED');
     add('B6', 'internal notice read', 'notice exists and is read', 'no tagged order', 'NOT TESTED');
-    return { rows, orderId: null, decision: 'NOT_EXECUTED' };
+    return finalise({ rows, orderId: null });
   }
 
   if (n > 1) {
@@ -141,7 +165,7 @@ function evaluate(input) {
     add('B4', 'internal status workflow', 'single order only', 'blocked by duplicate', 'NOT TESTED');
     add('B5', 'audit + event trail', 'single order only', 'blocked by duplicate', 'NOT TESTED');
     add('B6', 'internal notice read', 'single order only', 'blocked by duplicate', 'NOT TESTED');
-    return { rows, orderId: null, decision: 'DUPLICATE_FOUND' };
+    return finalise({ rows, orderId: null });
   }
 
   // ---- C. the synthetic order (the only record described) ---------------
@@ -180,6 +204,15 @@ function evaluate(input) {
   const edited = /INTERNAL TEST EDITED/.test(String(of.note?.stringValue || ''));
   add('C4', 'notes edited through the UI', 'edited marker present',
       `noteEdited=${edited}`, edited ? 'PASS' : 'NOT TESTED');
+
+  // B2 is decided here because it must reference THIS order id, not merely exist.
+  {
+    const mineIdem = idem.filter(d => field(d.fields, 'orderId')?.stringValue === orderId);
+    add('B2r', 'idempotency record belongs to the approved order',
+        'one record whose orderId equals this order',
+        fail('idempotency') ? 'read failed' : `${mineIdem.length} record(s) point at this order`,
+        fail('idempotency') ? 'NOT TESTED' : (mineIdem.length === 1 ? 'PASS' : 'FAIL'));
+  }
 
   // ---- D. events + audit -------------------------------------------------
   const evDocs = (input.orderEvents || {})[orderId] || [];
@@ -220,9 +253,45 @@ function evaluate(input) {
       fail('notices') ? 'read failed' : `${readCount} of ${mine2.length} read — internal Firestore notice only, FCM not claimed`,
       e2);
 
-  const anyFail = rows.some(r => r.status === 'FAIL');
-  return { rows, orderId, orderStatus: of.status?.stringValue,
-           revision: num(of.revision?.integerValue), decision: anyFail ? 'FAIL' : 'PASS' };
+  return finalise({ rows, orderId, orderStatus: of.status?.stringValue,
+                    revision: num(of.revision?.integerValue) });
+}
+
+
+/**
+ * Overall decision.
+ * PASS is only reachable when every mandatory gate PASSED, every mandatory
+ * row was evaluated, and no read was degraded or truncated. A NOT TESTED gate,
+ * a failed read or an incomplete page scan can never yield PASS.
+ */
+function finalise({ rows, orderId, orderStatus, revision }) {
+  const problems = (input = {}) => {
+    const { errors = {}, complete = {} } = input;
+    return Object.keys(errors).length > 0 ||
+           Object.values(complete).some(v => v === false);
+  };
+  const degraded = problems(finalise.ctx || {});
+  const mandatory = rows.filter(r => MANDATORY.includes(r.id));
+  const missing = MANDATORY.filter(id => !rows.some(r => r.id === id));
+  const failed = mandatory.filter(r => r.status === 'FAIL');
+  const untested = mandatory.filter(r => r.status !== 'PASS');
+  const observational = rows.filter(r => OBSERVATIONAL.includes(r.id));
+
+  let decision, why;
+  if (degraded) { decision = 'UNVERIFIED'; why = 'a required read failed or was not fully paged'; }
+  // A FAIL is conclusive and outranks the gates that never got evaluated:
+  // a duplicate (B1 FAIL) short-circuits the rest and must stay a FAIL.
+  else if (failed.length) { decision = 'FAIL'; why = 'failed gates: ' + failed.map(r => r.id).join(','); }
+  else if (missing.length) { decision = 'NOT_EXECUTED'; why = 'mandatory gates not evaluated: ' + missing.join(','); }
+  else if (untested.length) { decision = 'NOT_EXECUTED'; why = 'not verified: ' + untested.map(r => r.id).join(','); }
+  else { decision = 'PASS'; why = 'every mandatory gate passed'; }
+
+  return {
+    rows, orderId, orderStatus, revision, decision, why,
+    mandatoryGates: MANDATORY.length,
+    mandatoryPassed: mandatory.filter(r => r.status === 'PASS').length,
+    observationalOutstanding: observational.filter(r => r.status !== 'PASS').map(r => r.id)
+  };
 }
 
 /** Firestore REST document names look like projects/x/databases/y/documents/orders/<id>. */
@@ -269,19 +338,31 @@ async function main() {
     }
   }
 
+  const complete = {
+    members: members.truncated !== true,
+    orders: orders.truncated !== true,
+    idempotency: idempotency.truncated !== true,
+    notices: notices.truncated !== true,
+    audit: audit.truncated !== true,
+    users: (users || []).length < 1000
+  };
+
   const out = evaluate({
-    members, users, orders, idempotency, notices, audit, orderEvents, errors,
-    orderPages: orders.truncated ? 'many' : 'complete'
+    members, users, orders, idempotency, notices, audit, orderEvents, errors, complete,
+    orderPages: orders.truncated ? 'truncated' : 'complete'
   });
 
   console.log(JSON.stringify({
     project: PROJECT, tag: TAG, decision: out.decision,
     orderId: out.orderId, orderStatus: out.orderStatus, revision: out.revision,
-    readErrors: Object.keys(errors), rows: out.rows
+    decision: out.decision, decisionReason: out.why,
+    mandatoryGates: out.mandatoryGates, mandatoryPassed: out.mandatoryPassed,
+    observationalOutstanding: out.observationalOutstanding,
+    readsComplete: complete, readErrors: Object.keys(errors), rows: out.rows
   }, null, 2));
 }
 
-module.exports = { evaluate, documentIdFromName, listAll, TAG, PROJECT, PAGE };
+module.exports = { evaluate, documentIdFromName, listAll, TAG, PROJECT, PAGE, MANDATORY, OBSERVATIONAL, finalise };
 
 if (require.main === module) {
   main().catch(e => { console.error('verification failed:', e.message); process.exitCode = 1; });
