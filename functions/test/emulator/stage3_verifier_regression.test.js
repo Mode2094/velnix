@@ -370,3 +370,74 @@ test('A3: a genuine google-linked verified user is required, not a single user g
   assert.equal(row(evaluate(base({ users: unverified })), 'A3').status, 'FAIL',
     'an unverified identity must fail');
 });
+
+// ------------------------------------- 10. frontend evidence for the F1 gate
+const { verifyFrontendEvidence, F1_REQUIRED_PROBES } = require('../../scripts/stage3_partb_verify');
+
+const goodFrontend = (over = {}) => ({
+  order: 'order1',
+  clientProject: 'demo-velnix-preview',
+  usedAdminSdk: false,
+  remoteEvalUsed: false,
+  session: { signedIn: true, provider: 'google.com' },
+  tests: F1_REQUIRED_PROBES.map(name => ({ name, outcome: 'error', code: 'permission-denied' })),
+  ...over
+});
+
+test('F1: verified client evidence turns the observational gate into PASS', () => {
+  const out = evaluate(base({
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
+    orderEvents: { order1: events() }, audit: audit('order1'),
+    notices: [notice('order1', true)], frontendEvidence: goodFrontend()
+  }));
+  const f1 = row(out, 'F1');
+  assert.equal(f1.status, 'PASS');
+  assert.equal(f1.source, 'frontend', 'F1 evidence must be attributed to the frontend, not the backend');
+  assert.equal(out.decision, 'PASS');
+  assert.deepEqual(out.observationalOutstanding, [], 'a verified F1 clears the outstanding list');
+});
+
+test('F1: absent evidence stays NOT TESTED and never becomes an assumed PASS', () => {
+  const out = evaluate(base({ orders: [goodOrder()] }));
+  assert.equal(row(out, 'F1').status, 'NOT TESTED');
+});
+
+test('F1: evidence naming another order is rejected', () => {
+  const e = goodFrontend({ order: 'some-other-order' });
+  assert.equal(verifyFrontendEvidence(e, 'order1').valid, false);
+  const out = evaluate(base({
+    orders: [goodOrder()], idempotency: [idemFor('order1')],
+    orderEvents: { order1: events() }, audit: audit('order1'), notices: [notice('order1', true)],
+    frontendEvidence: e
+  }));
+  assert.equal(row(out, 'F1').status, 'FAIL', 'mismatched evidence must fail loudly, not pass');
+  assert.equal(out.decision, 'FAIL');
+});
+
+test('F1: admin-SDK or unauthenticated evidence is rejected', () => {
+  assert.equal(verifyFrontendEvidence(goodFrontend({ usedAdminSdk: true }), 'order1').valid, false);
+  assert.equal(verifyFrontendEvidence(goodFrontend({ session: { signedIn: false } }), 'order1').valid, false);
+  assert.equal(verifyFrontendEvidence(goodFrontend({ remoteEvalUsed: true }), 'order1').valid, false);
+});
+
+test('F1: a non-permission failure never counts as a denial', () => {
+  for (const code of ['unavailable', 'unauthenticated', 'failed-precondition', 'internal']) {
+    const e = goodFrontend({ tests: F1_REQUIRED_PROBES.map(name => ({ name, outcome: 'error', code })) });
+    assert.equal(verifyFrontendEvidence(e, 'order1').valid, false, `${code} must not satisfy F1`);
+  }
+});
+
+test('F1: a probe that unexpectedly succeeded is a hard failure', () => {
+  const e = goodFrontend({
+    tests: F1_REQUIRED_PROBES.map((name, i) => i === 0
+      ? { name, outcome: 'unexpected_success' }
+      : { name, outcome: 'error', code: 'permission-denied' })
+  });
+  assert.equal(verifyFrontendEvidence(e, 'order1').valid, false);
+});
+
+test('F1: missing probes are rejected rather than partially accepted', () => {
+  const e = goodFrontend({ tests: [{ name: 'A_direct_document_read', outcome: 'error', code: 'permission-denied' }] });
+  assert.equal(verifyFrontendEvidence(e, 'order1').valid, false);
+  assert.equal(verifyFrontendEvidence(null, 'order1').valid, false);
+});

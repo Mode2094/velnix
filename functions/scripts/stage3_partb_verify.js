@@ -43,6 +43,53 @@ const f = v => (v && typeof v === 'object') ? v : {};
 const MANDATORY = ['A1', 'A2', 'A3', 'B1', 'B2r', 'C0', 'C1', 'C2', 'C3', 'C4',
                    'D1', 'D2', 'E1', 'E2'];
 const OBSERVATIONAL = ['F1'];
+
+/*
+ * Frontend-verified evidence for the observational gates.
+ *
+ * F1 cannot be observed from a server-side read: proving that the Firestore
+ * client is denied requires an actual client SDK session. This accepts such
+ * evidence, but only under strict conditions, and it can never manufacture a
+ * PASS. Anything missing, malformed, or not an explicit denial stays
+ * NOT TESTED. The evidence is treated as a claim, not as truth: it must name
+ * the expected order, an authenticated session, and an explicit
+ * permission-denied for every mandatory probe.
+ */
+const F1_REQUIRED_PROBES = ['A_direct_document_read', 'B_collection_query', 'C_write_nonexistent_probe_path'];
+
+function verifyFrontendEvidence(evidence, orderId) {
+  const reject = reason => ({ valid: false, reason });
+  if (!evidence || typeof evidence !== 'object') return reject('no frontend evidence supplied');
+  if (evidence.order !== orderId) return reject(`evidence names order ${evidence.order}, expected ${orderId}`);
+  if (evidence.usedAdminSdk !== false) return reject('evidence was not produced by a client SDK session');
+  if (evidence.remoteEvalUsed !== false) return reject('evidence relied on remote eval');
+  if (!evidence.session || evidence.session.signedIn !== true) return reject('no authenticated client session');
+  if (!Array.isArray(evidence.tests)) return reject('no probe results recorded');
+
+  const results = new Map(evidence.tests.map(t => [t && t.name, t]));
+  const missing = F1_REQUIRED_PROBES.filter(name => !results.has(name));
+  if (missing.length) return reject('missing probes: ' + missing.join(','));
+
+  const denied = [];
+  for (const name of F1_REQUIRED_PROBES) {
+    const t = results.get(name);
+    // A denial must be an explicit permission-denied from the rules engine.
+    // Any other failure is a network, App Check or auth problem and proves
+    // nothing about authorization, so it must not be counted as a pass.
+    if (t.outcome === 'unexpected_success' || t.code !== 'permission-denied') {
+      return reject(`${name} was not denied by the rules (${t.outcome}/${t.code})`);
+    }
+    denied.push({ name, code: t.code });
+  }
+  return {
+    valid: true,
+    deniedProbes: denied,
+    probeCount: evidence.tests.length,
+    clientProject: evidence.clientProject || null,
+    sessionProvider: evidence.session.provider || null
+  };
+}
+
 const num = v => Number(v ?? 0);
 const field = (fields, name) => f(fields)[name];
 
@@ -145,9 +192,27 @@ function evaluate(input) {
   add('B2', 'idempotency total record count (informational)', 'counted',
       fail('idempotency') ? 'read failed' : `${idem.length} record(s)`, 'NOT TESTED');
 
-  add('F1', 'client-SDK Firestore denial (getDoc / getDocs / updateDoc)',
-      'permission-denied observed in the owner browser session',
-      'not observable server-side; must be observed by the owner', 'NOT TESTED');
+  // Resolve the nominated order id before the early returns so the F1 row is
+  // always present, including when the journey has not been executed yet.
+  const nominatedId = n === 1 ? documentIdFromName(tagged[0].name) : null;
+
+  // F1 is satisfied only by real client-session evidence. Without it the gate
+  // stays NOT TESTED rather than being assumed from server-side reads.
+  const frontend = verifyFrontendEvidence(input.frontendEvidence, nominatedId);
+  if (input.frontendEvidence !== undefined && !frontend.valid) {
+    add('F1', 'client-SDK Firestore denial', 'permission-denied for every mandatory probe',
+        `evidence rejected: ${frontend.reason}`, 'FAIL', 'frontend');
+  } else if (frontend.valid) {
+    add('F1', 'client-SDK Firestore denial', 'permission-denied for every mandatory probe',
+        `${frontend.deniedProbes.length}/${F1_REQUIRED_PROBES.length} probes denied in an authenticated client session`,
+        'PASS', 'frontend');
+  } else {
+    add('F1', 'client-SDK Firestore denial (read / query / write)',
+        'permission-denied observed in a real client session',
+        'not observable server-side; no verified client evidence supplied', 'NOT TESTED');
+  }
+
+
 
   if (n === 0) {
     add('B3', 'synthetic order journey', 'order created in the production UI',
@@ -253,6 +318,8 @@ function evaluate(input) {
       fail('notices') ? 'read failed' : `${readCount} of ${mine2.length} read — internal Firestore notice only, FCM not claimed`,
       e2);
 
+
+
   return finalise({ rows, orderId, orderStatus: of.status?.stringValue,
                     revision: num(of.revision?.integerValue) });
 }
@@ -273,7 +340,10 @@ function finalise({ rows, orderId, orderStatus, revision }) {
   const degraded = problems(finalise.ctx || {});
   const mandatory = rows.filter(r => MANDATORY.includes(r.id));
   const missing = MANDATORY.filter(id => !rows.some(r => r.id === id));
-  const failed = mandatory.filter(r => r.status === 'FAIL');
+  // A FAIL is always disqualifying, even on an observational gate: absent
+  // evidence may be tolerated, but evidence that contradicts the expected
+  // record must never be able to sit behind a PASS.
+  const failed = rows.filter(r => r.status === 'FAIL');
   const untested = mandatory.filter(r => r.status !== 'PASS');
   const observational = rows.filter(r => OBSERVATIONAL.includes(r.id));
 
@@ -347,7 +417,15 @@ async function main() {
     users: (users || []).length < 1000
   };
 
+  // Optional verified frontend evidence for the observational gates.
+  let frontendEvidence;
+  const evidenceArg = process.argv.slice(2).find(a => a.startsWith('--frontend-evidence='));
+  if (evidenceArg) {
+    frontendEvidence = JSON.parse(require('node:fs').readFileSync(evidenceArg.split('=').slice(1).join('='), 'utf8'));
+  }
+
   const out = evaluate({
+    frontendEvidence,
     members, users, orders, idempotency, notices, audit, orderEvents, errors, complete,
     orderPages: orders.truncated ? 'truncated' : 'complete'
   });
@@ -362,7 +440,7 @@ async function main() {
   }, null, 2));
 }
 
-module.exports = { evaluate, documentIdFromName, listAll, TAG, PROJECT, PAGE, MANDATORY, OBSERVATIONAL, finalise };
+module.exports = { evaluate, documentIdFromName, listAll, verifyFrontendEvidence, F1_REQUIRED_PROBES, TAG, PROJECT, PAGE, MANDATORY, OBSERVATIONAL, finalise };
 
 if (require.main === module) {
   main().catch(e => { console.error('verification failed:', e.message); process.exitCode = 1; });
