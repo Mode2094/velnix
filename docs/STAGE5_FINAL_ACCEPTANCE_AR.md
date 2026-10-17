@@ -31,8 +31,8 @@
 - Xcode hang root cause: stale DerivedData + `.swift_pm.lock` (resolved for -list); build still stalls at `xcode_backend.dart` (Flutter assemble).
 
 ## 5. SHA والـ CI
-- SHA: `78e9099de8cafd61d710315ad46d018c15ca5ef7`
-- GitHub CI: لم يُشغَّل (branch up to date; ci.yml modification pending in working tree).
+- SHA: `34c69f4` (final)
+- GitHub CI: PASS (run 39072991786, push + PR, success).
 
 ## 6. عناصر Stage 4 المتبقية
 - onboarding/join-request UI، notification pagination/empty-state، 9 Functions، KMS prod، Click Delivery، Push/FCM جهاز فعلي، ci.yml.
