@@ -38,8 +38,8 @@
 - المكتبات: Firebase (Core, Auth, Firestore, Functions, Messaging, AppCheck), GoogleSignIn, AppAuth, AppCheckCore, gRPC, abseil, BoringSSL, nanopb, PromisesObjC, GTMAppAuth, GTMSessionFetcher, RecaptchaInterop.
 
 ## 6. نتائج البناء
-- xcodebuild -list (workspace): **PASS** بعد تنظيف DerivedData + `.swift_pm.lock`.
-- `flutter build ios --simulator --no-codesign`: **BLOCKED** — hang at `xcodebuild -list` (package graph resolution) + Flutter build script phase.
+- xcodebuild -list (workspace): **INTERMITTENT** — hangs in `XcodebuildPreIDEHandler runWithArguments` → mach_msg (XPC/IDE service) on this Mac; succeeded once after cleaning DerivedData + `.swift_pm.lock`, then hung again.
+- `flutter build ios --simulator --no-codesign`: **BLOCKED** — hang at `xcodebuild -list` (Xcode service) + Flutter build script phase.
 - السبب (مُؤكَّد): 
   1. `debug_unpack_ios` fails: "No iOS frameworks found in .../Flutter.xcframework" (Flutter tool لا يعثر على إطار iOS simulator في xcframework على هذا Mac Intel، رغم وجود `ios-arm64_x86_64-simulator` slice).
   2. `flutter precache --ios` يكتمل في 105ms ويتجاهل artifacts (يعتبرها موجودة).
