@@ -60,9 +60,12 @@
 - ⚠️ App Check (Play Integrity): غير مُختبَر على جهاز فعلي. BLOCKED.
 - ⚠️ Push/FCM: غير مُفعَّل (`firebase_messaging_auto_init_enabled=false`)؛ لم يُختبَر. BLOCKED (جهاز فعلي).
 
-## 7. مشاكل البيئة (Java)
-- Java (JBR + Homebrew OpenJDK) تعطلت/علقت في `CreateExecutionEnvironment` (Gatekeeper/provenance). هذا منع `flutter devices`/`flutter emulators` وبناء iOS لاحقاً. بناء Android (Gradle) نجح قبل تعطّل Java (daemon مُخزَّن). مُوثَّق كـ BLOCKER (بيئة، ليس كود).
-- حل مقترح: تشغيل `java -version` من طرفية مُصدَّقة أو إزالة provenance (يتطلّب موافقة المالك).
+## 7. مشاكل البيئة (Java) — تشخيص
+- Java (JBR Android Studio + Homebrew OpenJDK@17/@21/@26) كلها تعلق في `CreateExecutionEnvironment` → `CFRunLoopRunSpecific` → `mach_msg` (انتظار Mach port). 
+- Binary: `/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/java` (x86_64، JDK 21.0.10). `spctl --assess` = rejected (provenance). `codesign --verify` = valid. `xattr` = com.apple.provenance (نظام). 
+- Android Studio GUI يعمل (PID 6403)؛ Java CLI فقط يعلق (Gatekeeper/provenance).
+- تأثير: `flutter doctor`/`flutter devices`/`flutter emulators` تعلق (تستدعي Java). بناء Android (Gradle) نجح قبل التعطّل (daemon مُخزَّن). 
+- **لا تغيير لسياسة macOS** (ممنوع). يتطلّب موافقة المالك (System Settings → Privacy & Security → Allow).
 
 ## 8. عيوب مُؤكَّدة وإصلاحات
 - لا توجد عيوب برمجية مُؤكَّدة في Android (analyze/test/build نجحت).

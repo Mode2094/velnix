@@ -26,8 +26,9 @@
 - No physical device.
 - No Apple Developer identity.
 - No Android release keystore.
-- Java/Gatekeeper issue (environment).
-- Xcode hang (environment).
+- Java Gatekeeper/provenance (environment) — Java CLI hangs; Android Studio GUI OK.
+- iOS build BLOCKED: Flutter `debug_unpack_ios` → "No iOS frameworks found in .../Flutter.xcframework" (Intel Mac engine artifacts) + Xcode build stall at Flutter build script phase.
+- Xcode hang root cause: stale DerivedData + `.swift_pm.lock` (resolved for -list); build still stalls at `xcode_backend.dart` (Flutter assemble).
 
 ## 5. SHA والـ CI
 - SHA: `78e9099de8cafd61d710315ad46d018c15ca5ef7`

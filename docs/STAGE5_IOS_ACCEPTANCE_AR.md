@@ -38,11 +38,11 @@
 - المكتبات: Firebase (Core, Auth, Firestore, Functions, Messaging, AppCheck), GoogleSignIn, AppAuth, AppCheckCore, gRPC, abseil, BoringSSL, nanopb, PromisesObjC, GTMAppAuth, GTMSessionFetcher, RecaptchaInterop.
 
 ## 6. نتائج البناء
-- `flutter build ios --simulator --no-codesign`: **BLOCKED** — xcodebuild تعليق (hang) عند تحميل المشروع (10+ دقائق، 0 output). مُوثَّق.
-- `xcodebuild -workspace ... -list`: تعليق.
-- `xcodebuild -project ... -list`: تعليق.
-- السبب (مُحتمل): Xcode 16 + فهرسة Pods الكبيرة / بيئة. 
-- `flutter analyze`: PASS (0 issues) (مشترك).
+- xcodebuild -list (workspace): **PASS** بعد تنظيف DerivedData + `.swift_pm.lock` (التعليق الأول كان بسبب قفل/فهرسة).
+- `flutter build ios --simulator --no-codesign`: **BLOCKED** — تعليق عند مرحلة Flutter build script (`xcode_backend.dart` → `flutter assemble`).
+- السبب (مُؤكَّد): `debug_unpack_ios` fails: "No iOS frameworks found in .../Flutter.xcframework" (أداة Flutter لا تجد إطار iOS في xcframework على هذا Mac Intel). `flutter precache --ios` يكتمل في 105ms (يتخطى artifacts).
+- `xcodebuild -workspace ... -list`: PASS (Runner scheme موجود).
+- `flutter analyze`: PASS (0 issues).
 - `flutter test`: 323 pass / 18 golden fail (macOS).
 
 ## 7. تشغيل المحاكي (iOS)
