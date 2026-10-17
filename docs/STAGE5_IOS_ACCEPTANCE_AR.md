@@ -38,9 +38,12 @@
 - المكتبات: Firebase (Core, Auth, Firestore, Functions, Messaging, AppCheck), GoogleSignIn, AppAuth, AppCheckCore, gRPC, abseil, BoringSSL, nanopb, PromisesObjC, GTMAppAuth, GTMSessionFetcher, RecaptchaInterop.
 
 ## 6. نتائج البناء
-- xcodebuild -list (workspace): **PASS** بعد تنظيف DerivedData + `.swift_pm.lock` (التعليق الأول كان بسبب قفل/فهرسة).
-- `flutter build ios --simulator --no-codesign`: **BLOCKED** — تعليق عند مرحلة Flutter build script (`xcode_backend.dart` → `flutter assemble`).
-- السبب (مُؤكَّد): `debug_unpack_ios` fails: "No iOS frameworks found in .../Flutter.xcframework" (أداة Flutter لا تجد إطار iOS في xcframework على هذا Mac Intel). `flutter precache --ios` يكتمل في 105ms (يتخطى artifacts).
+- xcodebuild -list (workspace): **PASS** بعد تنظيف DerivedData + `.swift_pm.lock`.
+- `flutter build ios --simulator --no-codesign`: **BLOCKED** — hang at `xcodebuild -list` (package graph resolution) + Flutter build script phase.
+- السبب (مُؤكَّد): 
+  1. `debug_unpack_ios` fails: "No iOS frameworks found in .../Flutter.xcframework" (Flutter tool لا يعثر على إطار iOS simulator في xcframework على هذا Mac Intel، رغم وجود `ios-arm64_x86_64-simulator` slice).
+  2. `flutter precache --ios` يكتمل في 105ms ويتجاهل artifacts (يعتبرها موجودة).
+  3. Xcode build system يعلق عند resolving package graph (intermittent، network-dependent).
 - `xcodebuild -workspace ... -list`: PASS (Runner scheme موجود).
 - `flutter analyze`: PASS (0 issues).
 - `flutter test`: 323 pass / 18 golden fail (macOS).
