@@ -37,8 +37,10 @@ const EXPECTED_ORDER_ID = process.env.VELNIX_ORDER_ID || 'RLWEouzNty2huVT8DUHN';
 const J = require(path.join(root, 'scripts/acceptance/stage3-journey.cjs'));
 const { TAG, EDITED_NOTE } = J;
 for (const forbidden of ['createSyntheticOrder', 'replayMustNotDuplicate', 'assertApprovedFixture']) {
+  // The replacement throws when invoked, not when assigned: an accidental call
+  // fails before it can reach the backend, while importing stays safe.
   Object.defineProperty(J, forbidden, {
-    value: (() => { throw new Error(`production_resume_forbidden_call:${forbidden}`); })(),
+    value: function forbiddenInProduction() { throw new Error(`production_resume_forbidden_call:${forbidden}`); },
     enumerable: true, configurable: false, writable: false
   });
 }
@@ -58,8 +60,17 @@ const TRANSITIONS = [
   ['ready', 'delivered', 'إكمال الطلب الداخلي', 'تم التسليم']
 ];
 
-const verifier = () => JSON.parse(execFileSync('node',
-  [path.join(root, 'functions/scripts/stage3_partb_verify.js')], { encoding: 'utf8' }));
+/** Read-only verifier run, with the fields this runner reasons about. */
+const verifier = () => {
+  const v = JSON.parse(execFileSync('node',
+    [path.join(root, 'functions/scripts/stage3_partb_verify.js')], { encoding: 'utf8' }));
+  const b1 = v.rows.find(r => r.id === 'B1');
+  return Object.assign(v, {
+    b1Status: b1 && b1.status,
+    b1: b1 && b1.actual,
+    readsComplete: Object.values(v.readsComplete || {}).every(Boolean)
+  });
+};
 
 (async () => {
   const report = { origin: ORIGIN, expectedOrderId: EXPECTED_ORDER_ID, startedAt: new Date().toISOString(), steps, evidence };
@@ -93,14 +104,18 @@ const verifier = () => JSON.parse(execFileSync('node',
     });
 
     await stop('Enterprise App Check is active', async () => {
-      const seen = [];
-      const listener = r => { if (r.url().includes('firebaseappcheck.googleapis.com')) seen.push(r.url()); };
-      page.on('request', listener);
-      await J.click(page, 'تحديث البيانات').catch(() => { });
-      await page.waitForTimeout(4000);
-      page.off('request', listener);
-      evidence.appCheckContacts = seen.length;
-      console.log(`        App Check service contacts observed: ${seen.length}`);
+      // Two independent signals: Google's reCAPTCHA bundle is present, and a
+      // protected callable is actually served (this deployment answers 401
+      // without a valid App Check token, proven earlier by the anonymous probe).
+      const recaptcha = await page.evaluate(() =>
+        [...document.scripts].some(s => /recaptcha/i.test(s.src)) ||
+        !!document.querySelector('script[src*="recaptcha"]'));
+      evidence.recaptchaPresent = recaptcha;
+      assert.equal(recaptcha, true, 'the reCAPTCHA Enterprise bundle must be loaded');
+      const me = await J.okay(page, 'me', {});
+      evidence.protectedCallableServed = true;
+      evidence.meRoleFromCallable = me.role;
+      console.log('        reCAPTCHA bundle present and a protected callable was served');
     });
 
     await stop('session is the active approved general manager', async () => {
