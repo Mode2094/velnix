@@ -125,6 +125,29 @@ async function openTagged(p) {
 }
 
 
+
+/**
+ * Set a Flutter text field by semantics rather than by canvas coordinates.
+ *
+ * The fields expose a real TEXTAREA/INPUT once focused, so focus() is reliable
+ * and inputValue() gives an exact read-back. The old fixed offsets silently
+ * missed whenever the production layout differed from the emulator, which
+ * presented as a failed save rather than a missed click. The value is verified
+ * before anything is submitted, so a mis-typed field can never be saved.
+ */
+async function setField(p, locator, value, label) {
+  await locator.focus();
+  await p.waitForTimeout(250);
+  const before = await locator.inputValue();
+  await selectAll(p);
+  await p.keyboard.insertText(value);
+  await p.waitForTimeout(400);
+  const got = await locator.inputValue();
+  assert.equal(got, value,
+    `${label} holds ${JSON.stringify(got)} instead of the intended text; refusing to save`);
+  return { before, after: got };
+}
+
 /**
  * The form is addressed by canvas coordinates that were proven in a 1440x1000
  * viewport. A different viewport silently misses every field, which previously
@@ -151,11 +174,7 @@ async function createSyntheticOrder(p, { preflightConfirmedAbsent, evidence, sho
   await p.getByText('إضافة طلب جديد', { exact: true }).waitFor();
 
   for (const [label, value] of Object.entries(FORM_FIELDS)) {
-    await p.mouse.click(...FORM_POINTS[label]);
-    await frame(p);
-    await selectAll(p);
-    await p.keyboard.insertText(value);
-    await frame(p);
+    await setField(p, p.getByRole('textbox', { name: label, exact: true }), value, label);
   }
 
   const posted = p.waitForResponse(
@@ -214,19 +233,29 @@ async function replayMustNotDuplicate(p, id, evidence) {
 /** Edit the notes through the UI; the revision must advance. */
 async function editNotes(p, id, evidence) {
   await assertViewport(p);
-  const before = (await okay(p, 'getOrder', { id })).order.revision;
+  // Read the order first: the editor must load exactly what is stored now. On a
+  // resumed order the note may already be the edited text, so comparing against
+  // the original fixture would wrongly refuse a legitimate resume.
+  const current = (await okay(p, 'getOrder', { id })).order;
+  const before = current.revision;
+  const storedNote = current.note;
   await openTagged(p);
   await click(p, 'تعديل');
-  await p.getByRole('textbox', { name: 'ملاحظات', exact: true }).waitFor();
-  const box = await p.getByRole('textbox', { name: 'ملاحظات', exact: true }).boundingBox();
-  await p.mouse.click(300, box.y + box.height / 2);
-  await frame(p);
-  await selectAll(p);
-  await p.keyboard.insertText(EDITED_NOTE);
-  await frame(p);
+  const notes = p.getByRole('textbox', { name: 'ملاحظات', exact: true });
+  await notes.waitFor();
+  // The field must hold the real stored note before it is replaced, and the
+  // intended note must be in place before the save is triggered.
+  const { before: priorNote, after: typedNote } = await setField(p, notes, EDITED_NOTE, 'ملاحظات');
+  assert.equal(priorNote, storedNote, 'the editor did not load the stored note; refusing to save');
+  assert.equal(typedNote, EDITED_NOTE);
   const saved = p.waitForResponse(r => new URL(r.url()).pathname.endsWith('/updateOrder') && r.request().method() === 'POST');
   await click(p, 'حفظ الطلب');
-  assert.equal((await saved).status(), 200);
+  const response = await saved;
+  assert.equal(response.status(), 200);
+  // The save must target the authorized order at the expected revision.
+  const sent = response.request().postDataJSON().data;
+  assert.equal(sent.id, id, 'the save targeted a different order');
+  assert.equal(sent.revision, before, `the save sent revision ${sent.revision}, expected ${before}`);
   const after = await okay(p, 'getOrder', { id });
   assert.equal(after.order.note, EDITED_NOTE);
   assert.ok(after.order.revision > before, 'a successful edit must advance the revision');
@@ -288,7 +317,7 @@ async function noticeDisplayedAndRead(p, id, evidence) {
 
 module.exports = {
   TAG, PHONE, NOTE, EDITED_NOTE, FORM_FIELDS, FORM_POINTS, SDK, REGION,
-  frame, selectAll, activate, click, back, nav, callable, okay, denied, openTagged, assertViewport,
+  frame, selectAll, activate, click, back, nav, callable, okay, denied, openTagged, assertViewport, setField,
   createSyntheticOrder, assertApprovedFixture, replayMustNotDuplicate,
   editNotes, searchByTag, fourInternalTransitions, noticeDisplayedAndRead
 };
