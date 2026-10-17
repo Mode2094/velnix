@@ -41,3 +41,16 @@ test('Arabic numeral input is normalized for Jordanian phone and amounts',()=>{
   assert.equal(order.quantity,2);
   assert.equal(order.amountMinor,12500);
 });
+
+test('internal completion is ready-only and never bypasses carrier or terminal states',()=>{
+  for(const role of ['generalManager','warehouse','manager','sales','dataEntry']) {
+    const actor={id:'owner',role,active:true,permissions:role==='manager'?['updateOrderStatus']:[]};
+    const permitted=['generalManager','warehouse','manager'].includes(role);
+    const ready={createdBy:'owner',status:'ready',companyId:null};
+    assert.equal(allowedTransition(actor,ready,'delivered'),permitted);
+    for(const dispatchState of ['sending','sent','needs_review'])assert.equal(allowedTransition(actor,{...ready,dispatchState},'delivered'),false);
+    for(const marker of [{companyId:'carrier'},{hasDelivery:true},{trackingNumber:'tracking'},{remoteStatus:'delivered'}])assert.equal(allowedTransition(actor,{...ready,...marker},'delivered'),false);
+    for(const status of ['created','review','preparing','dispatched','inTransit','delivered','returned','cancelled'])assert.equal(allowedTransition(actor,{...ready,status},'delivered'),false);
+    for(const status of ['delivered','returned','cancelled'])for(const target of ['created','review','preparing','ready','dispatched','inTransit','delivered','returned','cancelled'])assert.equal(allowedTransition(actor,{...ready,status},target),false);
+  }
+});

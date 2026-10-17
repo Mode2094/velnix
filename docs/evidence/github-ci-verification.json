@@ -1,0 +1,55 @@
+{
+  "verifiedDate": "2026-10-14",
+  "timezone": "Asia/Amman",
+  "method": "GitHub public HTML PR and Actions pages; API CONNECT blocked by egress proxy",
+  "headCommit": "024c1a7dbc43e0df1f131f65f85c13b9eb97844d",
+  "pullRequest": {
+    "url": "https://github.com/Mode2094/velnix/pull/1",
+    "base": "main",
+    "head": "audit/production-readiness",
+    "commitCount": 12,
+    "allSevenLatestCommitsPresent": true
+  },
+  "runs": [
+    {
+      "id": 38552423961,
+      "event": "push",
+      "status": "Success",
+      "duration": "6m 2s",
+      "jobs": {
+        "flutter": "success",
+        "firebase": "success",
+        "android": "success"
+      },
+      "url": "https://github.com/Mode2094/velnix/actions/runs/38552423961"
+    },
+    {
+      "id": 38552429622,
+      "event": "pull_request",
+      "status": "Success",
+      "duration": "5m 32s",
+      "jobs": {
+        "flutter": "success",
+        "firebase": "success",
+        "android": "success"
+      },
+      "url": "https://github.com/Mode2094/velnix/actions/runs/38552429622"
+    }
+  ],
+  "artifact": {
+    "name": "flutter-qa-artifacts",
+    "size": "8.98 MB"
+  },
+  "limits": [
+    "Remote job status verified; raw authenticated step logs were not downloaded",
+    "No production or Staging deployment",
+    "API credentials cannot be classified while the CONNECT tunnel is denied"
+  ],
+  "apiDiagnosis": {
+    "unauthenticatedRequest": "Tunnel connection failed: 403 Forbidden",
+    "githubWeb": "200 OK",
+    "missingAllowedDomain": "api.github.com",
+    "savedDraftAddition": true,
+    "runtimeActivationConfirmed": false
+  }
+}

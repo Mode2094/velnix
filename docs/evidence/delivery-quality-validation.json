@@ -1,0 +1,54 @@
+{
+  "verified_at_utc": "2026-10-14T13:11:21.011163+00:00",
+  "phase_1_commit": "0635f21",
+  "phase_2_source": "working tree after 0635f21; identified by code hashes in browser evidence",
+  "checks": {
+    "phase_1": {
+      "flutter": 272,
+      "node": 45,
+      "auth_firestore_emulator": 39,
+      "digital_barcode_cases": 36,
+      "analyze_format_syntax": "passed",
+      "secret_scan": "no findings",
+      "npm_production_audit": "0 known vulnerabilities",
+      "exit_code": 0
+    },
+    "phase_2": {
+      "flutter": 296,
+      "node": 45,
+      "auth_firestore_emulator": 39,
+      "digital_barcode_cases": 36,
+      "analyze_format_syntax": "passed",
+      "secret_scan": "no findings",
+      "npm_production_audit": "0 known vulnerabilities",
+      "exit_code": 0
+    },
+    "builds": {
+      "web-demo": "passed",
+      "web-live": "passed",
+      "android-demo": "passed",
+      "android-live": "passed"
+    }
+  },
+  "live_visual_baselines": 32,
+  "demo_browser_screenshots": 30,
+  "demo_browser_page_errors": 0,
+  "phase_1_ci": [
+    {
+      "run": "38567865137",
+      "status": "Success",
+      "evidence": "GitHub HTML run summary references 0635f21"
+    },
+    {
+      "run": "38567873076",
+      "status": "Success",
+      "evidence": "GitHub HTML run summary references 0635f21"
+    }
+  ],
+  "phase_2_ci": "check after commit push; not inferred from earlier CI",
+  "limitations": [
+    "No live Firebase, KMS, OAuth, App Check, FCM or actual carrier integration",
+    "No physical printer/device test, production deployment, merge or paid resources",
+    "Node suite includes existing static/textual checks; emulator Functions.run is not deployed RPC"
+  ]
+}

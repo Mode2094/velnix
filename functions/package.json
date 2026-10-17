@@ -2,12 +2,23 @@
   "name": "velnix-functions",
   "private": true,
   "version": "0.7.0",
-  "engines": {"node": "22"},
+  "engines": {
+    "node": "22"
+  },
   "main": "src/index.js",
-  "scripts": {"test": "node --test test/*.test.js", "syntax": "node --check src/index.js && node --check src/policy.js && node --check src/delivery.js && node --check src/order_view.js"},
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "syntax": "for file in src/*.js scripts/*.js; do node --check \"$file\" || exit 1; done",
+    "test:emulator": "firebase emulators:exec --project demo-velnix --config ../firebase.json --only auth,firestore \"node --test --test-concurrency=1 test/emulator/*.test.js\""
+  },
   "dependencies": {
-    "firebase-admin": "^13.0.0",
-    "firebase-functions": "^6.0.0",
-    "@google-cloud/kms": "^5.0.0"
+    "@google-cloud/kms": "6.3.0",
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.33.0"
   }
 }

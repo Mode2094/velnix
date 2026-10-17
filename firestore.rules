@@ -9,6 +9,11 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list, create, update, delete: if false;
     }
+    // A caller can observe only their own decision; never create or approve it.
+    match /joinRequests/{userId} {
+      allow get: if signedIn() && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

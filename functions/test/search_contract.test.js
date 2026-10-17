@@ -11,13 +11,13 @@ test('search is authenticated and filtered through the visibility policy',()=>{
   const search=src.slice(start,end);
   assert.match(search,/await requireAuth\(req\)/);
   assert.match(search,/canSeeOrder\(user/);
-  assert.match(search,/orderQueryable\(user\)/);
+  assert.match(search,/scopeQueries\(user,filters\)/);
   assert.match(search,/matchingFilters/);
 });
 test('required indexes for scoped search are recorded',()=>{
   const indexed=(paths)=>indexes.some(i=>i.collectionGroup==='orders'&&paths.every(p=>i.fields.some(f=>f.fieldPath===p)));
-  assert.ok(indexed(['visibleTo','customerKey']));
-  assert.ok(indexed(['visibleTo','phoneDigits']));
+  assert.ok(indexed(['createdBy','customerKey']));
+  assert.ok(indexed(['createdBy','phoneDigits']));
 });
 test('ambiguous dispatch is blocked from automatic re-send',()=>{
   assert.match(src,/o\.dispatchState==='needs_review'/);
@@ -28,11 +28,15 @@ test('uncertain dispatch has audited manager-only recovery',()=>{
   const section=src.slice(begin,end);
   assert.ok(begin>0);
   assert.match(section,/user\.role!=='generalManager'/);
-  assert.match(section,/dispatchState!=='needs_review'/);
+  assert.match(section,/canResolveDispatch\(o\)/);
   assert.match(section,/order\.dispatch_exception_resolved/);
   assert.match(section,/trackingNumber/);
 });
 test('archiving does not stop incoming updates for previously sent shipments',()=>{
-  assert.match(src,/companyCredentials\(companyId,\{allowInactive:true\}\)/);
-  assert.match(src,/companyCredentials\(o\.companyId,\{allowInactive:true\}\)/);
+  const webhook=src.slice(src.indexOf('exports.deliveryWebhook='),src.indexOf('exports.reconcileDeliveryStatuses='));
+  const polling=src.slice(src.indexOf('exports.reconcileDeliveryStatuses='),src.indexOf('exports.registerDevice='));
+  // Missing secrets permit rejection before decrypt, never block archived
+  // reference shipments from updates through either supported path.
+  assert.match(webhook,/companyCredentials\(companyId,\{allowInactive:true(?:,requireSecrets:false)?\}\)/);
+  assert.match(polling,/companyCredentials\(o\.companyId,\{allowInactive:true\}\)/);
 });

@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-14",
+  "timezone": "Asia/Amman",
+  "sourceCommit": "382ad340d2487c82593f25345e429c2ff050385d",
+  "cleanCloneCommit": "382ad340d2487c82593f25345e429c2ff050385d",
+  "cleanInstall": {
+    "flutter": "pub get --enforce-lockfile",
+    "node": "npm ci",
+    "validation": "scripts/validate.sh completed successfully"
+  },
+  "flutter": {
+    "passed": 271,
+    "failed": 0
+  },
+  "node": {
+    "passed": 45,
+    "failed": 0,
+    "includesStaticChecks": 11
+  },
+  "emulators": {
+    "project": "demo-velnix",
+    "services": [
+      "auth",
+      "firestore"
+    ],
+    "passed": 36,
+    "failed": 0,
+    "durationMs": 114787.145675
+  },
+  "barcode": {
+    "cases": 36,
+    "passed": 36,
+    "nativeDecode": 32,
+    "preprocessed": 4,
+    "decoderFallback": "2x bilinear upsampling",
+    "physicalDevices": "not tested"
+  },
+  "browser": {
+    "mode": "demo",
+    "captures": 30,
+    "roles": 5,
+    "widths": [
+      390,
+      768,
+      1440
+    ],
+    "pageErrors": 0
+  },
+  "builds": {
+    "web-demo": "success (compile only)",
+    "web-live": "success (compile only)",
+    "android-demo": "success (compile only)",
+    "android-live": "success (compile only)"
+  },
+  "githubActions": "API Forbidden; unverified",
+  "productionReadiness": "not approved; external gates remain"
+}

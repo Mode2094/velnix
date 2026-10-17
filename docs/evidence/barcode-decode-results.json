@@ -1,0 +1,418 @@
+[
+  {
+    "paper": "a3",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a3",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a3",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a5",
+    "dpi": 203,
+    "pages": 2,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a5",
+    "dpi": 300,
+    "pages": 2,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a5",
+    "dpi": 600,
+    "pages": 2,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a6",
+    "dpi": 203,
+    "pages": 3,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a6",
+    "dpi": 300,
+    "pages": 3,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a6",
+    "dpi": 600,
+    "pages": 3,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "amount_hidden",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "amount_hidden",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "amount_hidden",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "custom",
+    "dpi": 203,
+    "pages": 4,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "custom",
+    "dpi": 300,
+    "pages": 4,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [
+      {
+        "image": "custom-300-3.png",
+        "method": "2x bilinear upsampling"
+      }
+    ],
+    "passed": true
+  },
+  {
+    "paper": "custom",
+    "dpi": 600,
+    "pages": 4,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "legal",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "legal",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "legal",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "letter",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "letter",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "letter",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal58",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal58",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [
+      {
+        "image": "thermal58-300-1.png",
+        "method": "2x bilinear upsampling"
+      }
+    ],
+    "passed": true
+  },
+  {
+    "paper": "thermal58",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal58_standard_id",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal58_standard_id",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [
+      {
+        "image": "thermal58_standard_id-300-1.png",
+        "method": "2x bilinear upsampling"
+      }
+    ],
+    "passed": true
+  },
+  {
+    "paper": "thermal58_standard_id",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal80",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal80",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal80",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal80_standard_id",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "thermal80_standard_id",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [
+      {
+        "image": "thermal80_standard_id-300-1.png",
+        "method": "2x bilinear upsampling"
+      }
+    ],
+    "passed": true
+  },
+  {
+    "paper": "thermal80_standard_id",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-AbCdEfGhIjKlMnOpQrSt",
+    "decoded": [
+      "VNX-AbCdEfGhIjKlMnOpQrSt"
+    ],
+    "preprocessing": [],
+    "passed": true
+  }
+]

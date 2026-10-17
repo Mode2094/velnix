@@ -5,71 +5,217 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// Firestore client rules reject orders/companies/audit access by design.
 class VelnixGateway {
   VelnixGateway._();
-  static final instance=VelnixGateway._();
-  final FirebaseFunctions functions=FirebaseFunctions.instanceFor(region:'europe-west1');
-  final FirebaseAuth auth=FirebaseAuth.instance;
+  VelnixGateway.forTesting(this.testCall);
+  Future<Map<String, dynamic>> Function(String, Map<String, dynamic>)? testCall;
+  static VelnixGateway instance = VelnixGateway._();
+  FirebaseFunctions get functions =>
+      FirebaseFunctions.instanceFor(region: 'europe-west1');
+  FirebaseAuth get auth => FirebaseAuth.instance;
 
-  Future<Map<String,dynamic>> call(String name,[Map<String,dynamic> data=const {}]) async {
+  Future<Map<String, dynamic>> call(
+    String name, [
+    Map<String, dynamic> data = const {},
+  ]) async {
+    if (testCall != null) return testCall!(name, data);
     try {
-      final result=await functions.httpsCallable(name).call(data);
-      return Map<String,dynamic>.from(result.data as Map);
-    } on FirebaseFunctionsException catch(e) {
-      throw VelnixException(e.message??'حدث خطأ أثناء الاتصال بالخادم');
-    } on FirebaseAuthException catch(e) {
-      throw VelnixException(e.message??'تعذر التحقق من الحساب');
+      final result = await functions.httpsCallable(name).call(data);
+      return Map<String, dynamic>.from(result.data as Map);
+    } on FirebaseFunctionsException catch (e) {
+      throw VelnixException(callableErrorMessage(e.code, e.message));
+    } on FirebaseAuthException catch (e) {
+      throw VelnixException(authErrorMessage(e.code));
     }
   }
-  Future<Map<String,dynamic>> me()=>call('me');
-  Future<Map<String,dynamic>> orders({String? afterId,int pageSize=30,String? status,String bucket='all',String? companyId})=>call('listOrders',{
-    'pageSize':pageSize,'bucket':bucket,if(status!=null)'status':status,if(afterId!=null)'afterId':afterId,if(companyId!=null)'companyId':companyId,
-  });
-  Future<Map<String,dynamic>> searchOrders(String query,{String? status,String bucket='all',String? companyId})=>call('searchOrders',{
-    'query':query,'bucket':bucket,if(status!=null)'status':status,if(companyId!=null)'companyId':companyId,
-  });
-  Future<Map<String,dynamic>> dashboard()=>call('dashboardStats');
-  Future<Map<String,dynamic>> order(String id)=>call('getOrder',{'id':id});
-  Future<Map<String,dynamic>> createOrder(Map<String,dynamic> order)=>call('createOrder',order);
-  Future<void> updateOrder(String id,Map<String,dynamic> fields) async {await call('updateOrder',{'id':id,...fields});}
-  Future<void> updateStatus(String id,String status) async {await call('changeOrderStatus',{'id':id,'status':status});}
-  Future<void> assignCompany(String id,String? companyId) async {await call('assignCompany',{'id':id,'companyId':companyId});}
-  Future<void> dispatch(String id) async {await call('sendOrderToDelivery',{'id':id});}
-  Future<void> resolveDispatchException(String id,{required String outcome,required String reason,String? trackingNumber})async{
-    await call('resolveDispatchException',{'id':id,'outcome':outcome,'reason':reason,if(trackingNumber!=null)'trackingNumber':trackingNumber});
-  }
-  Future<Map<String,dynamic>> companyStats(String id)=>call('companyStats',{'id':id});
-  Future<List<Map<String,dynamic>>> companies() async =>listResult(await call('listCompanies'));
-  Future<void> saveCompany(Map<String,dynamic> company) async {await call('saveCompany',company);}
-  Future<void> archiveCompany(String id) async {await call('archiveCompany',{'id':id});}
-  Future<void> restoreCompany(String id) async {await call('restoreCompany',{'id':id});}
-  Future<Map<String,dynamic>> testCompany(String id)=>call('testCompanyConnection',{'id':id});
-  Future<List<Map<String,dynamic>>> members() async =>listResult(await call('listMembers'));
-  Future<void> saveMember(Map<String,dynamic> member) async {await call('saveMember',member);}
-  Future<List<Map<String,dynamic>>> notices() async =>listResult(await call('listNotices'));
-  Future<void> markNoticeRead(String id)async{await call('markNoticeRead',{'id':id});}
-  Future<List<Map<String,dynamic>>> syncEvents()async=>listResult(await call('listSyncEvents'));
-  Future<List<Map<String,dynamic>>> audit() async =>listResult(await call('listAudit'));
 
-  List<Map<String,dynamic>> listResult(Map<String,dynamic> result)=>(result['items'] as List? ??[])
-      .map((e)=>Map<String,dynamic>.from(e as Map)).toList();
+  Future<Map<String, dynamic>> me() => call('me');
+  Future<Map<String, dynamic>> orders({
+    String? afterId,
+    int pageSize = 30,
+    String? status,
+    String bucket = 'all',
+    String? companyId,
+    Map<String, dynamic> filters = const {},
+    String sort = 'desc',
+  }) => call('listOrders', {
+    ...filters,
+    'sort': sort,
+    'pageSize': pageSize,
+    'bucket': bucket,
+    'status': ?status,
+    'afterId': ?afterId,
+    'companyId': ?companyId,
+  });
+  Future<Map<String, dynamic>> searchOrders(
+    String query, {
+    String? status,
+    String bucket = 'all',
+    String? companyId,
+    Map<String, dynamic> filters = const {},
+  }) => call('searchOrders', {
+    ...filters,
+    'query': query,
+    'bucket': bucket,
+    'status': ?status,
+    'companyId': ?companyId,
+  });
+  Future<Map<String, dynamic>> dashboard([
+    Map<String, dynamic> filters = const {},
+  ]) => call('dashboardStats', filters);
+  Future<Map<String, dynamic>> order(String id) => call('getOrder', {'id': id});
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> order) =>
+      call('createOrder', order);
+  Future<void> updateOrder(String id, Map<String, dynamic> fields) async {
+    await call('updateOrder', {'id': id, ...fields});
+  }
+
+  Future<void> updateStatus(String id, String status) async {
+    await call('changeOrderStatus', {'id': id, 'status': status});
+  }
+
+  Future<void> assignCompany(String id, String? companyId) async {
+    await call('assignCompany', {'id': id, 'companyId': companyId});
+  }
+
+  Future<void> dispatch(String id) async {
+    await call('sendOrderToDelivery', {'id': id});
+  }
+
+  Future<void> resolveDispatchException(
+    String id, {
+    required String outcome,
+    required String reason,
+    String? trackingNumber,
+  }) async {
+    await call('resolveDispatchException', {
+      'id': id,
+      'outcome': outcome,
+      'reason': reason,
+      'trackingNumber': ?trackingNumber,
+    });
+  }
+
+  Future<Map<String, dynamic>> companyStats(String id) =>
+      call('companyStats', {'id': id});
+  Future<List<Map<String, dynamic>>> companies() async =>
+      directoryItems('listCompanies');
+  Future<void> saveCompany(Map<String, dynamic> company) async {
+    await call('saveCompany', company);
+  }
+
+  Future<void> archiveCompany(String id) async {
+    await call('archiveCompany', {'id': id});
+  }
+
+  Future<void> restoreCompany(String id) async {
+    await call('restoreCompany', {'id': id});
+  }
+
+  Future<Map<String, dynamic>> testCompany(String id) =>
+      call('testCompanyConnection', {'id': id});
+  Future<List<Map<String, dynamic>>> members() async =>
+      directoryItems('listMembers');
+  Future<void> saveMember(Map<String, dynamic> member) async {
+    await call('saveMember', member);
+  }
+
+  Future<List<Map<String, dynamic>>> notices() async =>
+      listResult(await call('listNotices'));
+  Future<void> markNoticeRead(String id) async {
+    await call('markNoticeRead', {'id': id});
+  }
+
+  Future<List<Map<String, dynamic>>> syncEvents() async =>
+      listResult(await call('listSyncEvents'));
+  Future<List<Map<String, dynamic>>> audit() async =>
+      listResult(await call('listAudit'));
+
+  Future<List<Map<String, dynamic>>> directoryItems(String endpoint) async {
+    final items = <Map<String, dynamic>>[];
+    final seen = <String>{};
+    String? cursor;
+    do {
+      final page = await call(endpoint, {'pageSize': 100, 'afterId': ?cursor});
+      items.addAll(listResult(page));
+      if (page['more'] != true) return items;
+      final next = page['afterId'] as String?;
+      if (next == null || !seen.add(next)) {
+        throw VelnixException('تعذر متابعة القائمة؛ حدّثها');
+      }
+      cursor = next;
+    } while (true);
+  }
+
+  List<Map<String, dynamic>> listResult(Map<String, dynamic> result) =>
+      (result['items'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 }
+
 class VelnixException implements Exception {
   VelnixException(this.message);
   final String message;
-  @override String toString()=>message;
+  @override
+  String toString() => message;
 }
+
+/// Transport failures can surface as SDK `internal [0]`, not `unavailable`.
+/// Keep raw transport diagnostics out of UI while retaining business denials.
+String callableErrorMessage(
+  String code,
+  String? serverMessage,
+) => switch (code) {
+  'unavailable' => 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة',
+  'internal' =>
+    'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
+  'aborted' => 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ',
+  _ => serverMessage ?? 'حدث خطأ أثناء الاتصال بالخادم',
+};
+
+String authErrorMessage(String code) => switch (code) {
+  'invalid-credential' ||
+  'wrong-password' ||
+  'user-not-found' => 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+  'invalid-email' => 'أدخل بريداً إلكترونياً صالحاً',
+  'user-disabled' => 'الحساب موقوف؛ راجع مسؤول المؤسسة',
+  'network-request-failed' => 'تعذر الاتصال؛ تحقق من الشبكة ثم أعد المحاولة',
+  'too-many-requests' => 'محاولات كثيرة؛ انتظر قليلاً ثم أعد المحاولة',
+  _ => 'تعذر التحقق من الحساب؛ أعد المحاولة أو راجع مسؤول المؤسسة',
+};
 
 class SessionPolicy {
   SessionPolicy(this.data);
-  final Map<String,dynamic> data;
-  String get id=>data['id']?.toString()??'';
-  String get name=>data['name']?.toString()??'';
-  String get role=>data['role']?.toString()??'';
-  bool get active=>data['active']!=false;
-  bool can(String perm)=>active&&(role=='generalManager'||(data['permissions'] as List? ??[]).contains(perm));
-  bool get canChangeStatus=>active&&(role=='generalManager'||role=='warehouse'||can('updateOrderStatus'));
-  bool get viewAmounts=>can('viewAmounts');
-  String get roleLabel=>{
-    'generalManager':'مدير عام','manager':'مدير','warehouse':'موظف مستودع',
-    'sales':'مبيعات','dataEntry':'مدخل بيانات',
-  }[role]??'مستخدم';
+  final Map<String, dynamic> data;
+  String get id => data['id']?.toString() ?? '';
+  String get name => data['name']?.toString() ?? '';
+  String get role => data['role']?.toString() ?? '';
+  bool get active => data['active'] == true;
+  bool can(String perm) =>
+      active &&
+      (role == 'generalManager' ||
+          (data['permissions'] as List? ?? []).contains(perm));
+  bool canGrantRole(String target) =>
+      role == 'generalManager' ||
+      (can('manageEmployees') &&
+          ['warehouse', 'sales', 'dataEntry'].contains(target) &&
+          (!['warehouse', 'sales'].contains(target) ||
+              role == 'warehouse' ||
+              can('viewAllOrders')) &&
+          (target != 'warehouse' ||
+              role == 'warehouse' ||
+              can('updateOrderStatus')));
+  bool get canChangeStatus =>
+      active &&
+      (role == 'generalManager' ||
+          role == 'warehouse' ||
+          can('updateOrderStatus'));
+  bool get viewAmounts => can('viewAmounts');
+  String get roleLabel =>
+      {
+        'generalManager': 'مدير عام',
+        'manager': 'مدير',
+        'warehouse': 'موظف مستودع',
+        'sales': 'مبيعات',
+        'dataEntry': 'مدخل بيانات',
+      }[role] ??
+      'مستخدم';
 }

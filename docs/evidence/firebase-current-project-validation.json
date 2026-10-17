@@ -1,0 +1,71 @@
+{
+  "baseline": "f9071d1ed15118d88d0dde51bc522b527abf67f8",
+  "branch": "audit/production-readiness",
+  "project": "velnix-6c1a2",
+  "platformApps": {
+    "android": "1:948196868655:android:4465def254bb941ac43cda",
+    "ios": "1:948196868655:ios:58a6ca83ccb4e1e3c43cda",
+    "web": "1:948196868655:web:ace9b264b4fae48ac43cda"
+  },
+  "sdkSources": "user-provided Android/iOS files and current Web config; no Firebase app creation",
+  "localTests": {
+    "flutter": 318,
+    "node": 54,
+    "authFirestoreEmulator": 48,
+    "pythonRuntime": 5,
+    "pythonSdkSetup": 7,
+    "digitalBarcode": 36,
+    "failed": 0,
+    "note": "Backend suites from full validation; Flutter repeated after FCM configuration alignment; mocks/emulators only"
+  },
+  "builds": {
+    "webLive": {
+      "status": "passed compile",
+      "logSha256": "65ce05f95806daab6178c66672c0663713b4c951d013ce5a696dde39548a33e8"
+    },
+    "webDemo": {
+      "status": "passed compile",
+      "logSha256": "a7ac2c74fa79694fec0e3a779dc7f0f005710f20fd5f70e4730e2af4d10a5d47"
+    },
+    "androidLiveDebug": {
+      "status": "passed compile",
+      "logSha256": "4e02d6597af9fcb27433a363c1cbf2c4721be41abad58ee502a40033231fe13f"
+    }
+  },
+  "androidBinary": {
+    "apkSha256": "aa3cbb2e864e6761233ec53f46644933ae8018aa43220602c52733984c6b00a5",
+    "resourcesMatch": true,
+    "fcmAutoInitDefault": false,
+    "debugSignatureVerified": true
+  },
+  "realConfigPreflight": {
+    "android": {
+      "exitCode": 0,
+      "result": "passed offline",
+      "missingPublicAppCheckSiteKey": false
+    },
+    "ios": {
+      "exitCode": 0,
+      "result": "passed offline",
+      "missingPublicAppCheckSiteKey": false
+    },
+    "web": {
+      "exitCode": 1,
+      "result": "blocked",
+      "missingPublicAppCheckSiteKey": true
+    }
+  },
+  "iosBuild": {
+    "status": "unrun",
+    "reason": "Linux host; no Xcode or Apple SDK"
+  },
+  "externalUnverified": [
+    "active/pending-deletion status of registrations",
+    "real Auth/AppCheck/Firestore/Backend readiness",
+    "Google/FCM device delivery",
+    "iOS native dependency build/signing",
+    "Click (disabled)"
+  ],
+  "forbiddenActionsExecuted": [],
+  "githubCI": "verify after push on final SHA; not inferred from baseline"
+}

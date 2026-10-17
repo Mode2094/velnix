@@ -1,0 +1,49 @@
+{
+  "baseline": "e005c666a991cf02d61e6379afabb1119393242c",
+  "branch": "audit/production-readiness",
+  "date": "2026-10-14",
+  "local": {
+    "flutter": 312,
+    "node": 54,
+    "authFirestoreEmulator": 48,
+    "pythonPreflight": 5,
+    "digitalBarcode": 36,
+    "result": "passed",
+    "validationLogSha256": "852e064c9eedf5de14fa10824fab49063bbb5447275d6756195140b20a5800ac",
+    "productionDependencyAdvisories": 0
+  },
+  "builds": {
+    "web-demo": {
+      "result": "passed",
+      "logSha256": "f266bd4fa09604869f23af392e7541a87c615d8d6b04eae48b5fd848719c127b",
+      "scope": "compile only; debug APK or QA Web release; no real Firebase"
+    },
+    "web-live": {
+      "result": "passed",
+      "logSha256": "e5215227575dd871af127e27adc30323d6bcf5ae95a5a11879829c00c4e974be",
+      "scope": "compile only; debug APK or QA Web release; no real Firebase"
+    },
+    "android-demo": {
+      "result": "passed",
+      "logSha256": "2fa9d531096817778a026129cc70160f6599a8d81ed4b2e7967e00292db0a943",
+      "scope": "compile only; debug APK or QA Web release; no real Firebase"
+    },
+    "android-live": {
+      "result": "passed",
+      "logSha256": "ccad168c641a482ad4ffc2f1225207bb8f99cc57bcc799e180a77f3b19388eaf",
+      "scope": "compile only; debug APK or QA Web release; no real Firebase"
+    }
+  },
+  "githubCI": {
+    "finalCommit": "verify after push; report via GitHub run links",
+    "result": "not inferred from baseline"
+  },
+  "unrun": [
+    "iOS build/signing",
+    "real Firebase/Auth/AppCheck/FCM/KMS/IAM",
+    "Click API",
+    "physical devices/printer",
+    "backup/restore/rollback/performance"
+  ],
+  "forbiddenActionsExecuted": []
+}
