@@ -33,7 +33,7 @@
 - تطبيق Firebase مُسجَّل: `1:948196868655:android:4465def254bb941ac43cda`
 - `google-services.json`: غير موجود في المستودع (مُتجاهَل في git). تم جلبه محلياً عبر `firebase apps:sdkconfig android` (قراءة فقط، بلا تغيير سحابي) واختُبر، ثم حُذف.
 - `oauth_client` في الإعداد: فقط عميل Web (type 3) + عميل iOS (type 2). لا يوجد عميل Android (type 1) / SHA-1 مُسجَّل.
-- `api_key`: `AIzaSyAWoTmOJJ-vntInPEL13XiHcppZ3Hi881A`
+- `api_key`: `[REDACTED - Firebase public API key]`
 - `project_id`: `velnix-6c1a2`
 
 ## 5. نتائج البناء

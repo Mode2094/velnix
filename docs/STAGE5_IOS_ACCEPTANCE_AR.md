@@ -29,7 +29,7 @@
 - `GoogleService-Info.plist`: غير موجود في المستودع (مُتجاهَل). تم جلبه محلياً عبر `firebase apps:sdkconfig ios` واختُبر، ثم حُذف.
 - `CLIENT_ID`: `948196868655-klpna39ioeijkssic47qvc09snv17fl8.apps.googleusercontent.com`
 - `REVERSED_CLIENT_ID`: `com.googleusercontent.apps.948196868655-klpna39ioeijkssic47qvc09snv17fl8`
-- `API_KEY`: `AIzaSyDLPdZl4IEdzAaVnKD6PCK3B9cZpHcLbdg`
+- `API_KEY`: `[REDACTED - Firebase public API key]`
 - `BUNDLE_ID`: `com.mode2094.velnix` (مطابق).
 - `copy_firebase_config.sh`: نسخ GoogleService-Info.plist إلى bundle إذا وُجد.
 
