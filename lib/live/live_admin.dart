@@ -453,6 +453,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
       widget.initial?['provider']?.toString() ?? 'generic_v1';
   String target = 'delivered';
   bool busy = false;
+  bool _dirty = false;
   @override
   void initState() {
     super.initState();
@@ -494,6 +495,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
         if (provider == 'generic_v1' && webhook.text.isNotEmpty)
           'webhookKey': webhook.text,
       });
+      _dirty = false;
       token.clear();
       webhook.clear();
       if (mounted) Navigator.pop(context, true);
@@ -505,238 +507,271 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.initial == null ? 'إضافة شركة توصيل' : 'تعديل الشركة'),
-    ),
-    body: SingleChildScrollView(
-      child: LiveContent(
-        child: Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              VLivePanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'بيانات الشركة',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: provider,
-                      decoration: const InputDecoration(
-                        labelText: 'نوع التكامل',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'generic_v1',
-                          child: Text(
-                            'موصل مرجعي',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        DropdownMenuItem(
-                          value: 'click_delivery_v1',
-                          child: Text(
-                            'Click Delivery — مسودة معطلة',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                      onChanged: widget.initial != null
-                          ? null
-                          : (value) {
-                              if (value == null) return;
-                              setState(() {
-                                provider = value;
-                                enabled = false;
-                                if (provider == 'click_delivery_v1') {
-                                  url.text =
-                                      'https://admin.clickdelivery.org/Client';
-                                }
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: name,
-                      textDirection: TextDirection.rtl,
-                      maxLength: 140,
-                      decoration: const InputDecoration(
-                        labelText: 'اسم شركة التوصيل',
-                      ),
-                      validator: (v) => v == null || v.trim().isEmpty
-                          ? 'أدخل اسم الشركة'
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: url,
-                      textDirection: TextDirection.ltr,
-                      keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'رابط API (HTTPS)',
-                      ),
-                      validator: (v) => v == null || !v.startsWith('https://')
-                          ? 'يجب أن يكون رابط HTTPS'
-                          : null,
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('الشركة مفعّلة'),
-                      value: provider == 'click_delivery_v1' ? false : enabled,
-                      onChanged: provider == 'click_delivery_v1'
-                          ? null
-                          : (v) => setState(() => enabled = v),
-                    ),
-                    const Text(
-                      'لن يعمل الرابط إلا إذا كان مضيفه مسموحاً به في إعدادات الخادم.',
-                      style: TextStyle(color: VColors.muted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (provider == 'click_delivery_v1')
-                const VFeedbackPanel(
-                  title: 'تكامل Click Delivery غير مفعّل',
-                  message:
-                      'لا اتصال أو إنشاء شحنة في هذه المرحلة. نحتاج استجابات الشركة وأكواد الحالات وتفسير المبالغ قبل إدخال الاعتمادات وتفعيل التكامل.',
-                ),
-              if (provider == 'generic_v1')
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (await confirmDiscardChanges(context) && context.mounted) {
+        Navigator.pop(context);
+      }
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.initial == null ? 'إضافة شركة توصيل' : 'تعديل الشركة',
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: LiveContent(
+          child: Form(
+            key: form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 VLivePanel(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const Text(
-                        'بيانات الاتصال السرية',
+                        'بيانات الشركة',
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
-                          fontSize: 17,
+                          fontSize: 18,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: token,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText:
-                              'API Token • اتركه فارغاً للاحتفاظ بالسابق',
-                        ),
-                      ),
-                      const SizedBox(height: 11),
-                      TextField(
-                        controller: webhook,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText:
-                              'Webhook HMAC Secret • اتركه فارغاً للاحتفاظ بالسابق',
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        'لا يتم عرض الرموز القديمة. تُرسل للخادم وتحفظ مشفّرة باستخدام Cloud KMS؛ لا تُخزّن داخل التطبيق.',
-                        style: TextStyle(color: VColors.muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 12),
-              if (provider == 'generic_v1')
-                VLivePanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'ربط حالات التوصيل',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 17,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final e in mappings.entries)
-                        ListTile(
-                          title: Text(e.key, textDirection: TextDirection.ltr),
-                          subtitle: Text(statusLabels[e.value] ?? e.value),
-                          trailing: IconButton(
-                            tooltip: 'إزالة الربط',
-                            onPressed: () =>
-                                setState(() => mappings.remove(e.key)),
-                            icon: const Icon(
-                              Icons.close,
-                              color: VColors.danger,
-                            ),
-                          ),
-                        ),
-                      TextField(
-                        controller: remote,
-                        decoration: const InputDecoration(
-                          labelText:
-                              'اسم الحالة في شركة التوصيل • مثال delivered',
-                        ),
-                        textDirection: TextDirection.ltr,
-                      ),
-                      const SizedBox(height: 9),
+                      const SizedBox(height: 14),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
-
-                        initialValue: target,
+                        initialValue: provider,
                         decoration: const InputDecoration(
-                          labelText: 'الحالة الداخلية',
+                          labelText: 'نوع التكامل',
                         ),
-                        items: statusLabels.entries
-                            .where(
-                              (e) => [
-                                'inTransit',
-                                'delivered',
-                                'returned',
-                                'cancelled',
-                              ].contains(e.key),
-                            )
-                            .map(
-                              (e) => DropdownMenuItem(
-                                value: e.key,
-                                child: Text(e.value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) => setState(() => target = v ?? target),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'generic_v1',
+                            child: Text(
+                              'موصل مرجعي',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: 'click_delivery_v1',
+                            child: Text(
+                              'Click Delivery — مسودة معطلة',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                        onChanged: widget.initial != null
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  provider = value;
+                                  enabled = false;
+                                  _dirty = true;
+                                  if (provider == 'click_delivery_v1') {
+                                    url.text =
+                                        'https://admin.clickdelivery.org/Client';
+                                  }
+                                });
+                              },
                       ),
-                      const SizedBox(height: 9),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          final key = remote.text.trim();
-                          if (RegExp(r'^[a-zA-Z0-9_.-]{1,80}$').hasMatch(key)) {
-                            setState(() => mappings[key] = target);
-                            remote.clear();
-                          } else {
-                            showError(context, 'صيغة حالة غير صحيحة');
-                          }
-                        },
-                        icon: const Icon(Icons.add),
-                        label: const Text('إضافة ربط حالة'),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: name,
+                        textDirection: TextDirection.rtl,
+                        maxLength: 140,
+                        onChanged: (_) => setState(() => _dirty = true),
+                        decoration: const InputDecoration(
+                          labelText: 'اسم شركة التوصيل',
+                        ),
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'أدخل اسم الشركة'
+                            : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: url,
+                        textDirection: TextDirection.ltr,
+                        keyboardType: TextInputType.url,
+                        onChanged: (_) => setState(() => _dirty = true),
+                        decoration: const InputDecoration(
+                          labelText: 'رابط API (HTTPS)',
+                        ),
+                        validator: (v) => v == null || !v.startsWith('https://')
+                            ? 'يجب أن يكون رابط HTTPS'
+                            : null,
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('الشركة مفعّلة'),
+                        value: provider == 'click_delivery_v1'
+                            ? false
+                            : enabled,
+                        onChanged: provider == 'click_delivery_v1'
+                            ? null
+                            : (v) => setState(() {
+                                _dirty = true;
+                                enabled = v;
+                              }),
+                      ),
+                      const Text(
+                        'لن يعمل الرابط إلا إذا كان مضيفه مسموحاً به في إعدادات الخادم.',
+                        style: TextStyle(color: VColors.muted, fontSize: 11),
                       ),
                     ],
                   ),
                 ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: busy ? null : save,
-                icon: const Icon(Icons.save_outlined),
-                label: Text(busy ? 'جارٍ الحفظ' : 'حفظ إعدادات الشركة'),
-              ),
-              const SizedBox(height: 30),
-            ],
+                const SizedBox(height: 12),
+                if (provider == 'click_delivery_v1')
+                  const VFeedbackPanel(
+                    title: 'تكامل Click Delivery غير مفعّل',
+                    message:
+                        'لا اتصال أو إنشاء شحنة في هذه المرحلة. نحتاج استجابات الشركة وأكواد الحالات وتفسير المبالغ قبل إدخال الاعتمادات وتفعيل التكامل.',
+                  ),
+                if (provider == 'generic_v1')
+                  VLivePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'بيانات الاتصال السرية',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: token,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText:
+                                'API Token • اتركه فارغاً للاحتفاظ بالسابق',
+                          ),
+                        ),
+                        const SizedBox(height: 11),
+                        TextField(
+                          controller: webhook,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText:
+                                'Webhook HMAC Secret • اتركه فارغاً للاحتفاظ بالسابق',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'لا يتم عرض الرموز القديمة. تُرسل للخادم وتحفظ مشفّرة باستخدام Cloud KMS؛ لا تُخزّن داخل التطبيق.',
+                          style: TextStyle(color: VColors.muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                if (provider == 'generic_v1')
+                  VLivePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'ربط حالات التوصيل',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final e in mappings.entries)
+                          ListTile(
+                            title: Text(
+                              e.key,
+                              textDirection: TextDirection.ltr,
+                            ),
+                            subtitle: Text(statusLabels[e.value] ?? e.value),
+                            trailing: IconButton(
+                              tooltip: 'إزالة الربط',
+                              onPressed: () => setState(() {
+                                _dirty = true;
+                                mappings.remove(e.key);
+                              }),
+                              icon: const Icon(
+                                Icons.close,
+                                color: VColors.danger,
+                              ),
+                            ),
+                          ),
+                        TextField(
+                          controller: remote,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          decoration: const InputDecoration(
+                            labelText:
+                                'اسم الحالة في شركة التوصيل • مثال delivered',
+                          ),
+                          textDirection: TextDirection.ltr,
+                        ),
+                        const SizedBox(height: 9),
+                        DropdownButtonFormField<String>(
+                          isExpanded: true,
+
+                          initialValue: target,
+                          decoration: const InputDecoration(
+                            labelText: 'الحالة الداخلية',
+                          ),
+                          items: statusLabels.entries
+                              .where(
+                                (e) => [
+                                  'inTransit',
+                                  'delivered',
+                                  'returned',
+                                  'cancelled',
+                                ].contains(e.key),
+                              )
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => target = v ?? target),
+                        ),
+                        const SizedBox(height: 9),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            final key = remote.text.trim();
+                            if (RegExp(
+                              r'^[a-zA-Z0-9_.-]{1,80}$',
+                            ).hasMatch(key)) {
+                              setState(() {
+                                _dirty = true;
+                                mappings[key] = target;
+                              });
+                              remote.clear();
+                            } else {
+                              showError(context, 'صيغة حالة غير صحيحة');
+                            }
+                          },
+                          icon: const Icon(Icons.add),
+                          label: const Text('إضافة ربط حالة'),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: busy ? null : save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(busy ? 'جارٍ الحفظ' : 'حفظ إعدادات الشركة'),
+                ),
+                const SizedBox(height: 30),
+              ],
+            ),
           ),
         ),
       ),
@@ -939,6 +974,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
     ...(widget.initial?['permissions'] as List? ?? []).map((e) => e.toString()),
   };
   bool busy = false;
+  bool _dirty = false;
   static const titles = <String, String>{
     'viewAllOrders': 'مشاهدة كل الطلبات',
     'editAllOrders': 'تعديل كل الطلبات',
@@ -988,6 +1024,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
             'active': active,
             'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
           });
+      _dirty = false;
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -997,177 +1034,201 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(
-        widget.joinRequest ? 'اعتماد طلب الانضمام' : 'تعديل صلاحيات الموظف',
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (await confirmDiscardChanges(context) && context.mounted) {
+        Navigator.pop(context);
+      }
+    },
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text(
+          widget.joinRequest ? 'اعتماد طلب الانضمام' : 'تعديل صلاحيات الموظف',
+        ),
       ),
-    ),
-    body: SingleChildScrollView(
-      child: LiveContent(
-        child: Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              VLivePanel(
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: name,
-                      readOnly: widget.joinRequest,
-                      textDirection: TextDirection.rtl,
-                      maxLength: 120,
-                      decoration: const InputDecoration(
-                        labelText: 'اسم الموظف',
-                      ),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'الاسم مطلوب' : null,
-                    ),
-                    const SizedBox(height: 11),
-                    TextFormField(
-                      controller: email,
-                      readOnly: widget.initial != null,
-                      textDirection: TextDirection.rtl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'البريد الإلكتروني',
-                      ),
-                      validator: (v) => v == null || !v.contains('@')
-                          ? 'بريد غير صحيح'
-                          : null,
-                    ),
-                    const SizedBox(height: 11),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-
-                      initialValue: role,
-                      decoration: const InputDecoration(labelText: 'الدور'),
-                      items: [
-                        if (widget.policy.role == 'generalManager') ...[
-                          const DropdownMenuItem(
-                            value: 'generalManager',
-                            child: Text('مدير عام'),
-                          ),
-                          const DropdownMenuItem(
-                            value: 'manager',
-                            child: Text('مدير'),
-                          ),
-                        ],
-                        if (widget.policy.canGrantRole('warehouse'))
-                          const DropdownMenuItem(
-                            value: 'warehouse',
-                            child: Text('موظف مستودع'),
-                          ),
-                        if (widget.policy.canGrantRole('sales'))
-                          const DropdownMenuItem(
-                            value: 'sales',
-                            child: Text('مبيعات'),
-                          ),
-                        const DropdownMenuItem(
-                          value: 'dataEntry',
-                          child: Text('مدخل بيانات'),
+      body: SingleChildScrollView(
+        child: LiveContent(
+          child: Form(
+            key: form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                VLivePanel(
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: name,
+                        readOnly: widget.joinRequest,
+                        textDirection: TextDirection.rtl,
+                        maxLength: 120,
+                        onChanged: (_) => setState(() => _dirty = true),
+                        decoration: const InputDecoration(
+                          labelText: 'اسم الموظف',
                         ),
-                      ],
-                      onChanged: (v) => setState(() => role = v ?? role),
-                    ),
-                    if (role == 'dataEntry') ...[
+                        validator: (v) => v == null || v.trim().isEmpty
+                            ? 'الاسم مطلوب'
+                            : null,
+                      ),
+                      const SizedBox(height: 11),
+                      TextFormField(
+                        controller: email,
+                        readOnly: widget.initial != null,
+                        textDirection: TextDirection.rtl,
+                        keyboardType: TextInputType.emailAddress,
+                        onChanged: (_) => setState(() => _dirty = true),
+                        decoration: const InputDecoration(
+                          labelText: 'البريد الإلكتروني',
+                        ),
+                        validator: (v) => v == null || !v.contains('@')
+                            ? 'بريد غير صحيح'
+                            : null,
+                      ),
                       const SizedBox(height: 11),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
 
-                        initialValue: salesSupervisor,
-                        decoration: const InputDecoration(
-                          labelText: 'مسؤول المبيعات المرتبط (اختياري)',
-                        ),
+                        initialValue: role,
+                        decoration: const InputDecoration(labelText: 'الدور'),
                         items: [
-                          const DropdownMenuItem<String>(
-                            value: null,
-                            child: Text('بدون مسؤول'),
-                          ),
-                          if (salesSupervisor != null &&
-                              !widget.members.any(
-                                (m) => m['id'] == salesSupervisor,
-                              ))
-                            DropdownMenuItem<String>(
-                              value: salesSupervisor,
-                              child: const Text('مسؤول سابق غير متاح'),
+                          if (widget.policy.role == 'generalManager') ...[
+                            const DropdownMenuItem(
+                              value: 'generalManager',
+                              child: Text('مدير عام'),
                             ),
-                          ...widget.members
-                              .where(
-                                (m) =>
-                                    (m['role'] == 'sales' &&
-                                        m['active'] != false) ||
-                                    m['id'] == salesSupervisor,
-                              )
-                              .map(
-                                (m) => DropdownMenuItem(
-                                  value: m['id'].toString(),
-                                  child: Text(
-                                    m['role'] == 'sales'
-                                        ? m['name'].toString()
-                                        : '${m['name']} (مسؤول سابق؛ غير متاح)',
+                            const DropdownMenuItem(
+                              value: 'manager',
+                              child: Text('مدير'),
+                            ),
+                          ],
+                          if (widget.policy.canGrantRole('warehouse'))
+                            const DropdownMenuItem(
+                              value: 'warehouse',
+                              child: Text('موظف مستودع'),
+                            ),
+                          if (widget.policy.canGrantRole('sales'))
+                            const DropdownMenuItem(
+                              value: 'sales',
+                              child: Text('مبيعات'),
+                            ),
+                          const DropdownMenuItem(
+                            value: 'dataEntry',
+                            child: Text('مدخل بيانات'),
+                          ),
+                        ],
+                        onChanged: (v) => setState(() {
+                          _dirty = true;
+                          role = v ?? role;
+                        }),
+                      ),
+                      if (role == 'dataEntry') ...[
+                        const SizedBox(height: 11),
+                        DropdownButtonFormField<String>(
+                          isExpanded: true,
+
+                          initialValue: salesSupervisor,
+                          decoration: const InputDecoration(
+                            labelText: 'مسؤول المبيعات المرتبط (اختياري)',
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('بدون مسؤول'),
+                            ),
+                            if (salesSupervisor != null &&
+                                !widget.members.any(
+                                  (m) => m['id'] == salesSupervisor,
+                                ))
+                              DropdownMenuItem<String>(
+                                value: salesSupervisor,
+                                child: const Text('مسؤول سابق غير متاح'),
+                              ),
+                            ...widget.members
+                                .where(
+                                  (m) =>
+                                      (m['role'] == 'sales' &&
+                                          m['active'] != false) ||
+                                      m['id'] == salesSupervisor,
+                                )
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m['id'].toString(),
+                                    child: Text(
+                                      m['role'] == 'sales'
+                                          ? m['name'].toString()
+                                          : '${m['name']} (مسؤول سابق؛ غير متاح)',
+                                    ),
                                   ),
                                 ),
-                              ),
-                        ],
-                        onChanged: (v) => setState(() => salesSupervisor = v),
+                          ],
+                          onChanged: (v) => setState(() {
+                            _dirty = true;
+                            salesSupervisor = v;
+                          }),
+                        ),
+                      ],
+                      if (!widget.joinRequest)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('الحساب مفعّل'),
+                          value: active,
+                          onChanged: (v) => setState(() {
+                            _dirty = true;
+                            active = v;
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                VLivePanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'الصلاحيات الإضافية',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final e in titles.entries)
+                        if (widget.policy.role == 'generalManager' ||
+                            widget.policy.can(e.key))
+                          CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              e.value,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            value: permissions.contains(e.key),
+                            onChanged: (v) => setState(() {
+                              _dirty = true;
+                              if (v == true) {
+                                permissions.add(e.key);
+                              } else {
+                                permissions.remove(e.key);
+                              }
+                            }),
+                          ),
+                      const Text(
+                        'هذه صلاحيات إضافية للدور؛ كل الموظفين يستطيعون إنشاء طلب. الخادم يتحقق من كل تعديل.',
+                        style: TextStyle(color: VColors.muted, fontSize: 11),
                       ),
                     ],
-                    if (!widget.joinRequest)
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('الحساب مفعّل'),
-                        value: active,
-                        onChanged: (v) => setState(() => active = v),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              VLivePanel(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'الصلاحيات الإضافية',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    for (final e in titles.entries)
-                      if (widget.policy.role == 'generalManager' ||
-                          widget.policy.can(e.key))
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            e.value,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          value: permissions.contains(e.key),
-                          onChanged: (v) => setState(
-                            () => v == true
-                                ? permissions.add(e.key)
-                                : permissions.remove(e.key),
-                          ),
-                        ),
-                    const Text(
-                      'هذه صلاحيات إضافية للدور؛ كل الموظفين يستطيعون إنشاء طلب. الخادم يتحقق من كل تعديل.',
-                      style: TextStyle(color: VColors.muted, fontSize: 11),
-                    ),
-                  ],
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: busy ? null : save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(busy ? 'جارٍ الحفظ...' : 'حفظ الموظف'),
                 ),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: busy ? null : save,
-                icon: const Icon(Icons.save_outlined),
-                label: Text(busy ? 'جارٍ الحفظ...' : 'حفظ الموظف'),
-              ),
-              const SizedBox(height: 25),
-            ],
+                const SizedBox(height: 25),
+              ],
+            ),
           ),
         ),
       ),
@@ -1249,7 +1310,13 @@ class _LiveAuditState extends State<LiveAudit> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 9),
                 child: VLivePanel(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
                   child: ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(
                       Icons.verified_user_outlined,

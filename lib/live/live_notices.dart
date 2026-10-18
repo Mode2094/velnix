@@ -147,7 +147,13 @@ class _LiveNoticesState extends State<LiveNotices> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: VLivePanel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 2,
+                    ),
                     child: ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
                       contentPadding: EdgeInsets.zero,
                       onTap: () => openNotice(item),
                       leading: Icon(

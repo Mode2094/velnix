@@ -514,6 +514,7 @@ class _LiveShellState extends State<LiveShell> {
   }
 
   Map<String, dynamic> selectedFilters = {};
+  bool railCollapsed = false;
   int selected = 0;
   String? selectedStatus;
   String selectedBucket = 'all';
@@ -560,6 +561,18 @@ class _LiveShellState extends State<LiveShell> {
     });
   }
 
+  Widget _sheetHeader(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+    child: Text(
+      title,
+      style: const TextStyle(
+        color: VColors.muted,
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  );
+
   Future<void> _showMore(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -568,6 +581,7 @@ class _LiveShellState extends State<LiveShell> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            _sheetHeader('التشغيل'),
             ListTile(
               leading: const Icon(Icons.local_shipping_outlined),
               title: const Text('شركات التوصيل'),
@@ -576,6 +590,7 @@ class _LiveShellState extends State<LiveShell> {
                 go(3);
               },
             ),
+            if (widget.policy.can('manageEmployees')) _sheetHeader('الإدارة'),
             if (widget.policy.can('manageEmployees'))
               ListTile(
                 leading: const Icon(Icons.groups_outlined),
@@ -585,6 +600,9 @@ class _LiveShellState extends State<LiveShell> {
                   go(4);
                 },
               ),
+            if (widget.policy.can('viewAudit') ||
+                widget.policy.can('viewReports'))
+              _sheetHeader('التحليلات والتدقيق'),
             if (widget.policy.can('viewAudit'))
               ListTile(
                 leading: const Icon(Icons.history),
@@ -785,17 +803,27 @@ class _LiveShellState extends State<LiveShell> {
         children: [
           if (wide)
             Container(
-              width: extended ? 230 : 85,
+              width: extended && !railCollapsed ? 230 : 85,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 border: Border(left: BorderSide(color: VColors.line)),
               ),
               child: NavigationRail(
+                leading: IconButton(
+                  tooltip: railCollapsed ? 'توسيع القائمة' : 'طي القائمة',
+                  onPressed: () =>
+                      setState(() => railCollapsed = !railCollapsed),
+                  icon: Icon(
+                    railCollapsed
+                        ? Icons.chevron_right_outlined
+                        : Icons.chevron_left_outlined,
+                  ),
+                ),
                 backgroundColor: Colors.white,
                 selectedIndex: railEntries.contains(selected)
                     ? railEntries.indexOf(selected)
                     : railEntries.length,
-                extended: extended,
+                extended: extended && !railCollapsed,
                 labelType: extended
                     ? NavigationRailLabelType.none
                     : NavigationRailLabelType.all,

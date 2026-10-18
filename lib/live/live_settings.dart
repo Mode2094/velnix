@@ -14,7 +14,7 @@ class _LiveSettingsState extends State<LiveSettings> {
   final name = TextEditingController(),
       phone = TextEditingController(),
       footer = TextEditingController();
-  bool loading = true, busy = false;
+  bool loading = true, busy = false, _dirty = false;
   String? error;
   @override
   void initState() {
@@ -36,6 +36,7 @@ class _LiveSettingsState extends State<LiveSettings> {
           footer.text = data['receiptFooter']?.toString() ?? '';
           loading = false;
           error = null;
+          _dirty = false;
         });
       }
     } catch (e) {
@@ -65,6 +66,7 @@ class _LiveSettingsState extends State<LiveSettings> {
         'supportPhone': phone.text.trim(),
         'receiptFooter': footer.text.trim(),
       });
+      _dirty = false;
       if (mounted) showSuccess(context, 'تم حفظ إعدادات المؤسسة');
     } catch (e) {
       if (mounted) showError(context, e);
@@ -74,81 +76,93 @@ class _LiveSettingsState extends State<LiveSettings> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('إعدادات المؤسسة')),
-    body: loading
-        ? const Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(16),
-              child: VFeedbackPanel(
-                title: 'جارٍ تحميل الإعدادات',
-                loading: true,
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (await confirmDiscardChanges(context) && context.mounted) {
+        Navigator.pop(context);
+      }
+    },
+    child: Scaffold(
+      appBar: AppBar(title: const Text('إعدادات المؤسسة')),
+      body: loading
+          ? const Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(16),
+                child: VFeedbackPanel(
+                  title: 'جارٍ تحميل الإعدادات',
+                  loading: true,
+                ),
               ),
-            ),
-          )
-        : error != null
-        ? SingleChildScrollView(
-            child: LiveContent(
-              child: VFeedbackPanel(
-                title: 'تعذر تحميل الإعدادات',
-                message: error,
-                icon: Icons.error_outline,
-                onRetry: load,
+            )
+          : error != null
+          ? SingleChildScrollView(
+              child: LiveContent(
+                child: VFeedbackPanel(
+                  title: 'تعذر تحميل الإعدادات',
+                  message: error,
+                  icon: Icons.error_outline,
+                  onRetry: load,
+                ),
               ),
-            ),
-          )
-        : SingleChildScrollView(
-            child: LiveContent(
-              child: Form(
-                key: form,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    VLivePanel(
-                      child: Column(
-                        children: [
-                          TextFormField(
-                            controller: name,
-                            maxLength: 120,
-                            decoration: const InputDecoration(
-                              labelText: 'اسم المؤسسة',
+            )
+          : SingleChildScrollView(
+              child: LiveContent(
+                child: Form(
+                  key: form,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      VLivePanel(
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: name,
+                              maxLength: 120,
+                              onChanged: (_) => setState(() => _dirty = true),
+                              decoration: const InputDecoration(
+                                labelText: 'اسم المؤسسة',
+                              ),
+                              validator: (value) =>
+                                  (value?.trim().isEmpty ?? true)
+                                  ? 'الاسم مطلوب'
+                                  : null,
                             ),
-                            validator: (value) =>
-                                (value?.trim().isEmpty ?? true)
-                                ? 'الاسم مطلوب'
-                                : null,
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: phone,
-                            maxLength: 30,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                              labelText: 'هاتف الدعم (اختياري)',
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: phone,
+                              maxLength: 30,
+                              onChanged: (_) => setState(() => _dirty = true),
+                              keyboardType: TextInputType.phone,
+                              decoration: const InputDecoration(
+                                labelText: 'هاتف الدعم (اختياري)',
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: footer,
-                            maxLength: 200,
-                            maxLines: 3,
-                            decoration: const InputDecoration(
-                              labelText: 'تذييل سند الطلب (اختياري)',
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: footer,
+                              maxLength: 200,
+                              onChanged: (_) => setState(() => _dirty = true),
+                              maxLines: 3,
+                              decoration: const InputDecoration(
+                                labelText: 'تذييل سند الطلب (اختياري)',
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: busy ? null : save,
-                      icon: const Icon(Icons.save_outlined),
-                      label: Text(busy ? 'جارٍ الحفظ' : 'حفظ الإعدادات'),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: busy ? null : save,
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(busy ? 'جارٍ الحفظ' : 'حفظ الإعدادات'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
+    ),
   );
 }

@@ -1,0 +1,67 @@
+{
+  "generatedAtLocal": "2026-10-18",
+  "branch": "audit/production-readiness",
+  "head": "2cdcf4508a179b2b5b0444cf9c1ac0519fb011e0",
+  "scope": "Read-only verification of the original Click Postman request shape against the Velnix getorder request. No setorder, no removeorder, no shipment created or cancelled. No credential value is stored in this file.",
+  "postmanApplication": {
+    "installed": false,
+    "cli": false,
+    "result": "NOT AVAILABLE",
+    "note": "No Postman desktop application or newman CLI is installed on this machine. The original collection was reviewed earlier; its recorded sha256 is 5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061. The raw file is no longer present in the local Downloads folder, so byte-level re-verification is not possible now."
+  },
+  "originalCollection": {
+    "filename": "ClickApi.postman_collection.json",
+    "recordedSha256": "5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061",
+    "source": "docs/evidence/click-delivery-contract.json sources.postman",
+    "request": {
+      "name": "getorder",
+      "method": "POST",
+      "url": "https://admin.clickdelivery.org/Client/getorder",
+      "authorizationHeader": "client",
+      "bodyMode": "raw",
+      "bodyLanguage": "json",
+      "bodyFields": [
+        "Order_ID",
+        "User_Name",
+        "User_Pass"
+      ],
+      "sampleValuesPresentInOriginal": true,
+      "sampleValuesCopied": false
+    }
+  },
+  "velnixRequest": {
+    "method": "POST",
+    "url": "https://admin.clickdelivery.org/Client/getorder",
+    "authorizationHeader": "client",
+    "contentType": "application/json",
+    "accept": "application/json",
+    "bodyFields": [
+      "Order_ID",
+      "User_Name",
+      "User_Pass"
+    ],
+    "source": "functions/src/delivery.js vendorRequest + functions/src/click_delivery.js getOrderBody"
+  },
+  "comparison": {
+    "methodMatches": true,
+    "urlMatches": true,
+    "authorizationHeaderMatches": true,
+    "bodyFieldNamesMatch": true,
+    "jsonBodyMatches": true,
+    "contentType": "MATCH (Postman raw JSON adds application/json implicitly; Velnix sends it explicitly)",
+    "acceptHeader": "ADDITIONAL (Velnix sends Accept: application/json; the original collection has no explicit Accept header)",
+    "mismatchFound": false
+  },
+  "requestExecution": {
+    "requestSent": false,
+    "reason": "No safe, authorized read-only Order_ID is available. The account has zero shipments. Order_ID=0 is below the documented range and is not accepted as safe evidence. The provider was asked to confirm or provision the API credential/activation for client 1603.",
+    "setorderCalled": false,
+    "removeorderCalled": false
+  },
+  "sanitizedLocalArtifacts": {
+    "collection": "~/Desktop/Velnix-Click-Postman-Local/ClickApi.sanitized.postman_collection.json",
+    "environment": "~/Desktop/Velnix-Click-Postman-Local/ClickApi.local.postman_environment.json",
+    "note": "Outside Git. click_user_pass is empty and marked secret; the owner pastes it locally only if a safe Order_ID is later provided."
+  },
+  "nextProviderQuestion": "Provide one authorized, safe Order_ID for read-only getorder on client 1603, or confirm/provision the exact /Client/ API credential/activation. Velnix will then run a single getorder request and attach the sanitized HTTP result."
+}

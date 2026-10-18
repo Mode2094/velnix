@@ -63,6 +63,8 @@ class _LiveReportsState extends State<LiveReports> {
                   children: [
                     for (final e in statusLabels.entries)
                       ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
                         contentPadding: EdgeInsets.zero,
                         leading: CircleAvatar(
                           radius: 12,
@@ -146,7 +148,13 @@ class _LiveSyncCenterState extends State<LiveSyncCenter> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 9),
                 child: VLivePanel(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 2,
+                  ),
                   child: ListTile(
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
                     leading: const Icon(
                       Icons.sync_alt_outlined,
                       color: VColors.brand,

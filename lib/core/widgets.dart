@@ -179,6 +179,28 @@ class VFeedbackPanel extends StatelessWidget {
   );
 }
 
+/// Shared confirmation before leaving a form with unsaved changes.
+Future<bool> confirmDiscardChanges(BuildContext context) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('تغييرات غير محفوظة'),
+      content: const Text('هل تريد مغادرة النموذج دون حفظ التغييرات؟'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('متابعة التحرير'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('مغادرة دون حفظ'),
+        ),
+      ],
+    ),
+  );
+  return result == true;
+}
+
 class VScreen extends StatelessWidget {
   const VScreen({
     super.key,

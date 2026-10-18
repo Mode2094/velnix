@@ -1031,6 +1031,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   final form = GlobalKey<FormState>();
   final inputs = <String, TextEditingController>{};
   bool busy = false;
+  bool _dirty = false;
   final String _requestKey = List.generate(
     5,
     (_) => Random.secure().nextInt(1 << 30).toRadixString(36).padLeft(6, '0'),
@@ -1114,6 +1115,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
         );
       }
       if (mounted) {
+        _dirty = false;
         showSuccess(context, 'تم حفظ الطلب');
         widget.onSaved();
       }
@@ -1125,159 +1127,176 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: widget.initial != null
-        ? AppBar(title: const Text('تعديل الطلب'))
-        : null,
-    body: SingleChildScrollView(
-      child: LiveContent(
-        child: Form(
-          key: form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                widget.initial == null ? 'إضافة طلب جديد' : 'تعديل الطلب',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
-              VLivePanel(
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    final wide = box.maxWidth >= 620;
-                    final width = wide ? (box.maxWidth - 16) / 2 : box.maxWidth;
-                    return Wrap(
-                      spacing: 16,
-                      runSpacing: 12,
-                      children: [
-                        for (final entry in names.entries)
-                          if (entry.key != 'amount' || _showAmount)
-                            SizedBox(
-                              width: width,
-                              child: TextFormField(
-                                controller: inputs[entry.key],
-                                textDirection:
-                                    [
-                                      'phone',
-                                      'extraPhone',
-                                      'quantity',
-                                      'amount',
-                                    ].contains(entry.key)
-                                    ? TextDirection.ltr
-                                    : TextDirection.rtl,
-                                maxLength: const {
-                                  'customer': 120,
-                                  'phone': 30,
-                                  'extraPhone': 30,
-                                  'city': 80,
-                                  'area': 120,
-                                  'address': 240,
-                                  'description': 500,
-                                  'note': 600,
-                                  'quantity': 5,
-                                  'amount': 11,
-                                }[entry.key],
-                                keyboardType: entry.key == 'amount'
-                                    ? const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      )
-                                    : entry.key == 'quantity'
-                                    ? TextInputType.number
-                                    : entry.key.toLowerCase().contains('phone')
-                                    ? TextInputType.phone
-                                    : TextInputType.text,
-                                decoration: InputDecoration(
-                                  labelText: entry.value,
-                                ),
-                                maxLines:
-                                    entry.key == 'note' ||
-                                        entry.key == 'description'
-                                    ? 2
-                                    : 1,
-                                validator: (v) {
-                                  if (![
-                                        'note',
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, result) async {
+      if (didPop) return;
+      if (await confirmDiscardChanges(context) && context.mounted) {
+        Navigator.pop(context);
+      }
+    },
+    child: Scaffold(
+      appBar: widget.initial != null
+          ? AppBar(title: const Text('تعديل الطلب'))
+          : null,
+      body: SingleChildScrollView(
+        child: LiveContent(
+          child: Form(
+            key: form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.initial == null ? 'إضافة طلب جديد' : 'تعديل الطلب',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+                VLivePanel(
+                  child: LayoutBuilder(
+                    builder: (context, box) {
+                      final wide = box.maxWidth >= 620;
+                      final width = wide
+                          ? (box.maxWidth - 16) / 2
+                          : box.maxWidth;
+                      return Wrap(
+                        spacing: 16,
+                        runSpacing: 12,
+                        children: [
+                          for (final entry in names.entries)
+                            if (entry.key != 'amount' || _showAmount)
+                              SizedBox(
+                                width: width,
+                                child: TextFormField(
+                                  controller: inputs[entry.key],
+                                  onChanged: (_) =>
+                                      setState(() => _dirty = true),
+                                  textDirection:
+                                      [
+                                        'phone',
                                         'extraPhone',
-                                      ].contains(entry.key) &&
-                                      (v == null || v.trim().isEmpty)) {
-                                    return 'الحقل مطلوب';
-                                  }
-                                  if (entry.key == 'phone' ||
-                                      entry.key == 'extraPhone') {
-                                    final phone = normalizedNumber(
-                                      v ?? '',
-                                    ).replaceAll(RegExp(r'[ ()\-]'), '');
-                                    if (phone.isNotEmpty &&
-                                        !RegExp(
-                                          r'^\+?[0-9]{7,15}$',
-                                        ).hasMatch(phone)) {
-                                      return 'أدخل 7 إلى 15 رقماً مع رمز الدولة إن وجد';
+                                        'quantity',
+                                        'amount',
+                                      ].contains(entry.key)
+                                      ? TextDirection.ltr
+                                      : TextDirection.rtl,
+                                  maxLength: const {
+                                    'customer': 120,
+                                    'phone': 30,
+                                    'extraPhone': 30,
+                                    'city': 80,
+                                    'area': 120,
+                                    'address': 240,
+                                    'description': 500,
+                                    'note': 600,
+                                    'quantity': 5,
+                                    'amount': 11,
+                                  }[entry.key],
+                                  keyboardType: entry.key == 'amount'
+                                      ? const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        )
+                                      : entry.key == 'quantity'
+                                      ? TextInputType.number
+                                      : entry.key.toLowerCase().contains(
+                                          'phone',
+                                        )
+                                      ? TextInputType.phone
+                                      : TextInputType.text,
+                                  decoration: InputDecoration(
+                                    labelText: entry.value,
+                                  ),
+                                  maxLines:
+                                      entry.key == 'note' ||
+                                          entry.key == 'description'
+                                      ? 2
+                                      : 1,
+                                  validator: (v) {
+                                    if (![
+                                          'note',
+                                          'extraPhone',
+                                        ].contains(entry.key) &&
+                                        (v == null || v.trim().isEmpty)) {
+                                      return 'الحقل مطلوب';
                                     }
-                                  }
-                                  if (entry.key == 'quantity') {
-                                    final quantity = int.tryParse(
-                                      normalizedNumber(v ?? ''),
-                                    );
-                                    if (quantity == null ||
-                                        quantity < 1 ||
-                                        quantity > 10000) {
-                                      return 'الكمية من 1 إلى 10000';
+                                    if (entry.key == 'phone' ||
+                                        entry.key == 'extraPhone') {
+                                      final phone = normalizedNumber(
+                                        v ?? '',
+                                      ).replaceAll(RegExp(r'[ ()\-]'), '');
+                                      if (phone.isNotEmpty &&
+                                          !RegExp(
+                                            r'^\+?[0-9]{7,15}$',
+                                          ).hasMatch(phone)) {
+                                        return 'أدخل 7 إلى 15 رقماً مع رمز الدولة إن وجد';
+                                      }
                                     }
-                                  }
-                                  if (entry.key == 'amount') {
-                                    final text = normalizedNumber(v ?? '');
-                                    final amount = double.tryParse(text);
-                                    if (!RegExp(
-                                          r'^\d+(?:\.\d{1,3})?$',
-                                        ).hasMatch(text) ||
-                                        amount == null ||
-                                        !amount.isFinite ||
-                                        amount < 0 ||
-                                        amount > 1000000) {
-                                      return 'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية';
+                                    if (entry.key == 'quantity') {
+                                      final quantity = int.tryParse(
+                                        normalizedNumber(v ?? ''),
+                                      );
+                                      if (quantity == null ||
+                                          quantity < 1 ||
+                                          quantity > 10000) {
+                                        return 'الكمية من 1 إلى 10000';
+                                      }
                                     }
-                                  }
-                                  return null;
-                                },
+                                    if (entry.key == 'amount') {
+                                      final text = normalizedNumber(v ?? '');
+                                      final amount = double.tryParse(text);
+                                      if (!RegExp(
+                                            r'^\d+(?:\.\d{1,3})?$',
+                                          ).hasMatch(text) ||
+                                          amount == null ||
+                                          !amount.isFinite ||
+                                          amount < 0 ||
+                                          amount > 1000000) {
+                                        return 'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية';
+                                      }
+                                    }
+                                    return null;
+                                  },
+                                ),
                               ),
-                            ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              VLivePanel(
-                child: DropdownButtonFormField<String>(
-                  isExpanded: true,
+                const SizedBox(height: 12),
+                VLivePanel(
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
 
-                  initialValue:
-                      ['عند الاستلام', 'مدفوع مسبقاً'].contains(paymentMethod)
-                      ? paymentMethod
-                      : 'عند الاستلام',
-                  decoration: const InputDecoration(labelText: 'طريقة الدفع'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'عند الاستلام',
-                      child: Text('عند الاستلام'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'مدفوع مسبقاً',
-                      child: Text('مدفوع مسبقاً'),
-                    ),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => paymentMethod = value ?? 'عند الاستلام'),
+                    initialValue:
+                        ['عند الاستلام', 'مدفوع مسبقاً'].contains(paymentMethod)
+                        ? paymentMethod
+                        : 'عند الاستلام',
+                    decoration: const InputDecoration(labelText: 'طريقة الدفع'),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'عند الاستلام',
+                        child: Text('عند الاستلام'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'مدفوع مسبقاً',
+                        child: Text('مدفوع مسبقاً'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      _dirty = true;
+                      setState(() => paymentMethod = value ?? 'عند الاستلام');
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: busy ? null : save,
-                icon: const Icon(Icons.save_outlined),
-                label: Text(busy ? 'جارٍ الحفظ...' : 'حفظ الطلب'),
-              ),
-              const SizedBox(height: 20),
-            ],
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: busy ? null : save,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(busy ? 'جارٍ الحفظ...' : 'حفظ الطلب'),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),

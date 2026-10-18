@@ -526,4 +526,67 @@ void main() {
       'https://local-contract.example',
     );
   });
+
+  testWidgets('order form asks before discarding unsaved changes', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      throw StateError(name);
+    });
+    final policy = SessionPolicy({
+      'id': 'gm',
+      'role': 'generalManager',
+      'active': true,
+    });
+    await tester.pumpWidget(
+      app(
+        Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        LiveOrderForm(policy: policy, onSaved: () {}),
+                  ),
+                ),
+                child: const Text('فتح النموذج'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('فتح النموذج'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم المستلم'),
+      'عميل اختبار',
+    );
+    expect(find.byType(LiveOrderForm), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.widgetWithText(TextFormField, 'اسم المستلم'),
+          )
+          .controller
+          ?.text,
+      'عميل اختبار',
+    );
+    tester
+        .widget<TextFormField>(
+          find.widgetWithText(TextFormField, 'اسم المستلم'),
+        )
+        .onChanged
+        ?.call('عميل اختبار');
+    await tester.pump();
+    final scopes = tester
+        .widgetList<PopScope>(find.byWidgetPredicate((w) => w is PopScope))
+        .toList();
+    expect(scopes.first.canPop, isFalse);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('تغييرات غير محفوظة'), findsOneWidget);
+  });
 }

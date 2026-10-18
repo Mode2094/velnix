@@ -84,7 +84,13 @@ async function goBack(p) {
   } catch (_) {
     return;
   }
-  await p.waitForTimeout(1400);
+  await p.waitForTimeout(700);
+  const discard = p.getByRole('button', { name: 'مغادرة دون حفظ' });
+  if (await discard.count().catch(() => 0)) {
+    await activate(p, discard.first()).catch(() => {});
+    await p.waitForTimeout(1000);
+  }
+  await p.waitForTimeout(600);
 }
 
 /** Flutter exposes shell destinations as role=tab or role=button depending on width. */
