@@ -188,7 +188,7 @@ default_web_client_id = 948196868655-rhui5vqf3h48ft5e1srln5fc9otm8ng2...
 | 4 | نتيجة Account Chooser | **لم يظهر** — `Accounts: 0` |
 | 5 | نتيجة Firebase Authentication | **لم تكتمل** — لا رمز، ولا حساب |
 | 6 | المطلوب: حساب اختبار معتمد | **نعم** — الشرط الوحيد المتبقي لتصديق Google Sign‑In |
-| 7 | آخر SHA ونتيجة CI | يُحدَّث أدناه |
+| 7 | آخر SHA ونتيجة CI | `8f0bc01464ba5bd2513fe95009a676cff6ff2f24` · Push CI ✅ `success` (39113022918) · PR CI ✅ `success` (39113026317) |
 | 8 | عوائق Stage 5 المتبقية | حساب اختبار معتمد · إثبات App Check على الخادم · توقيع Apple لـiOS |
 
 **لم يُعلن Stage 5 PASS.** التصديق الحقيقي للمصادقة وApp Check لم يتحقّق، ولا يُعلن PASS بدونه.
