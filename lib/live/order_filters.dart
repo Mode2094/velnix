@@ -51,9 +51,13 @@ class _OrderFiltersState extends State<OrderFilters> {
         VelnixGateway.instance.directoryItems('listOrderCreators'),
       ]);
       if (mounted) {
+        final companyIds = values[0].map((c) => c['id'].toString()).toSet();
+        final creatorIds = values[1].map((c) => c['id'].toString()).toSet();
         setState(() {
           companies = values[0];
           creators = values[1];
+          if (company != null && !companyIds.contains(company)) company = null;
+          if (creator != null && !creatorIds.contains(creator)) creator = null;
           error = null;
         });
       }
@@ -69,9 +73,17 @@ class _OrderFiltersState extends State<OrderFilters> {
       date.month,
       date.day,
     ).subtract(const Duration(hours: 3));
+    final validCompany =
+        company != null && companies.any((c) => c['id'].toString() == company)
+        ? company
+        : null;
+    final validCreator =
+        creator != null && creators.any((c) => c['id'].toString() == creator)
+        ? creator
+        : null;
     widget.onChanged({
-      if (company != null) 'companyId': company,
-      if (creator != null) 'createdBy': creator,
+      'companyId': ?validCompany,
+      'createdBy': ?validCreator,
       if (dates != null) 'from': boundary(dates!.start).toIso8601String(),
       if (dates != null)
         'to': boundary(

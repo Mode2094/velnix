@@ -6,6 +6,7 @@ import 'package:velnix/core/theme.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
 import 'package:velnix/live/live_settings.dart';
+import 'package:velnix/live/order_filters.dart';
 
 Widget app(Widget child) => MaterialApp(
   theme: velnixTheme(),
@@ -458,5 +459,37 @@ void main() {
     await tester.tap(find.text('عرض أحداث أقدم'));
     await tester.pumpAndSettle();
     expect(find.text('تحديث شركة التوصيل'), findsOneWidget);
+  });
+
+  testWidgets('filter options tolerate a removed company and creator', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name == 'listCompanies') {
+        return {
+          'items': [
+            {'id': 'c2', 'name': 'شركة متاحة'},
+          ],
+        };
+      }
+      if (name == 'listOrderCreators') {
+        return {
+          'items': [
+            {'id': 'u2', 'name': 'موظف متاح'},
+          ],
+        };
+      }
+      throw StateError(name);
+    });
+    await tester.pumpWidget(
+      app(
+        OrderFilters(
+          initialFilters: {'companyId': 'gone', 'createdBy': 'gone'},
+          onChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 }
