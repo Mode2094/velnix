@@ -183,9 +183,19 @@ exports.companyStats=callable(async req=>{
 });
 exports.getOrder=callable(async req=>{
   const user=await requireAuth(req), {snap}=await oneOrder(user,req.data?.id);
-  const events=await snap.ref.collection('events').orderBy('createdAt','desc').limit(80).get();
+  const size=req.data?.eventsPageSize??80;
+  if(!Number.isSafeInteger(size)||size<1||size>100)fail('invalid-argument','حجم صفحة الأحداث غير صالح');
+  let query=snap.ref.collection('events').orderBy('createdAt','desc');
+  if(req.data?.eventsAfterId!=null){
+    const id=idValue(req.data.eventsAfterId);
+    const cursor=await snap.ref.collection('events').doc(id).get();
+    if(!cursor.exists)fail('invalid-argument','مؤشر أحداث غير صالح');
+    query=query.startAfter(cursor);
+  }
+  const page=await query.limit(size+1).get();
+  const docs=page.docs.slice(0,size);
   const order=orderForUser(user,snap);if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;order.companyProvider=company.data()?.provider||null;}
-  return {order,events:events.docs.map(d=>({id:d.id,...d.data(),createdAt:safeDate(d.data().createdAt)}))};
+  return {order,events:docs.map(d=>({id:d.id,...d.data(),createdAt:safeDate(d.data().createdAt)})),eventsMore:page.size>size,eventsAfterId:docs.at(-1)?.id||null};
 });
 exports.createOrder=callable(async req=>{
   const user=await requireAuth(req);if(!user.active)fail('permission-denied','الحساب معطل');

@@ -77,8 +77,14 @@ const call = (p, name, data = {}) => p.evaluate(async ({ name, data }) => {
 /** Leave the current fullscreen route; the control is a leading-icon button. */
 async function goBack(p) {
   const back = p.getByRole('button', { name: /رجوع|Back/ }).first();
-  if (await back.count()) { await activate(p, back); await p.waitForTimeout(1400); return; }
-  // No back control means the route was already dismissed.
+  if (!(await back.count().catch(() => 0))) return;
+  if (!(await back.isVisible().catch(() => false))) return;
+  try {
+    await activate(p, back);
+  } catch (_) {
+    return;
+  }
+  await p.waitForTimeout(1400);
 }
 
 /** Flutter exposes shell destinations as role=tab or role=button depending on width. */

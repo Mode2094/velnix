@@ -401,4 +401,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('تظهر أحدث 30 شركة'), findsOneWidget);
   });
+
+  testWidgets('order detail loads older history events', (tester) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name != 'getOrder') throw StateError(name);
+      final order = <String, dynamic>{
+        'id': 'o1',
+        'customer': 'عميل اختبار',
+        'status': 'created',
+        'actions': <String, dynamic>{},
+      };
+      if (data['eventsAfterId'] == null) {
+        return {
+          'order': order,
+          'events': [
+            {
+              'id': 'e1',
+              'action': 'created',
+              'actorName': 'موظف',
+              'createdAt': '2026-10-18T10:00:00.000Z',
+            },
+          ],
+          'eventsMore': true,
+          'eventsAfterId': 'e1',
+        };
+      }
+      return {
+        'order': order,
+        'events': [
+          {
+            'id': 'e2',
+            'action': 'remote_status',
+            'actorName': 'موظف',
+            'createdAt': '2026-10-18T09:00:00.000Z',
+          },
+        ],
+        'eventsMore': false,
+        'eventsAfterId': 'e2',
+      };
+    });
+    await tester.pumpWidget(
+      app(
+        LiveOrderDetail(
+          id: 'o1',
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('إنشاء الطلب'), findsOneWidget);
+    await tester.ensureVisible(find.text('عرض أحداث أقدم'));
+    await tester.tap(find.text('عرض أحداث أقدم'));
+    await tester.pumpAndSettle();
+    expect(find.text('تحديث شركة التوصيل'), findsOneWidget);
+  });
 }

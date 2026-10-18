@@ -61,7 +61,15 @@ class VelnixGateway {
   Future<Map<String, dynamic>> dashboard([
     Map<String, dynamic> filters = const {},
   ]) => call('dashboardStats', filters);
-  Future<Map<String, dynamic>> order(String id) => call('getOrder', {'id': id});
+  Future<Map<String, dynamic>> order(
+    String id, {
+    String? eventsAfterId,
+    int eventsPageSize = 80,
+  }) => call('getOrder', {
+    'id': id,
+    'eventsPageSize': eventsPageSize,
+    'eventsAfterId': ?eventsAfterId,
+  });
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> order) =>
       call('createOrder', order);
   Future<void> updateOrder(String id, Map<String, dynamic> fields) async {

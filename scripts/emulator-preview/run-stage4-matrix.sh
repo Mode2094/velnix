@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stage 4 — empirical role/operation permission matrix against the emulator.
 set -euo pipefail
+export ALLOWED_DELIVERY_HOSTS="${ALLOWED_DELIVERY_HOSTS:-local-contract.example}"
 cd "$(dirname "$0")/../.."
 mkdir -p build/qa/emulator-stage4
 bash scripts/emulator-preview/start.sh > build/qa/emulator-stage4/launcher.log 2>&1 &

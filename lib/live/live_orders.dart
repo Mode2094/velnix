@@ -448,6 +448,11 @@ class LiveOrderDetail extends StatefulWidget {
 
 class _LiveOrderDetailState extends State<LiveOrderDetail> {
   late Future<Map<String, dynamic>> request;
+  List<Map<String, dynamic>>? _events;
+  bool _eventsMore = false;
+  bool _loadingEvents = false;
+  String? _eventsAfterId;
+  int _generation = 0;
   bool actionBusy = false;
   @override
   void initState() {
@@ -455,9 +460,51 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     reload();
   }
 
-  void reload() => request = VelnixGateway.instance.order(widget.id);
+  void reload() {
+    final generation = ++_generation;
+    _events = null;
+    _eventsMore = false;
+    _eventsAfterId = null;
+    request = VelnixGateway.instance.order(widget.id).then((data) {
+      if (generation == _generation) {
+        _events = (data['events'] as List? ?? [])
+            .map((v) => Map<String, dynamic>.from(v as Map))
+            .toList();
+        _eventsMore = data['eventsMore'] == true;
+        _eventsAfterId = data['eventsAfterId'] as String?;
+      }
+      return data;
+    });
+  }
+
   void refresh() {
     setState(reload);
+  }
+
+  Future<void> loadMoreEvents() async {
+    if (_loadingEvents || !_eventsMore || _eventsAfterId == null) return;
+    final generation = _generation;
+    setState(() => _loadingEvents = true);
+    try {
+      final data = await VelnixGateway.instance.order(
+        widget.id,
+        eventsAfterId: _eventsAfterId,
+      );
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _events!.addAll(
+          (data['events'] as List? ?? []).map(
+            (v) => Map<String, dynamic>.from(v as Map),
+          ),
+        );
+        _eventsMore = data['eventsMore'] == true;
+        _eventsAfterId = data['eventsAfterId'] as String?;
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _loadingEvents = false);
+    }
   }
 
   Future<void> action(Future<void> Function() operation) async {
@@ -501,9 +548,11 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         final o = Map<String, dynamic>.from(data['order'] as Map),
             state = o['status'].toString();
         final actions = Map<String, dynamic>.from(o['actions'] as Map? ?? {});
-        final events = (data['events'] as List? ?? [])
-            .map((v) => Map<String, dynamic>.from(v as Map))
-            .toList();
+        final events =
+            _events ??
+            (data['events'] as List? ?? [])
+                .map((v) => Map<String, dynamic>.from(v as Map))
+                .toList();
         return SingleChildScrollView(
           child: LiveContent(
             child: Column(
@@ -738,6 +787,22 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                         const Text(
                           'لا توجد أحداث',
                           style: TextStyle(color: VColors.muted),
+                        ),
+                      if (_eventsMore)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: OutlinedButton.icon(
+                            onPressed: _loadingEvents ? null : loadMoreEvents,
+                            icon: _loadingEvents
+                                ? const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.expand_more),
+                            label: const Text('عرض أحداث أقدم'),
+                          ),
                         ),
                     ],
                   ),

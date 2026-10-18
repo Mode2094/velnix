@@ -310,3 +310,21 @@ test('sync center reports a bounded view instead of silently truncating',async()
   assert.ok(result.items.some(item=>item.companyName==='Sync 0'));
   await assert.rejects(invoke('listSyncEvents','entry',{}),{code:'permission-denied'});
 });
+
+test('order event history paginates without loss or duplicates',async()=>{
+  const created=await invoke('createOrder','gm',{...payload,requestKey:'order_event_pagination_1'});
+  const batch=db.batch();
+  for(let i=0;i<85;i++)batch.set(db.doc(`orders/${created.id}/events/bulk_${String(i).padStart(3,'0')}`),{action:'remote_status',actorId:'delivery:probe',actorName:'شركة',details:{i},createdAt:Timestamp.fromMillis(1700000000000+i)});
+  await batch.commit();
+  const first=await invoke('getOrder','gm',{id:created.id,eventsPageSize:80});
+  assert.equal(first.events.length,80);
+  assert.equal(first.eventsMore,true);
+  assert.ok(first.eventsAfterId);
+  const second=await invoke('getOrder','gm',{id:created.id,eventsPageSize:80,eventsAfterId:first.eventsAfterId});
+  assert.ok(second.events.length>=6);
+  assert.equal(second.eventsMore,false);
+  const ids=[...first.events,...second.events].map(event=>event.id);
+  assert.equal(new Set(ids).size,ids.length);
+  await assert.rejects(invoke('getOrder','gm',{id:created.id,eventsAfterId:'missing_event'}),{code:'invalid-argument'});
+  await assert.rejects(invoke('getOrder','gm',{id:created.id,eventsPageSize:101}),{code:'invalid-argument'});
+});
