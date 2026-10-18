@@ -141,7 +141,7 @@
 | Functions unit | **173/173 ✅** (كان 172 — اختبار الفصل الجديد + تثبيت Wire-Format) |
 | Functions emulator | **129/129 ✅** |
 | `npm run syntax` · `check_secrets.py` | نظيفان ✅ (504 ملفات، 0 نتائج) |
-| SHA المُتحقَّق منه | `a989c7379356d6483be4f0e817a0aad3bcdc8d91` (يليه commit توثيقي واحد لتسجيل النتيجة) |
-| Push CI | ✅ `success` — 39131766705 (كل المهام الأربع) |
-| PR CI | ✅ `success` — 39131770337 · PR #1 OPEN/Draft · `main` (0d10904) لم يُمسّ · `ci.yml` محفوظ غير مُودَع |
+| SHA المُتحقَّق منه (يشمل تصحيح A1) | `c9b1a3bfc86a49a04aeea945b5c35e8b7c92baa2` |
+| Push CI | ✅ `success` — 39133592962 (كل المهام الأربع) |
+| PR CI | ✅ `success` — 39133595964 · PR #1 OPEN/Draft · `main` (0d10904) لم يُمسّ · `ci.yml` محفوظ غير مُودَع |
 | الحكم | **AUTH GATE VERIFIED · WIRE FORMAT VERIFIED CORRECT · 401 IS A PROVIDER-SIDE CREDENTIAL REJECTION · NO LOCAL DEFECT · BLOCKED ON PROVIDER API INITIATION** |
