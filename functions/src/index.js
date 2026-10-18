@@ -507,19 +507,46 @@ exports.markNoticeRead=callable(async req=>{
 });
 exports.listSyncEvents=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'viewSync');
-  const companies=await db.collection('companies').limit(30).get();
+  const companyLimit=30,eventLimit=6,resultLimit=80;
+  const companies=await db.collection('companies').limit(companyLimit+1).get();
+  let limited=companies.size>companyLimit;
   const events=[];
-  for(const c of companies.docs){
-    const docs=await db.collection('deliveryInbox').doc(c.id).collection('events').orderBy('receivedAt','desc').limit(6).get();
-    for(const d of docs.docs){const order=await db.doc('orders/'+idValue(d.data().orderId)).get();if(!order.exists||!canSeeOrder(user,order.data()))continue;events.push({id:d.id,companyName:c.data().name,orderId:d.data().orderId,rawStatus:d.data().raw,source:d.data().source,receivedAt:safeDate(d.data().receivedAt)});}
+  for(const c of companies.docs.slice(0,companyLimit)){
+    const docs=await db.collection('deliveryInbox').doc(c.id).collection('events').orderBy('receivedAt','desc').limit(eventLimit+1).get();
+    if(docs.size>eventLimit)limited=true;
+    for(const d of docs.docs.slice(0,eventLimit)){
+      const order=await db.doc('orders/'+idValue(d.data().orderId)).get();
+      if(!order.exists||!canSeeOrder(user,order.data()))continue;
+      events.push({id:d.id,companyName:c.data().name,orderId:d.data().orderId,rawStatus:d.data().raw,source:d.data().source,receivedAt:safeDate(d.data().receivedAt)});
+    }
   }
   events.sort((a,b)=>(b.receivedAt||'').localeCompare(a.receivedAt||''));
-  return {items:events.slice(0,80)};
+  if(events.length>resultLimit)limited=true;
+  return {items:events.slice(0,resultLimit),limited};
 });
 exports.listAudit=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'viewAudit');
-  const snap=await db.collection('auditEvents').orderBy('createdAt','desc').limit(100).get();
-  const items=[];for(const d of snap.docs){const event=d.data();if(event.action?.startsWith('order.')){const order=await db.doc('orders/'+idValue(event.entityId)).get();if(!order.exists||!canSeeOrder(user,order.data()))continue;}items.push({id:d.id,action:event.action,actorName:event.actorName,entityId:event.entityId,createdAt:safeDate(event.createdAt)});}return {items};
+  const size=req.data?.pageSize??50;
+  if(!Number.isSafeInteger(size)||size<1||size>100)fail('invalid-argument','حجم صفحة غير صالح');
+  let query=db.collection('auditEvents').orderBy('createdAt','desc');
+  if(req.data?.afterId!=null){
+    const id=idValue(req.data.afterId);
+    const cursor=await db.doc('auditEvents/'+id).get();
+    if(!cursor.exists)fail('invalid-argument','مؤشر ترقيم غير صالح');
+    query=query.startAfter(cursor);
+  }
+  const snap=await query.limit(size+1).get();
+  const page=snap.docs.slice(0,size);
+  const items=[];
+  for(const d of page){
+    const event=d.data();
+    if(event.action?.startsWith('order.')){
+      const order=await db.doc('orders/'+idValue(event.entityId)).get();
+      if(!order.exists||!canSeeOrder(user,order.data()))continue;
+    }
+    items.push({id:d.id,action:event.action,actorName:event.actorName,entityId:event.entityId,createdAt:safeDate(event.createdAt)});
+  }
+  return {items,more:snap.size>size,afterId:page.at(-1)?.id||null};
 });
 
 const processRemote=require('./remote').createRemoteProcessor({db,FieldValue,addEvent,audit});

@@ -281,3 +281,32 @@ test('directories paginate more than 100 records with stable name ties and scope
  const a=db.doc('companies/directory_tie_a'),b=db.doc('companies/directory_tie_b');await a.set({name:'متساوي'});await b.set({name:'متساوي'});
  const first=await invoke('listCompanies','gm',{query:'متساوي',pageSize:1});const next=await invoke('listCompanies','gm',{query:'متساوي',pageSize:1,afterId:first.afterId});assert.notEqual(first.items[0].id,next.items[0].id);
 });
+
+test('audit pagination is stable, bounded and rejects an unknown cursor',async()=>{
+  const batch=db.batch();
+  for(let i=0;i<5;i++)batch.set(db.doc('auditEvents/audit_page_'+i),{action:'settings.updated',actorName:'اختبار',entityId:'system',createdAt:Timestamp.fromMillis(9999999999900+i)});
+  await batch.commit();
+  const seen=[];let afterId,more=true;
+  for(let page=0;page<3&&more;page++){
+    const result=await invoke('listAudit','gm',{pageSize:2,afterId});
+    assert.equal(result.items.length<=2,true);
+    seen.push(...result.items.map(item=>item.id));
+    afterId=result.afterId;more=result.more;
+  }
+  for(let i=0;i<5;i++)assert.ok(seen.includes('audit_page_'+i));
+  assert.equal(new Set(seen).size,seen.length);
+  await assert.rejects(invoke('listAudit','gm',{afterId:'missing_cursor'}),{code:'invalid-argument'});
+  await assert.rejects(invoke('listAudit','entry',{}),{code:'permission-denied'});
+});
+
+test('sync center reports a bounded view instead of silently truncating',async()=>{
+  const created=await invoke('createOrder','gm',{...payload,requestKey:'sync_bounded_view_1'});
+  const batch=db.batch();
+  for(let i=0;i<31;i++)batch.set(db.doc('companies/000_sync_'+String(i).padStart(2,'0')),{name:'Sync '+i,enabled:false});
+  for(let i=0;i<7;i++)batch.set(db.doc('deliveryInbox/000_sync_00/events/e'+i),{companyId:'000_sync_00',orderId:created.id,raw:'r'+i,source:'poll',receivedAt:Timestamp.fromMillis(1700000000000+i)});
+  await batch.commit();
+  const result=await invoke('listSyncEvents','gm');
+  assert.equal(result.limited,true);
+  assert.ok(result.items.some(item=>item.companyName==='Sync 0'));
+  await assert.rejects(invoke('listSyncEvents','entry',{}),{code:'permission-denied'});
+});

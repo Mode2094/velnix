@@ -347,4 +347,58 @@ void main() {
       'entry@velnix.test',
     );
   });
+
+  testWidgets('audit log pages older events through the gateway', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name != 'listAudit') throw StateError(name);
+      if (data['afterId'] == null) {
+        return {
+          'items': [
+            {
+              'id': 'a1',
+              'action': 'order.created',
+              'actorName': 'موظف',
+              'entityId': 'o1',
+              'createdAt': '2026-10-18T10:00:00.000Z',
+            },
+          ],
+          'more': true,
+          'afterId': 'a1',
+        };
+      }
+      return {
+        'items': [
+          {
+            'id': 'a2',
+            'action': 'order.edited',
+            'actorName': 'موظف',
+            'entityId': 'o1',
+            'createdAt': '2026-10-18T09:00:00.000Z',
+          },
+        ],
+        'more': false,
+        'afterId': 'a2',
+      };
+    });
+    await tester.pumpWidget(app(const LiveAudit()));
+    await tester.pumpAndSettle();
+    expect(find.text('إنشاء الطلب'), findsOneWidget);
+    await tester.tap(find.text('عرض أحداث أقدم'));
+    await tester.pumpAndSettle();
+    expect(find.text('تعديل بيانات الطلب'), findsOneWidget);
+  });
+
+  testWidgets('sync center marks a bounded view instead of truncating', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name != 'listSyncEvents') throw StateError(name);
+      return {'items': <Map<String, dynamic>>[], 'limited': true};
+    });
+    await tester.pumpWidget(app(const LiveSyncCenter()));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('تظهر أحدث 30 شركة'), findsOneWidget);
+  });
 }

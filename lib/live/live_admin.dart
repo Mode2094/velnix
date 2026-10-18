@@ -1159,17 +1159,58 @@ class LiveAudit extends StatefulWidget {
 
 class _LiveAuditState extends State<LiveAudit> {
   late Future<List<Map<String, dynamic>>> future;
+  final _items = <Map<String, dynamic>>[];
+  String? _cursor;
+  bool _more = false;
+  bool _loadingMore = false;
+  int _generation = 0;
   @override
   void initState() {
     super.initState();
-    refresh();
+    reload();
   }
 
-  void refresh() => future = VelnixGateway.instance.audit();
+  Future<List<Map<String, dynamic>>> _firstPage() async {
+    final generation = ++_generation;
+    final page = await VelnixGateway.instance.auditPage();
+    if (generation == _generation) {
+      _cursor = page.afterId;
+      _more = page.more;
+      _items
+        ..clear()
+        ..addAll(page.items);
+    }
+    return _items;
+  }
+
+  void reload() => future = _firstPage();
+  void refresh() {
+    setState(reload);
+  }
+
+  Future<void> loadMore() async {
+    if (_loadingMore || !_more || _cursor == null) return;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await VelnixGateway.instance.auditPage(afterId: _cursor);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _items.addAll(page.items);
+        _cursor = page.afterId;
+        _more = page.more;
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => AsyncPanel<List<Map<String, dynamic>>>(
     future: future,
-    onRetry: () => setState(refresh),
+    onRetry: refresh,
     builder: (rows) => SingleChildScrollView(
       child: LiveContent(
         child: Column(
@@ -1202,6 +1243,20 @@ class _LiveAuditState extends State<LiveAudit> {
                 title: 'لا توجد أحداث مسجلة',
                 message: 'ستظهر هنا العمليات التي يوثقها النظام.',
                 icon: Icons.history_outlined,
+              ),
+            if (_more)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: OutlinedButton.icon(
+                  onPressed: _loadingMore ? null : loadMore,
+                  icon: _loadingMore
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.expand_more),
+                  label: const Text('عرض أحداث أقدم'),
+                ),
               ),
           ],
         ),

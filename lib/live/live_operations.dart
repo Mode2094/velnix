@@ -105,19 +105,21 @@ class LiveSyncCenter extends StatefulWidget {
 }
 
 class _LiveSyncCenterState extends State<LiveSyncCenter> {
-  late Future<List<Map<String, dynamic>>> request;
+  late Future<({List<Map<String, dynamic>> items, bool limited})> request;
   @override
   void initState() {
     super.initState();
     refresh();
   }
 
-  void refresh() => request = VelnixGateway.instance.syncEvents();
+  void refresh() => request = VelnixGateway.instance.syncEventsPage();
   @override
-  Widget build(BuildContext context) => AsyncPanel<List<Map<String, dynamic>>>(
+  Widget build(
+    BuildContext context,
+  ) => AsyncPanel<({List<Map<String, dynamic>> items, bool limited})>(
     future: request,
     onRetry: () => setState(refresh),
-    builder: (items) => SingleChildScrollView(
+    builder: (data) => SingleChildScrollView(
       child: LiveContent(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -131,8 +133,16 @@ class _LiveSyncCenterState extends State<LiveSyncCenter> {
               'آخر تحديثات حالات الشحن الواردة من شركات التوصيل.',
               style: TextStyle(color: VColors.muted),
             ),
+            if (data.limited)
+              const Padding(
+                padding: EdgeInsets.only(top: 10),
+                child: Text(
+                  'تظهر أحدث 30 شركة و6 أحداث لكل شركة؛ راجع تفاصيل الطلب للسجل الكامل.',
+                  style: TextStyle(color: VColors.danger, fontSize: 12),
+                ),
+              ),
             const SizedBox(height: 14),
-            for (final e in items)
+            for (final e in data.items)
               Padding(
                 padding: const EdgeInsets.only(bottom: 9),
                 child: VLivePanel(
@@ -150,7 +160,7 @@ class _LiveSyncCenterState extends State<LiveSyncCenter> {
                   ),
                 ),
               ),
-            if (items.isEmpty)
+            if (data.items.isEmpty)
               const VFeedbackPanel(
                 title: 'لا توجد أحداث مزامنة مسجلة حتى الآن',
                 message: 'ستظهر تحديثات شركات التوصيل هنا عند ورودها.',

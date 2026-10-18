@@ -140,10 +140,28 @@ class VelnixGateway {
     await call('markNoticeRead', {'id': id});
   }
 
-  Future<List<Map<String, dynamic>>> syncEvents() async =>
-      listResult(await call('listSyncEvents'));
+  Future<({List<Map<String, dynamic>> items, bool limited})>
+  syncEventsPage() async {
+    final page = await call('listSyncEvents');
+    return (items: listResult(page), limited: page['limited'] == true);
+  }
+
   Future<List<Map<String, dynamic>>> audit() async =>
       listResult(await call('listAudit'));
+
+  /// One page of the audit log. `afterId` is the cursor from the previous page.
+  Future<({List<Map<String, dynamic>> items, bool more, String? afterId})>
+  auditPage({String? afterId, int pageSize = 50}) async {
+    final page = await call('listAudit', {
+      'pageSize': pageSize,
+      'afterId': ?afterId,
+    });
+    return (
+      items: listResult(page),
+      more: page['more'] == true,
+      afterId: page['afterId'] as String?,
+    );
+  }
 
   Future<List<Map<String, dynamic>>> directoryItems(String endpoint) async {
     final items = <Map<String, dynamic>>[];
