@@ -2,8 +2,15 @@
 const crypto=require('node:crypto');
 const {KeyManagementServiceClient}=require('@google-cloud/kms');
 let kms;
-const kmsClient=()=>kms??=new KeyManagementServiceClient();
-const KEY = process.env.VELNIX_KMS_KEY;
+let kmsFactory=()=>new KeyManagementServiceClient();
+const kmsClient=()=>kms??=kmsFactory();
+// Test-only seam: lets the crypto path be exercised against an isolated fake
+// without ever claiming that Cloud KMS itself was reached. Production never
+// calls this.
+function setKmsClientFactory(factory){kmsFactory=factory;kms=undefined;}
+// Read per call so an unconfigured deployment fails closed instead of
+// capturing a missing key at cold start.
+const keyName=()=>process.env.VELNIX_KMS_KEY;
 function allowedUrl(input) {
   let url;
   try {url=new URL(input);}catch(_){throw new Error('invalid_delivery_url');}
@@ -12,12 +19,15 @@ function allowedUrl(input) {
   return url.origin + url.pathname.replace(/\/$/,'');
 }
 async function encryptSecret(secret) {
-  if(!KEY || !secret || secret.length>2000) throw new Error('kms_not_configured_or_bad_secret');
+  const KEY=keyName();
+  // A non-string secret would otherwise reach Buffer.from as a broken object.
+  if(!KEY || typeof secret!=='string' || !secret || secret.length>2000) throw new Error('kms_not_configured_or_bad_secret');
   const [resp]=await kmsClient().encrypt({name:KEY,plaintext:Buffer.from(secret,'utf8')},{timeout:10000});
   return Buffer.from(resp.ciphertext).toString('base64');
 }
 async function decryptSecret(ciphertext) {
-  if(!KEY || !ciphertext) throw new Error('kms_not_configured');
+  const KEY=keyName();
+  if(!KEY || typeof ciphertext!=='string' || !ciphertext) throw new Error('kms_not_configured');
   const [resp]=await kmsClient().decrypt({name:KEY,ciphertext:Buffer.from(ciphertext,'base64')},{timeout:10000});
   return Buffer.from(resp.plaintext).toString('utf8');
 }
@@ -59,4 +69,4 @@ function remoteCanAdvance(current,target) {
   if(['delivered','returned','cancelled'].includes(target)) return ['dispatched','inTransit'].includes(current);
   return target==='inTransit' && current==='dispatched';
 }
-module.exports={allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance};
+module.exports={allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance,setKmsClientFactory};
