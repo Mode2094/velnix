@@ -190,10 +190,19 @@
       "layerFinding": "the 401 is application-generated (IIS/ASP.NET JSON envelope, no WWW-Authenticate challenge header)",
       "localConclusion": "Velnix request composition matches the documented contract exactly (pinned by an automated wire-format test); no local defect found; nothing changed in the send path",
       "portalConclusion": "the client portal exposes no API settings, keys or activation controls; API provisioning cannot be granted from the portal UI",
-      "blockedOn": "provider-side API provisioning / a valid credential pair for client 1603",
+      "blockedOn": "confirmation or provisioning of the correct /Client/ API credential for client 1603 (same-as-portal or separately activated); no further attempts without that",
       "evidenceReport": "docs/CLICK_DELIVERY_API_401_FINAL_DIAGNOSIS_AR.md",
       "evidenceImage": "docs/evidence/click-401/click-getorder-401-evidence.png",
-      "sanitizedEvidence": "docs/evidence/click-401-diagnosis.json"
+      "sanitizedEvidence": "docs/evidence/click-401-diagnosis.json",
+      "realAccountTest": {
+        "performedAtLocal": "2026-10-18",
+        "requests": 1,
+        "credentialSource": "the owner-supplied authorized test account for client 1603 (values withheld; kept outside Git and destroyed after use)",
+        "boundary": "Order_ID = 0, below the documented range (the provider's own Postman example uses Order_ID 1)",
+        "httpStatus": 401,
+        "applicationMessage": "بيانات مستخدم غير صحيحة",
+        "reading": "with the real account the gate passed and the credential check rejected the supplied pair with the same invalid-user message observed throughout - the failure is not an artifact of the published sample credentials"
+      }
     }
   },
   "portal_observations": {

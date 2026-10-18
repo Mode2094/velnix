@@ -4,11 +4,11 @@
   "investigationBaseSha": "47a0cf3070b55b746ad565310d3d7aca73179881",
   "scope": "Final independent diagnosis of the Click Delivery /Client/ HTTP 401. Bounded read-only probe matrix against /Client/getorder only; terminated immediately after repeated 401s. No setorder, no removeorder, no shipment, no account change.",
   "bounds": [
-    "9 total HTTP requests across the whole diagnosis (P1-P5 + P6-P7 re-run for machine-readable capture)",
+    "10 total HTTP requests across the whole diagnosis (P1-P5 + P6-P7 re-run + one real-account request)",
     "only POST/GET /Client/getorder; setorder and removeorder were never contacted",
-    "only the provider's published sample credential pair (values redacted everywhere)",
+    "sample credentials for the probe matrix; one single request with the real authorized account (values withheld)",
     "boundary Order_ID = 0 (documented IDs start at 1, so no real shipment can match)",
-    "no retries, no credential guessing, no username enumeration, no owner-account attempts"
+    "no retries, no credential guessing, no username enumeration"
   ],
   "probeMatrix": [
     {
@@ -86,13 +86,38 @@
     "apiAuthenticationSolved": false,
     "localVelnixDefectFound": false,
     "wireFormatIsTheCause": false,
-    "blockedOn": "provider-side API provisioning / valid API credentials for client 1603; the application credential check rejects every pair tried, and the portal offers no API activation surface",
-    "stillBlocked": ["setorder", "removeorder", "getorder success path", "any shipment creation or financial integration"]
+    "blockedOn": "the /Client/ API rejects the supplied account credential pair at the application credential check; the correct API credential or API activation for client 1603 must come from the provider (the portal exposes no API surface)",
+    "stillBlocked": [
+      "setorder",
+      "removeorder",
+      "getorder success path",
+      "any shipment creation or financial integration"
+    ]
   },
   "evidenceImage": {
     "repoPath": "docs/evidence/click-401/click-getorder-401-evidence.png",
     "handoffCopy": "~/Desktop/Velnix-Click-401-Evidence/click-getorder-401-evidence.png",
     "handoffJson": "~/Desktop/Velnix-Click-401-Evidence/probe-results-sanitized.json",
     "sanitized": "no credentials, cookies, session data or customer data; only field names, redaction markers, statuses and provider error envelopes"
+  },
+  "realAccountTest": {
+    "performedAtLocal": "2026-10-18",
+    "credentialSource": "the owner-supplied authorized test account for client 1603 (credential values withheld everywhere: never written to the repository, to logs, or to the evidence files)",
+    "requests": 1,
+    "boundaryJustification": "Order_ID = 0 is below the documented ID range; the provider's own Postman example uses Order_ID 1 (numeric), and no shipment identifier below 1 exists to match",
+    "requestShape": "POST /Client/getorder, Authorization: client, Content-Type: application/json, Accept: application/json, body {Order_ID:0, User_Name/User_Pass: the account credential pair}",
+    "httpStatus": 401,
+    "applicationMessage": "بيانات مستخدم غير صحيحة",
+    "reading": "with the real account credentials the authorization gate passed and the application credential check rejected the supplied pair with the same invalid-user message observed for every prior attempt",
+    "conclusionUpdate": "authentication failed with the real account credentials as supplied; the rejection is produced by the application credential check, not by the wire format, the gate header, the method or the encoding",
+    "nextSteps": [
+      "ask the provider to confirm or provision the exact /Client/ API credential for client 1603 (it may differ from the portal credential, or require activation)",
+      "or have the owner confirm the exact User_Name/User_Pass pair the API expects; no further attempts will be made without that"
+    ],
+    "notAttempted": [
+      "no username re-interpretation or guessing",
+      "no second credential pair",
+      "no retries"
+    ]
   }
 }
