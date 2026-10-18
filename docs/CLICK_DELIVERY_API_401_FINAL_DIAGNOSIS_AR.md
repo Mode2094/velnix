@@ -131,5 +131,10 @@
 |---|---|
 | HEAD عند بدء الجولة | `47a0cf3070b55b746ad565310d3d7aca73179881` |
 | الملفات المعدلة | `functions/src/click_response.js` (توثيق + `authFailureReason` + ثابت المغلّف الثاني) · `functions/test/click_response_contract.test.js` (+ اختبار الفصل بين البوابتين) · `functions/test/click_delivery.test.js` (تثبيت Wire-Format) · `functions/test/fixtures/click_response_samples.js` (fixture المغلّف الثاني) · `docs/evidence/click-401-diagnosis.json` · `docs/evidence/click-401/click-getorder-401-evidence.png` · `docs/evidence/click-delivery-contract.json` (تحديث `live_observations`) · هذا التقرير |
-| الاختبارات | تُسجَّل بعد التشغيل في §7 أدناه وفي تقرير الجولة |
+| Functions unit | **173/173 ✅** (كان 172 — اختبار الفصل الجديد + تثبيت Wire-Format) |
+| Functions emulator | **129/129 ✅** |
+| `npm run syntax` · `check_secrets.py` | نظيفان ✅ (504 ملفات، 0 نتائج) |
+| SHA المُتحقَّق منه | `a989c7379356d6483be4f0e817a0aad3bcdc8d91` (يليه commit توثيقي واحد لتسجيل النتيجة) |
+| Push CI | ✅ `success` — 39131766705 (كل المهام الأربع) |
+| PR CI | ✅ `success` — 39131770337 · PR #1 OPEN/Draft · `main` (0d10904) لم يُمسّ · `ci.yml` محفوظ غير مُودَع |
 | الحكم | **AUTH GATE VERIFIED · WIRE FORMAT VERIFIED CORRECT · 401 IS A PROVIDER-SIDE CREDENTIAL REJECTION · NO LOCAL DEFECT · BLOCKED ON PROVIDER API INITIATION** |
