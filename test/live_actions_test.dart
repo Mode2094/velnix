@@ -492,4 +492,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('company form prefills the selected company identity', (
+    tester,
+  ) async {
+    final initial = <String, dynamic>{
+      'id': 'c1',
+      'name': 'شركة اختبار',
+      'apiUrl': 'https://local-contract.example',
+      'provider': 'generic_v1',
+      'enabled': false,
+      'archived': false,
+      'statusMap': <String, String>{},
+    };
+    await tester.pumpWidget(app(LiveCompanyForm(initial: initial)));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.widgetWithText(TextFormField, 'اسم شركة التوصيل'),
+          )
+          .controller
+          ?.text,
+      'شركة اختبار',
+    );
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.widgetWithText(TextFormField, 'رابط API (HTTPS)'),
+          )
+          .controller
+          ?.text,
+      'https://local-contract.example',
+    );
+  });
 }

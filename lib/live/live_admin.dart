@@ -439,12 +439,8 @@ class LiveCompanyForm extends StatefulWidget {
 
 class _LiveCompanyFormState extends State<LiveCompanyForm> {
   final form = GlobalKey<FormState>();
-  late final name = TextEditingController(
-    text: widget.initial?['name']?.toString() ?? '',
-  );
-  late final url = TextEditingController(
-    text: widget.initial?['apiUrl']?.toString() ?? '',
-  );
+  late final TextEditingController name;
+  late final TextEditingController url;
   final token = TextEditingController(),
       webhook = TextEditingController(),
       remote = TextEditingController();
@@ -457,6 +453,19 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
       widget.initial?['provider']?.toString() ?? 'generic_v1';
   String target = 'delivered';
   bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    name = TextEditingController();
+    url = TextEditingController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      name.text = widget.initial?['name']?.toString() ?? '';
+      url.text = widget.initial?['apiUrl']?.toString() ?? '';
+      setState(() {});
+    });
+  }
+
   @override
   void dispose() {
     name.dispose();
@@ -560,6 +569,8 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: name,
+                      textDirection: TextDirection.rtl,
+                      maxLength: 140,
                       decoration: const InputDecoration(
                         labelText: 'اسم شركة التوصيل',
                       ),
@@ -918,12 +929,8 @@ class LiveMemberForm extends StatefulWidget {
 
 class _LiveMemberFormState extends State<LiveMemberForm> {
   final form = GlobalKey<FormState>();
-  late final name = TextEditingController(
-    text: widget.initial?['name']?.toString() ?? '',
-  );
-  late final email = TextEditingController(
-    text: widget.initial?['email']?.toString() ?? '',
-  );
+  late final TextEditingController name;
+  late final TextEditingController email;
   late String role = widget.initial?['role']?.toString() ?? 'dataEntry';
   late bool active = widget.initial?['active'] != false;
   late String? salesSupervisor = widget.initial?['salesSupervisorId']
@@ -945,6 +952,20 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
     'viewAudit': 'سجل العمليات',
     'manageSettings': 'إعدادات النظام',
   };
+  @override
+  void initState() {
+    super.initState();
+    name = TextEditingController();
+    email = TextEditingController(
+      text: widget.initial?['email']?.toString() ?? '',
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      name.text = widget.initial?['name']?.toString() ?? '';
+      setState(() {});
+    });
+  }
+
   @override
   void dispose() {
     name.dispose();
@@ -995,6 +1016,8 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                     TextFormField(
                       controller: name,
                       readOnly: widget.joinRequest,
+                      textDirection: TextDirection.rtl,
+                      maxLength: 120,
                       decoration: const InputDecoration(
                         labelText: 'اسم الموظف',
                       ),
@@ -1005,6 +1028,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                     TextFormField(
                       controller: email,
                       readOnly: widget.initial != null,
+                      textDirection: TextDirection.rtl,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
                         labelText: 'البريد الإلكتروني',
