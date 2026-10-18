@@ -1,0 +1,98 @@
+{
+  "generatedAtLocal": "2026-10-18",
+  "branch": "audit/production-readiness",
+  "investigationBaseSha": "47a0cf3070b55b746ad565310d3d7aca73179881",
+  "scope": "Final independent diagnosis of the Click Delivery /Client/ HTTP 401. Bounded read-only probe matrix against /Client/getorder only; terminated immediately after repeated 401s. No setorder, no removeorder, no shipment, no account change.",
+  "bounds": [
+    "9 total HTTP requests across the whole diagnosis (P1-P5 + P6-P7 re-run for machine-readable capture)",
+    "only POST/GET /Client/getorder; setorder and removeorder were never contacted",
+    "only the provider's published sample credential pair (values redacted everywhere)",
+    "boundary Order_ID = 0 (documented IDs start at 1, so no real shipment can match)",
+    "no retries, no credential guessing, no username enumeration, no owner-account attempts"
+  ],
+  "probeMatrix": [
+    {
+      "id": "P1",
+      "condition": "POST JSON, Authorization: client, Content-Type: application/json, body with Order_ID 0 and published sample credentials",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"بيانات مستخدم غير صحيحة\"}}",
+      "reading": "the Authorization gate passed and the application rejected the credential pair"
+    },
+    {
+      "id": "P2",
+      "condition": "same request with NO Authorization header",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"Unauthorized\"}}",
+      "reading": "the gate rejects before any credential evaluation"
+    },
+    {
+      "id": "P3",
+      "condition": "form-urlencoded body (Order_ID/User_Name/User_Pass), Authorization: client",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"بيانات مستخدم غير صحيحة\"}}",
+      "reading": "body encoding does not change the outcome; the gate + credential check still apply"
+    },
+    {
+      "id": "P4",
+      "condition": "GET with Authorization: client",
+      "httpStatus": 405,
+      "responseBody": "{\"Message\":\"The requested resource does not support http method 'GET'.\"}",
+      "reading": "method routing isolated from the auth outcome; route is POST-only"
+    },
+    {
+      "id": "P5",
+      "condition": "empty JSON body {} with Authorization: client",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"بيانات مستخدم غير صحيحة\"}}",
+      "reading": "gate and credential check run before payload validation"
+    },
+    {
+      "id": "P6",
+      "condition": "Authorization value case variant (capital first letter)",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"Unauthorized\"}}",
+      "reading": "the gate literal is case-sensitive"
+    },
+    {
+      "id": "P7",
+      "condition": "Authorization value wrong literal",
+      "httpStatus": 401,
+      "responseBody": "{\"error\":{\"Message\":\"Unauthorized\"}}",
+      "reading": "any value other than the exact literal client fails the gate"
+    }
+  ],
+  "responseHeadersSampleP1": {
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Content-Type": "application/json; charset=utf-8",
+    "Expires": "-1",
+    "Server": "Microsoft-IIS/10.0",
+    "X-AspNet-Version": "4.0.30319",
+    "X-Powered-By": "ASP.NET",
+    "X-Powered-By-Plesk": "PleskWin",
+    "Connection": "close"
+  },
+  "findings": [
+    "The 401 is application-generated: no WWW-Authenticate challenge header; the body is a JSON envelope with two distinct messages.",
+    "The exact, case-sensitive literal Authorization: client is a mandatory first gate. Absent or altered ⇒ {\"error\":{\"Message\":\"Unauthorized\"}}.",
+    "With the gate satisfied the request reaches the credential check; the observed outcome for every tried pair is {\"error\":{\"Message\":\"بيانات مستخدم غير صحيحة\"}} — the same outcome the owner's earlier attempts produced.",
+    "Velnix request composition matches the documented contract byte-for-byte in structure: POST /Client/getorder, Authorization: client, Content-Type: application/json, JSON body with exactly Order_ID, User_Name, User_Pass (pinned by an automated test).",
+    "No local defect was found in the authentication request composition; nothing was changed in the send path.",
+    "The published sample credentials are design-time samples and are rejected by the live service.",
+    "No valid API credentials for client 1603 exist in the local safe context (no stored credential in the browser, keychain or filesystem), so a successful authentication could not be demonstrated and was not attempted with any guessed values.",
+    "The client portal exposes no API settings, API keys or activation controls: the only account-level login features observed are client users (display name / login name or mobile / password) and a change-password action. API provisioning cannot be granted from the portal as observed."
+  ],
+  "conclusion": {
+    "apiAuthenticationSolved": false,
+    "localVelnixDefectFound": false,
+    "wireFormatIsTheCause": false,
+    "blockedOn": "provider-side API provisioning / valid API credentials for client 1603; the application credential check rejects every pair tried, and the portal offers no API activation surface",
+    "stillBlocked": ["setorder", "removeorder", "getorder success path", "any shipment creation or financial integration"]
+  },
+  "evidenceImage": {
+    "repoPath": "docs/evidence/click-401/click-getorder-401-evidence.png",
+    "handoffCopy": "~/Desktop/Velnix-Click-401-Evidence/click-getorder-401-evidence.png",
+    "handoffJson": "~/Desktop/Velnix-Click-401-Evidence/probe-results-sanitized.json",
+    "sanitized": "no credentials, cookies, session data or customer data; only field names, redaction markers, statuses and provider error envelopes"
+  }
+}
