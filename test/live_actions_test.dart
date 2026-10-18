@@ -309,4 +309,42 @@ void main() {
       expect(find.text('إكمال الطلب الداخلي'), findsNothing);
     },
   );
+
+  testWidgets('member form prefills the selected employee identity', (
+    tester,
+  ) async {
+    final policy = SessionPolicy({
+      'id': 'gm',
+      'role': 'generalManager',
+      'active': true,
+    });
+    final member = <String, dynamic>{
+      'id': 'entry',
+      'name': 'مدخل اصطناعي',
+      'email': 'entry@velnix.test',
+      'role': 'dataEntry',
+      'active': true,
+      'permissions': <String>[],
+      'salesSupervisorId': null,
+    };
+    await tester.pumpWidget(
+      app(LiveMemberForm(policy: policy, members: [member], initial: member)),
+    );
+    await tester.pumpAndSettle();
+    final nameField = find.widgetWithText(TextFormField, 'اسم الموظف');
+    expect(nameField, findsOneWidget);
+    expect(
+      tester.widget<TextFormField>(nameField).controller?.text,
+      'مدخل اصطناعي',
+    );
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.widgetWithText(TextFormField, 'البريد الإلكتروني'),
+          )
+          .controller
+          ?.text,
+      'entry@velnix.test',
+    );
+  });
 }
