@@ -154,7 +154,14 @@ class _LiveLoginState extends State<LiveLogin> {
       }
       // Authentication alone does not grant Velnix access; Cloud Functions
       // require an active members/{uid} profile on every request.
-    } catch (e) {
+    } catch (e, st) {
+      // Surface the real OAuth/App Check failure in debug builds only; the
+      // user-facing Arabic message stays generic and no verification level is
+      // relaxed.
+      if (kDebugMode) {
+        debugPrint('Velnix: Google sign-in failed: $e');
+        debugPrintStack(stackTrace: st, label: 'Velnix Google sign-in');
+      }
       if (mounted) {
         setState(
           () => error =
