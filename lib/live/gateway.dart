@@ -120,6 +120,7 @@ class VelnixGateway {
 
   Future<List<Map<String, dynamic>>> notices() async =>
       listResult(await call('listNotices'));
+
   /// One page of notices. `afterId` is the cursor from the previous page; the
   /// server validates that it belongs to the caller.
   Future<({List<Map<String, dynamic>> items, bool more, String? afterId})>
@@ -134,6 +135,7 @@ class VelnixGateway {
       afterId: page['afterId'] as String?,
     );
   }
+
   Future<void> markNoticeRead(String id) async {
     await call('markNoticeRead', {'id': id});
   }
