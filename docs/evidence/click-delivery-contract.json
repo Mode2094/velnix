@@ -182,5 +182,24 @@
       "Client_Serial idempotency guarantee",
       "sandbox and API credentials"
     ]
+  },
+  "portal_observations": {
+    "performed": "2026-10-18",
+    "scope": "read-only inspection of the owner's authorized Click client portal session (client code 1603); no shipment created, no data modified, no credential handled, no cookie or token extracted",
+    "report": "docs/CLICK_DELIVERY_PORTAL_INVESTIGATION_AR.md",
+    "sanitizedEvidence": "docs/evidence/click-portal-inspection.json",
+    "keyFindings": [
+      "the add-shipment form exposes three distinct money fields: Order Amt (value of goods), Shipping Amt and Total Amt, with the portal's own JavaScript proving Total = Order + Shipping",
+      "the English UI label for the goods-value field is exactly 'Order Amt', which matches the API field name Ord_Amt literally",
+      "12 order statuses confirmed from the portal tabs (the 7 client-named states plus 5 returned-order states) with English labels and internal portal tokens; these are NOT API codes",
+      "Client_Serial is labelled 'Reference no' and is optional in the portal form",
+      "admin configuration sections (Reasons, Cities, Areas, CodesCities, AllPriceList, Branches, Permissions) are hidden from this client account"
+    ],
+    "stillOpen": [
+      "Ord_Amt semantic confirmation: goods value plus provider price-list shipping, or the receivable total",
+      "carrier API status codes and any success response schema for getorder",
+      "Client_Serial duplicate handling / idempotency guarantee",
+      "setorder HTTP method and request Content-Type"
+    ]
   }
 }
