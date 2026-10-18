@@ -309,7 +309,9 @@
 
 `main` لم يُمسّ · PR #1 OPEN/Draft · `ci.yml` محفوظ غير مُودَع.
 
-**آخر SHA وCI:** يُحدَّث أدناه.
+**آخر SHA:** `a18237d386da93e082aa1beaa73b678ee37b1c8f`
+**Push CI:** ✅ `success` — 39123342989
+**PR CI:** ✅ `success` — 39123347020
 
 ---
 
