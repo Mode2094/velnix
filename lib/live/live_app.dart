@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'notifications_service.dart';
+import 'push_routing.dart';
 import 'order_filters.dart';
 import 'directory_panel.dart';
 import 'live_settings.dart';
@@ -457,13 +458,14 @@ class LiveShell extends StatefulWidget {
 
 class _LiveShellState extends State<LiveShell> {
   StreamSubscription<RemoteMessage>? foregroundPush, openedPush;
-  final seenPush = <String>{};
+  final pushRouting = PushRouting();
   @override
   void initState() {
     super.initState();
     foregroundPush = FirebaseMessaging.onMessage.listen((message) {
-      final id = message.data['noticeId'];
-      if (id != null && !seenPush.add(id)) return;
+      if (!pushRouting.shouldPresentForeground(message.data['noticeId'])) {
+        return;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -486,8 +488,8 @@ class _LiveShellState extends State<LiveShell> {
   }
 
   void openPush(RemoteMessage message) {
-    final id = message.data['orderId'];
-    if (!mounted || id == null || id.isEmpty) return;
+    final id = PushRouting.orderTarget(message.data);
+    if (!mounted || id == null) return;
     Navigator.push(
       context,
       MaterialPageRoute<void>(

@@ -10,7 +10,7 @@ before(async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
     const db=ctx.firestore();
     await setDoc(doc(db,'members/entry'),{name:'مدخل',active:true});
-    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key','joinRequests/other'])
+    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','devices/device','idempotency/key','joinRequests/other'])
       await setDoc(doc(db,path),{value:'private'});
   });
 });
@@ -25,7 +25,7 @@ test('own profile is readable, other profiles and profile mutation are denied',a
 for(const role of ['generalManager','manager','warehouse','sales','dataEntry']){
   test(role+' cannot access privileged collections through client SDK',async()=>{
     const db=env.authenticatedContext(role,{role}).firestore();
-    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','idempotency/key','joinRequests/other']){
+    for(const path of ['orders/order','orders/order/events/event','companies/company','companySecrets/company','deliveryInbox/company/events/event','auditEvents/event','notices/notice','devices/device','idempotency/key','joinRequests/other']){
       await assertFails(getDoc(doc(db,path)));
       await assertFails(setDoc(doc(db,path),{value:'tampered'}));
       await assertFails(deleteDoc(doc(db,path)));

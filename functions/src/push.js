@@ -2,6 +2,9 @@
 const crypto=require('node:crypto');
 const {Timestamp,FieldValue}=require('firebase-admin/firestore');
 const MAX_ATTEMPTS=4,LEASE_MS=120000;
+// Mirrors the channel created by MainActivity and declared as the manifest
+// default, so order updates stay grouped and independently mutable.
+const ANDROID_CHANNEL_ID='velnix_order_updates';
 const TEMPORARY=new Set(['messaging/server-unavailable','messaging/internal-error','messaging/unknown-error','messaging/quota-exceeded','unavailable','resource-exhausted','ECONNRESET','ETIMEDOUT','EAI_AGAIN']);
 const INVALID=new Set(['messaging/invalid-registration-token','messaging/registration-token-not-registered']);
 function safeCode(error){return TEMPORARY.has(error?.code)||INVALID.has(error?.code)?error.code:'push_send_failed';}
@@ -26,6 +29,7 @@ async function deliverNotice(admin,db,noticeId,notice,canSeeOrder) {
   const result=await admin.messaging().sendEachForMulticast({
     tokens:devices.map(d=>d.data().token),
     notification:{title:'Velnix',body:'لديك تحديث جديد. افتح التطبيق لعرض التفاصيل.'},
+    android:{notification:{channelId:ANDROID_CHANNEL_ID}},
     data:{noticeId,orderId:notice.orderId||''},
   });
   const delivered=[];let retryable=false,lastError=null;
