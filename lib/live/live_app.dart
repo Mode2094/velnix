@@ -155,11 +155,20 @@ class _LiveLoginState extends State<LiveLogin> {
       // Authentication alone does not grant Velnix access; Cloud Functions
       // require an active members/{uid} profile on every request.
     } catch (e, st) {
-      // Surface the real OAuth/App Check failure in debug builds only; the
-      // user-facing Arabic message stays generic and no verification level is
-      // relaxed.
+      // Emit only a non-sensitive classification. The raw exception is never
+      // printed: GoogleSignInException.details is an opaque Object, and
+      // FirebaseAuthException can carry `credential`, either of which may hold
+      // identity tokens or authorization codes. Codes and stack frames are
+      // enough to diagnose, and no verification level is relaxed.
       if (kDebugMode) {
-        debugPrint('Velnix: Google sign-in failed: $e');
+        final codes = <String>['${e.runtimeType}'];
+        if (e is GoogleSignInException) {
+          codes.add('google=${e.code}');
+        }
+        if (e is FirebaseAuthException) {
+          codes.add('firebase=${e.code}');
+        }
+        debugPrint('Velnix: Google sign-in failed (${codes.join('; ')})');
         debugPrintStack(stackTrace: st, label: 'Velnix Google sign-in');
       }
       if (mounted) {
