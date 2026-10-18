@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {ARABIC_INVALID_USER,classifyClickResponse,isInvalidCredentials,CLIENT_SHIPPING_VOCABULARY}=require('../src/click_response');
+const {ARABIC_INVALID_USER,classifyClickResponse,isInvalidCredentials,CLIENT_SHIPPING_VOCABULARY,PORTAL_STATUS_VOCABULARY}=require('../src/click_response');
 const samples=require('./fixtures/click_response_samples');
 
 test('the confirmed invalid-credentials envelope is recognised as an auth rejection',()=>{
@@ -77,4 +77,36 @@ test('client shipping vocabulary is display text only and carries no carrier cod
 test('the vocabulary is frozen so no runtime mapping can be attached to it',()=>{
   assert.equal(Object.isFrozen(CLIENT_SHIPPING_VOCABULARY),true);
   for(const entry of CLIENT_SHIPPING_VOCABULARY)assert.equal(Object.isFrozen(entry),false);
+});
+
+test('the portal status vocabulary pins the twelve labels confirmed from the provider portal',()=>{
+  assert.equal(PORTAL_STATUS_VOCABULARY.length,12);
+  const keys=PORTAL_STATUS_VOCABULARY.map(s=>s.key);
+  const labels=PORTAL_STATUS_VOCABULARY.map(s=>s.label);
+  const tokens=PORTAL_STATUS_VOCABULARY.map(s=>s.portalToken);
+  assert.equal(new Set(keys).size,12);
+  assert.equal(new Set(labels).size,12);
+  assert.equal(new Set(tokens).size,12);
+  for(const entry of PORTAL_STATUS_VOCABULARY){
+    // Portal identifiers are UI evidence only: no carrier/API code may exist.
+    assert.equal('code' in entry,false);
+    assert.equal('clickCode' in entry,false);
+    assert.equal('remoteCode' in entry,false);
+    assert.equal('value' in entry,false);
+    assert.match(entry.portalToken,/^Lnk[A-Za-z]+$/);
+    assert.ok(typeof entry.label==='string'&&entry.label.length>0);
+    if(entry.english!==null)assert.ok(typeof entry.english==='string'&&entry.english.length>0);
+    // A portal label is never derived from an HTTP response or numeric status.
+    assert.equal(typeof entry.portalToken,'string');
+  }
+  // The seven client-named states must all be represented in the portal
+  // vocabulary; the portal adds the five returned-order states. The only label
+  // drift is the leading "في " on the warehouse state.
+  const normalized=labels.map(label=>label.replace(/^في\s+/,''));
+  for(const clientState of CLIENT_SHIPPING_VOCABULARY){
+    const needle=clientState.label.replace(/^في\s+/,'');
+    assert.ok(normalized.includes(needle),clientState.label);
+  }
+  assert.equal(Object.isFrozen(PORTAL_STATUS_VOCABULARY),true);
+  for(const entry of PORTAL_STATUS_VOCABULARY)assert.equal(Object.isFrozen(entry),true);
 });

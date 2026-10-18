@@ -83,9 +83,32 @@ const CLIENT_SHIPPING_VOCABULARY = Object.freeze([
   { key: 'cancelled', label: 'ملغي', meaning: 'الغاء الطلب بدون اجور توصيل او مع اجور توصيل في حال الوصول لموقع العميل وعدم استلامه الطلب وعدم دفعه لاجور التوصيل' },
 ]);
 
+/*
+ * The twelve shipping states confirmed from the provider's own client portal on
+ * 2026-10-18 (read-only inspection of the owner's authorized session, client
+ * code 1603). Arabic and English labels and the portal's internal LinkButton
+ * tokens are evidence; they are NOT Click API status codes. No numeric or API
+ * code is attached and no automatic mapping is derived from this list.
+ */
+const PORTAL_STATUS_VOCABULARY = Object.freeze([
+  Object.freeze({key: 'waitingApproval', label: 'قيد انتظار الموافقة', english: null, portalToken: 'LnkWating'}),
+  Object.freeze({key: 'inShippingStore', label: 'في مخزن الشحن', english: 'In shipping store', portalToken: 'LnkConfirmed'}),
+  Object.freeze({key: 'inShipping', label: 'في الشحن', english: 'In shipping', portalToken: 'LnkInShipping'}),
+  Object.freeze({key: 'delivered', label: 'تم التسليم', english: 'Delivered', portalToken: 'LnkDelivered'}),
+  Object.freeze({key: 'partDelivered', label: 'تسليم جزئي', english: 'Part delivered', portalToken: 'LnkPartDeliverd'}),
+  Object.freeze({key: 'postponed', label: 'مؤجل', english: 'Postponed', portalToken: 'LnkPostponed'}),
+  Object.freeze({key: 'canceled', label: 'ملغي', english: 'Canceled', portalToken: 'LnkCanceled'}),
+  Object.freeze({key: 'returned', label: 'مرتجع', english: 'Returned', portalToken: 'LnkReturned'}),
+  Object.freeze({key: 'partReturned', label: 'مرتجع جزئي', english: 'Part returned', portalToken: 'LnkPartReturned'}),
+  Object.freeze({key: 'inReturnedStore', label: 'في مخزن المرتجعات', english: 'In returned store', portalToken: 'LnkInStore'}),
+  Object.freeze({key: 'inShippingToSender', label: 'في الشحن للراسل', english: 'In shipping to sender', portalToken: 'LnkInShippingReturned'}),
+  Object.freeze({key: 'clientReceivedReturn', label: 'تم استلام المرتجع', english: 'Delivered to sender', portalToken: 'LnkClientReturned'}),
+]);
+
 module.exports = {
   ARABIC_INVALID_USER,
   classifyClickResponse,
   isInvalidCredentials,
   CLIENT_SHIPPING_VOCABULARY,
+  PORTAL_STATUS_VOCABULARY,
 };
