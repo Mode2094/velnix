@@ -91,7 +91,16 @@ class _LiveOrdersState extends State<LiveOrders> {
         more = after != null;
       });
     } catch (e) {
-      if (mounted && generation == current) setState(() => error = '$e');
+      if (mounted && generation == current) {
+        setState(() {
+          error = '$e';
+          if (reset) {
+            rows = [];
+            after = null;
+            more = false;
+          }
+        });
+      }
     } finally {
       if (mounted && generation == current) setState(() => busy = false);
     }

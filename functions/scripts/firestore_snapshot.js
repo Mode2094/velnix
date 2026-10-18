@@ -35,7 +35,10 @@ function createIsolatedDb(projectId, env = process.env) {
   process.env.FIRESTORE_EMULATOR_HOST = env.FIRESTORE_EMULATOR_HOST;
   const {initializeApp, getApps} = require('firebase-admin/app');
   const {getFirestore} = require('firebase-admin/firestore');
-  const app = getApps().length ? getApps()[0] : initializeApp({projectId});
+  const appName = `velnix-snapshot-${projectId}`;
+  const named = getApps().find(app => app.name === appName);
+  if (named && named.options.projectId !== projectId) throw Error('snapshot_app_project_mismatch');
+  const app = named || getApps().find(app => app.options.projectId === projectId) || initializeApp({projectId}, appName);
   return getFirestore(app);
 }
 
@@ -194,28 +197,40 @@ function parseSnapshot(text) {
 // must be added here (and is covered by the emulator test).
 const KNOWN_SUBCOLLECTION_IDS = Object.freeze(['events']);
 
-async function collectDocuments(db, {subcollectionIds = KNOWN_SUBCOLLECTION_IDS} = {}) {
-  const documents = [];
+async function walkDocuments(db, {subcollectionIds = KNOWN_SUBCOLLECTION_IDS} = {}, visit) {
   const seen = new Set();
-  const push = doc => {
+  const add = async doc => {
     if (seen.has(doc.ref.path)) return;
     seen.add(doc.ref.path);
-    documents.push({path: doc.ref.path, data: encodeValue(doc.data())});
+    await visit(doc);
   };
   async function walkCollection(collectionRef) {
     const snapshot = await collectionRef.get();
     for (const doc of snapshot.docs) {
-      push(doc);
+      await add(doc);
       for (const sub of await doc.ref.listCollections()) await walkCollection(sub);
     }
   }
   for (const collection of await db.listCollections()) await walkCollection(collection);
   for (const id of subcollectionIds) {
     for (const doc of (await db.collectionGroup(id).get()).docs) {
-      push(doc);
+      await add(doc);
       for (const sub of await doc.ref.listCollections()) await walkCollection(sub);
     }
   }
+}
+
+async function collectPaths(db, options = {}) {
+  const paths = [];
+  await walkDocuments(db, options, doc => { paths.push(doc.ref.path); });
+  return paths;
+}
+
+async function collectDocuments(db, options = {}) {
+  const documents = [];
+  await walkDocuments(db, options, doc => {
+    documents.push({path: doc.ref.path, data: encodeValue(doc.data())});
+  });
   return documents;
 }
 
@@ -240,22 +255,8 @@ async function verifyDatabase(db, documents) {
 
 async function listExtras(db, documents) {
   const expected = new Set(documents.map(document => document.path));
-  const collectionPaths = new Set();
-  for (const document of documents) {
-    const segments = document.path.split('/');
-    for (let index = 1; index < segments.length; index += 2) collectionPaths.add(segments.slice(0, index).join('/'));
-  }
-  let count = 0;
-  const samplePaths = [];
-  for (const collectionPath of collectionPaths) {
-    const snapshot = await db.collection(collectionPath).get();
-    for (const doc of snapshot.docs) {
-      if (expected.has(doc.ref.path)) continue;
-      count += 1;
-      if (samplePaths.length < MAX_EXTRA_SAMPLES) samplePaths.push(doc.ref.path);
-    }
-  }
-  return {count, samplePaths};
+  const extras = (await collectPaths(db)).filter(documentPath => !expected.has(documentPath));
+  return {count: extras.length, samplePaths: extras.slice(0, MAX_EXTRA_SAMPLES)};
 }
 
 async function restoreSnapshot(db, snapshot, {projectId, env = process.env, apply = false, onBeforeWrite = null, batchSize = BATCH_SIZE} = {}) {
@@ -322,7 +323,8 @@ async function main(argv, io = {log: console.log, error: console.error}, env = p
       const snapshot = await createSnapshot(db, {projectId: options.project, env});
       if (fs.existsSync(options.file) && !options.force) throw Error('output_file_exists');
       fs.mkdirSync(path.dirname(path.resolve(options.file)), {recursive: true});
-      fs.writeFileSync(options.file, JSON.stringify(snapshot));
+      fs.writeFileSync(options.file, JSON.stringify(snapshot), {mode: 0o600});
+      try { fs.chmodSync(options.file, 0o600); } catch (_) {}
       Object.assign(summary, {ok: true, file: options.file, documentCount: snapshot.documents.length, patterns: snapshot.manifest.patterns, sha256: snapshot.manifest.sha256});
       io.log(JSON.stringify(summary));
       return 0;
@@ -362,4 +364,4 @@ if (require.main === module) {
   main(process.argv.slice(2)).then(code => { process.exitCode = code; });
 }
 
-module.exports = {FORMAT, KNOWN_SUBCOLLECTION_IDS, assertIsolatedEnvironment, createIsolatedDb, encodeValue, decodeValue, patternOf, buildSnapshot, verifySnapshot, parseSnapshot, collectDocuments, createSnapshot, restoreSnapshot, verifyDatabase, listExtras, main};
+module.exports = {FORMAT, KNOWN_SUBCOLLECTION_IDS, assertIsolatedEnvironment, createIsolatedDb, encodeValue, decodeValue, patternOf, buildSnapshot, verifySnapshot, parseSnapshot, collectPaths, collectDocuments, createSnapshot, restoreSnapshot, verifyDatabase, listExtras, main};

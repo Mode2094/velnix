@@ -90,7 +90,8 @@ function classify(res) {
   if (!gmOrderId) { console.error('could not create the reference order:', JSON.stringify(created)); process.exit(1); }
   const orderSnapshot = (await call(gm, 'getOrder', { id: gmOrderId })).data.order;
   const company = await call(gm, 'saveCompany', {
-    name: 'شركة probe', apiUrl: 'https://probe.invalid/api', provider: 'generic_v1'
+    name: 'شركة probe', apiUrl: 'https://probe.invalid/api', provider: 'generic_v1',
+    enabled: false, statusMap: {}
   });
   const companyId = company.ok ? company.data.id : null;
   if (!companyId) console.error('  reference company not created:', JSON.stringify(company));
@@ -122,7 +123,7 @@ function classify(res) {
     put('listSyncEvents', await call(p, 'listSyncEvents'));
     put('markNoticeRead', await call(p, 'markNoticeRead', { id: noticeId }));
     put('saveSettings', await call(p, 'saveSettings', { organizationName: 'probe' }));
-    put('saveCompany', await call(p, 'saveCompany', { name: 'probe co', apiUrl: 'https://probe.invalid/api', provider: 'generic_v1' }));
+    put('saveCompany', await call(p, 'saveCompany', { name: 'probe co', apiUrl: 'https://probe.invalid/api', provider: 'generic_v1', enabled: false, statusMap: {} }));
     put('archiveCompany', await call(p, 'archiveCompany', { id: companyId }));
     put('restoreCompany', await call(p, 'restoreCompany', { id: companyId }));
     put('testCompanyConnection', await call(p, 'testCompanyConnection', { id: companyId }));

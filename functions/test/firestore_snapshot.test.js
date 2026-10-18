@@ -1,7 +1,7 @@
 'use strict';
 const {test,after}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawnSync}=require('node:child_process');
-const {initializeApp,getApp,deleteApp}=require('firebase-admin/app');
+const {initializeApp,getApp,getApps,deleteApp}=require('firebase-admin/app');
 initializeApp({projectId:'demo-velnix-unit'});
 const {getFirestore,Timestamp,GeoPoint}=require('firebase-admin/firestore');
 const db=getFirestore();
@@ -25,6 +25,18 @@ test('isolated-environment guard refuses production, non-demo and non-loopback t
   assert.throws(()=>tool.assertIsolatedEnvironment('demo-velnix',{FIRESTORE_EMULATOR_HOST:'10.0.0.5:8080'}),{message:'emulator_host_required'});
   assert.throws(()=>tool.assertIsolatedEnvironment('demo-velnix',{FIRESTORE_EMULATOR_HOST:'localhost:8080'}),{message:'emulator_host_required'});
   assert.equal(tool.assertIsolatedEnvironment('demo-velnix',LOOPBACK),'demo-velnix');
+});
+
+test('isolated DB creation never reuses an app bound to another project',async()=>{
+  const other=initializeApp({projectId:'demo-other'},'snapshot-other-project');
+  try {
+    const isolated=tool.createIsolatedDb('demo-snapshot-target',LOOPBACK);
+    assert.equal(isolated.projectId,'demo-snapshot-target');
+  } finally {
+    await deleteApp(other);
+    const named=getApps().find(app=>app.name==='velnix-snapshot-demo-snapshot-target');
+    if(named)await deleteApp(named);
+  }
 });
 
 test('the guards also cover snapshot creation and restoration directly',async()=>{

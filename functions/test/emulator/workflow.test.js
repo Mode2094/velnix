@@ -45,6 +45,28 @@ test('Click company draft stays disabled and cannot accept generic secrets, mapp
   assert.equal(code,409);assert.equal(body,'provider_contract_unconfirmed');
   await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,provider:'generic_v1',apiUrl:'https://local-contract.example'}),{code:'failed-precondition'});
 });
+test('company and member updates require explicit state and cannot silently wipe, disable or reactivate',async()=>{
+  await db.doc('companies/state_guard').set({name:'State guard',provider:'generic_v1',apiUrl:'https://local-contract.example',enabled:true,archived:false,statusMap:{delivered:'delivered'}});
+  for(const data of [
+    {id:'state_guard',name:'State guard',apiUrl:'https://local-contract.example',provider:'generic_v1',statusMap:{delivered:'delivered'}},
+    {id:'state_guard',name:'State guard',apiUrl:'https://local-contract.example',provider:'generic_v1',enabled:true}
+  ])await assert.rejects(invoke('saveCompany','gm',data),{code:'invalid-argument'});
+  const company=(await db.doc('companies/state_guard').get()).data();
+  assert.equal(company.enabled,true);assert.deepEqual(company.statusMap,{delivered:'delivered'});
+  await assert.rejects(invoke('restoreCompany','gm',{id:'state_guard'}),{code:'failed-precondition'});
+  assert.equal((await db.doc('companies/state_guard').get()).data().enabled,true);
+  await db.doc('companies/state_guard').update({archived:true,enabled:false});
+  await invoke('restoreCompany','gm',{id:'state_guard'});
+  const restored=(await db.doc('companies/state_guard').get()).data();
+  assert.equal(restored.archived,false);assert.equal(restored.enabled,false);
+
+  await getAuth().createUser({uid:'state_member',email:'state-member@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
+  await db.doc('members/state_member').set({name:'State member',role:'dataEntry',active:false,permissions:['viewReports'],salesSupervisorId:null});
+  await assert.rejects(invoke('saveMember','gm',{id:'state_member',name:'State member',role:'dataEntry',permissions:['viewReports']}),{code:'invalid-argument'});
+  await assert.rejects(invoke('saveMember','gm',{id:'state_member',name:'State member',role:'dataEntry',active:true}),{code:'invalid-argument'});
+  const member=(await db.doc('members/state_member').get()).data();
+  assert.equal(member.active,false);assert.deepEqual(member.permissions,['viewReports']);
+});
 test('no permanent order-delete or Click-remove callable exists; rules deny deletion for every role',()=>{
   assert.equal(functions.deleteOrder,undefined);assert.equal(functions.removeorder,undefined);
   // Actual SDK deletion denials for all five roles are exercised in rules.test.js.
@@ -187,9 +209,9 @@ test('password employee creation is refused and delegated managers cannot escala
   await assert.rejects(invoke('saveMember','gm',{name:'Disabled test',email:'disabled-test@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:false,permissions:[]}),{code:'failed-precondition'});
   await assert.rejects(getAuth().getUserByEmail('disabled-test@velnix.test'),{code:'auth/user-not-found'});
   await db.doc('members/manager').update({permissions:['manageEmployees']});
-  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'generalManager',permissions:[]}),{code:'permission-denied'});
-  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'warehouse-escalation@velnix.test',password:'LocalTestingOnly123!',role:'warehouse',permissions:[]}),{code:'permission-denied'});
-  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',permissions:['manageCompanies']}),{code:'permission-denied'});
+  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'generalManager',active:true,permissions:[]}),{code:'permission-denied'});
+  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'warehouse-escalation@velnix.test',password:'LocalTestingOnly123!',role:'warehouse',active:true,permissions:[]}),{code:'permission-denied'});
+  await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:true,permissions:['manageCompanies']}),{code:'permission-denied'});
 });
 test('durable notices survive duplicate event delivery without resetting read state or leaking scope',async()=>{
   await db.doc('members/manager').update({permissions:[]});

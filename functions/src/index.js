@@ -268,6 +268,7 @@ exports.assignCompany=callable(async req=>{
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const order=await tx.get(ref);
+    if(!order.exists)fail('not-found','الطلب غير موجود');
     if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
     if(!['created','review','preparing','ready'].includes(order.data().status) || dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
     tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
@@ -288,6 +289,8 @@ exports.saveCompany=callable(async req=>{
   const ref=db.collection('companies').doc(id);
   const name=str(req.data?.name,140),apiUrl=allowedUrl(str(req.data?.apiUrl,300));
   const provider=req.data?.provider;
+  if(typeof req.data?.enabled!=='boolean')fail('invalid-argument','حدد حالة تفعيل الشركة صراحةً');
+  if(!req.data?.statusMap||typeof req.data.statusMap!=='object'||Array.isArray(req.data.statusMap))fail('invalid-argument','حدد خريطة حالات الشركة صراحةً');
   const patch={};
   if(!['generic_v1',CLICK_PROVIDER].includes(provider))fail('invalid-argument','اختر محول شركة التوصيل المتاح');
   providerFor({provider,apiUrl});
@@ -295,7 +298,7 @@ exports.saveCompany=callable(async req=>{
     if(req.data?.enabled===true)fail('failed-precondition','يمكن حفظ Click Delivery كمسودة معطلة فقط حتى استكمال عقد API');
     if(req.data?.apiToken||req.data?.webhookKey||Object.keys(req.data?.statusMap||{}).length)fail('invalid-argument','لا تستخدم token أو webhook أو أكواد حالات generic مع Click Delivery');
   }
-  let statusMap;try{statusMap=safeStatusMap(req.data?.statusMap||{});}catch(e){return firebaseError(e);}
+  let statusMap;try{statusMap=safeStatusMap(req.data.statusMap);}catch(e){return firebaseError(e);}
   const existing=await ref.get();
   if(existing.exists&&existing.data().provider!==provider)fail('failed-precondition','لا يمكن تغيير محول شركة موجودة؛ أنشئ إعداداً مستقلاً لحماية الشحنات السابقة');
   if(existing.exists&&existing.data().archived)fail('failed-precondition','استعد الشركة المؤرشفة صراحةً قبل تعديلها');
@@ -306,7 +309,7 @@ exports.saveCompany=callable(async req=>{
     const savedSecrets=await db.doc(`companySecrets/${id}`).get();
     if(!patch.apiTokenCiphertext&&!savedSecrets.data()?.apiTokenCiphertext)fail('failed-precondition','أدخل مفتاح API قبل تفعيل الشركة');
   }
-  const newData={name,apiUrl,provider,enabled:req.data?.enabled===true,
+  const newData={name,apiUrl,provider,enabled:req.data.enabled,
     ...(!existing.exists?{archived:false}:{}),statusMap,updatedAt:FieldValue.serverTimestamp()};
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
@@ -326,7 +329,7 @@ exports.archiveCompany=callable(async req=>{
 exports.restoreCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
   const id=idValue(req.data?.id),ref=db.doc('companies/'+id);
-  await db.runTransaction(async tx=>{await currentActor(tx,user);const company=await tx.get(ref);if(!company.exists)fail('not-found','الشركة غير موجودة');tx.update(ref,{archived:false,enabled:false,updatedAt:FieldValue.serverTimestamp()});await audit('company.restored',user,id,{},tx);});return {ok:true};
+  await db.runTransaction(async tx=>{await currentActor(tx,user);const company=await tx.get(ref);if(!company.exists)fail('not-found','الشركة غير موجودة');if(company.data().archived!==true)fail('failed-precondition','الشركة غير مؤرشفة');tx.update(ref,{archived:false,enabled:false,updatedAt:FieldValue.serverTimestamp()});await audit('company.restored',user,id,{},tx);});return {ok:true};
 });
 async function companyCredentials(companyId,{allowInactive=false,requireSecrets=true}={}) {
   const [c,s]=await Promise.all([db.doc(`companies/${companyId}`).get(),db.doc(`companySecrets/${companyId}`).get()]);
@@ -426,8 +429,10 @@ exports.listMembers=callable(async req=>{
 exports.saveMember=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
   const role=str(req.data?.role,30);if(!validRole(role))fail('invalid-argument','دور غير صالح');
-  const permissions=req.data?.permissions||[];
+  const permissions=req.data?.permissions;
+  if(!Array.isArray(permissions))fail('invalid-argument','حدد صلاحيات الموظف صراحةً');
   if(!validPermissions(permissions))fail('invalid-argument','صلاحيات غير صالحة');
+  if(typeof req.data?.active!=='boolean')fail('invalid-argument','حدد حالة تفعيل الحساب صراحةً');
   if(user.role!=='generalManager') {
     if(['manager','generalManager'].includes(role) || (['sales','warehouse'].includes(role)&&user.role!=='warehouse'&&!can(user,'viewAllOrders')) || (role==='warehouse'&&user.role!=='warehouse'&&!can(user,'updateOrderStatus')) || permissions.some(p=>!can(user,p)))fail('permission-denied','لا يمكن منح صلاحيات أعلى من صلاحيتك');
   }
@@ -440,7 +445,7 @@ exports.saveMember=callable(async req=>{
     if(!target.exists)fail('not-found','الموظف غير موجود');
     if(id===user.id||target.data().role==='generalManager'&&user.role!=='generalManager')fail('permission-denied','لا يمكنك تعديل هذا الحساب');
     if(user.role!=='generalManager' && target.data().role==='manager')fail('permission-denied','لا يمكنك تعديل المدير');
-    const active=req.data?.active!==false;
+    const active=req.data.active;
     // Serialize membership changes with order creation and other admin changes.
     await db.runTransaction(async tx=>{
       await currentActor(tx,user);

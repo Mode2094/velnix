@@ -76,6 +76,7 @@ test('scenarios 1-2: the snapshot is saved, verified and covers relationships an
   assert.ok(snapshotObject.manifest.patterns['deliveryInbox/*/events/*']>=1);
   const backup=CLI('backup','--project',PROJECT,'--file',path.join(dir,'second.json'),'--force');
   assert.equal(backup.status,0,backup.stderr);
+  if(process.platform!=='win32')assert.equal(fs.statSync(path.join(dir,'second.json')).mode&0o777,0o600);
   const verified=CLI('verify','--project',PROJECT,'--file',snapshotFile);
   assert.equal(verified.status,0,verified.stderr);
   for(const output of [backup.stdout,backup.stderr,verified.stdout,verified.stderr]){
@@ -161,14 +162,16 @@ test('scenario 9: restore to the production project is refused with no writes an
 test('scenario 10: an older snapshot rolls its documents back and reports newer drift without deleting it',async()=>{
   await db.doc('orders/snap_order_2').update({status:'dispatched',revision:99});
   await db.doc('orders/snap_newer').set({createdBy:'snap_gm',status:'ready',dispatchState:'idle',revision:0});
+  await db.doc('newCollection/snap_extra').set({value:'newer'});
   const result=await tool.restoreSnapshot(db,snapshotObject,{projectId:PROJECT,env,apply:true});
   assert.equal(result.verified,true);
   assert.equal((await db.doc('orders/snap_order_2').get()).data().status,'created');
   assert.equal((await db.doc('orders/snap_order_2').get()).data().revision,1);
   assert.equal(await exists('orders/snap_newer'),true,'restore never deletes documents newer than the snapshot');
-  assert.ok(result.extraInTarget.count>=1);
+  assert.ok(result.extraInTarget.count>=2);
+  assert.ok(result.extraInTarget.samplePaths.includes('newCollection/snap_extra'));
   for(const samplePath of result.extraInTarget.samplePaths)assert.equal(typeof samplePath,'string');
-  await deletePaths(['orders/snap_newer']);
+  await deletePaths(['orders/snap_newer','newCollection/snap_extra']);
   const recovered=await tool.restoreSnapshot(db,snapshotObject,{projectId:PROJECT,env,apply:true});
   assert.equal(recovered.verified,true);
 });

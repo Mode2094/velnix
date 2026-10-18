@@ -13,6 +13,7 @@ class _LiveNoticesState extends State<LiveNotices> {
   String? _cursor;
   bool _more = false;
   bool _loadingMore = false;
+  int _generation = 0;
   @override
   void initState() {
     super.initState();
@@ -20,12 +21,16 @@ class _LiveNoticesState extends State<LiveNotices> {
   }
 
   Future<List<Map<String, dynamic>>> _firstPage() async {
+    final generation = ++_generation;
     final page = await VelnixGateway.instance.noticePage();
-    _cursor = page.afterId;
-    _more = page.more;
-    return _items
-      ..clear()
-      ..addAll(page.items);
+    if (generation == _generation) {
+      _cursor = page.afterId;
+      _more = page.more;
+      _items
+        ..clear()
+        ..addAll(page.items);
+    }
+    return _items;
   }
 
   void reload() => request = _firstPage();
@@ -37,10 +42,11 @@ class _LiveNoticesState extends State<LiveNotices> {
   /// first page is exhausted.
   Future<void> loadMore() async {
     if (_loadingMore || !_more || _cursor == null) return;
+    final generation = _generation;
     setState(() => _loadingMore = true);
     try {
       final page = await VelnixGateway.instance.noticePage(afterId: _cursor);
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _items.addAll(page.items);
         _cursor = page.afterId;

@@ -133,7 +133,7 @@ class _LiveLoginState extends State<LiveLogin> {
         TargetPlatform.macOS,
       ].contains(defaultTargetPlatform)) {
         final google = GoogleSignIn.instance;
-        await (_googleInitialization ??= google.initialize(
+        final initialization = _googleInitialization ??= google.initialize(
           serverClientId:
               const String.fromEnvironment(
                 'GOOGLE_WEB_CLIENT_ID',
@@ -141,7 +141,15 @@ class _LiveLoginState extends State<LiveLogin> {
               ).isEmpty
               ? null
               : const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
-        ));
+        );
+        try {
+          await initialization;
+        } catch (_) {
+          if (identical(_googleInitialization, initialization)) {
+            _googleInitialization = null;
+          }
+          rethrow;
+        }
         final account = await google.authenticate();
         final auth = account.authentication;
         if (auth.idToken == null) {
