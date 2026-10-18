@@ -467,11 +467,29 @@ exports.saveMember=callable(async req=>{
   fail('failed-precondition','إضافة الموظف تتطلب طلب انضمام Google وموافقة المدير العام');
 });
 
+// Notices are ordered by createdAt desc, so the cursor is a document position
+// rather than a name. The cursor must belong to the caller, otherwise one
+// employee could probe another employee's notice ids.
+async function noticePage(recipientId,data={}){
+  if(!data||typeof data!=='object'||Array.isArray(data))fail('invalid-argument','طلب غير صالح');
+  const size=data.pageSize??50;
+  if(!Number.isSafeInteger(size)||size<1||size>100)fail('invalid-argument','حجم الصفحة غير صالح');
+  let query=db.collection('notices').where('recipientId','==',recipientId).orderBy('createdAt','desc');
+  if(data.afterId!=null){
+    const id=idValue(data.afterId);
+    const cursor=await db.doc('notices/'+id).get();
+    if(!cursor.exists||cursor.data().recipientId!==recipientId)fail('invalid-argument','مؤشر ترقيم غير صالح');
+    query=query.startAfter(cursor);
+  }
+  const result=await query.limit(size+1).get();
+  const docs=result.docs.slice(0,size);
+  return {docs,more:result.size>size,afterId:docs.at(-1)?.id||null};
+}
 exports.listNotices=callable(async req=>{
   const user=await requireAuth(req);
-  const snap=await db.collection('notices').where('recipientId','==',user.id).orderBy('createdAt','desc').limit(50).get();
-  return {items:snap.docs.map(d=>({id:d.id,title:d.data().title,body:d.data().body,
-    orderId:d.data().orderId,read:d.data().read===true,createdAt:safeDate(d.data().createdAt)}))};
+  const page=await noticePage(user.id,req.data);
+  return {items:page.docs.map(d=>({id:d.id,title:d.data().title,body:d.data().body,
+    orderId:d.data().orderId,read:d.data().read===true,createdAt:safeDate(d.data().createdAt)})),more:page.more,afterId:page.afterId};
 });
 exports.markNoticeRead=callable(async req=>{
   const user=await requireAuth(req);

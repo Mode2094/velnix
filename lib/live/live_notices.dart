@@ -9,15 +9,48 @@ class LiveNotices extends StatefulWidget {
 
 class _LiveNoticesState extends State<LiveNotices> {
   late Future<List<Map<String, dynamic>>> request;
+  final _items = <Map<String, dynamic>>[];
+  String? _cursor;
+  bool _more = false;
+  bool _loadingMore = false;
   @override
   void initState() {
     super.initState();
     reload();
   }
 
-  void reload() => request = VelnixGateway.instance.notices();
+  Future<List<Map<String, dynamic>>> _firstPage() async {
+    final page = await VelnixGateway.instance.noticePage();
+    _cursor = page.afterId;
+    _more = page.more;
+    return _items
+      ..clear()
+      ..addAll(page.items);
+  }
+
+  void reload() => request = _firstPage();
   void refresh() {
     setState(reload);
+  }
+
+  /// Older notices stay reachable instead of being silently cut off once the
+  /// first page is exhausted.
+  Future<void> loadMore() async {
+    if (_loadingMore || !_more || _cursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await VelnixGateway.instance.noticePage(afterId: _cursor);
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(page.items);
+        _cursor = page.afterId;
+        _more = page.more;
+      });
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
   }
 
   Future<void> openNotice(Map<String, dynamic> notice) async {
@@ -137,6 +170,20 @@ class _LiveNoticesState extends State<LiveNotices> {
                   title: 'لا توجد إشعارات',
                   message: 'ستظهر هنا تحديثات الطلبات المتاحة لحسابك.',
                   icon: Icons.notifications_none_outlined,
+                ),
+              if (_more)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: OutlinedButton.icon(
+                    onPressed: _loadingMore ? null : loadMore,
+                    icon: _loadingMore
+                        ? const SizedBox.square(
+                            dimension: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.expand_more),
+                    label: const Text('عرض إشعارات أقدم'),
+                  ),
                 ),
               const SizedBox(height: 12),
               const Text(
