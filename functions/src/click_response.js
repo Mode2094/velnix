@@ -11,17 +11,31 @@
  *                    support http method 'GET'."}
  *   POST /nonexistent -> 404 with an HTML body
  *
+ * Final authentication diagnosis (same day, bounded probe matrix, published
+ * sample credentials only, boundary Order_ID=0, no shipment touched):
+ *   Authorization: client (exact, case-sensitive) -> 401
+ *                    {"error":{"Message":"بيانات مستخدم غير صحيحة"}}
+ *   Authorization absent                          -> 401 {"error":{"Message":"Unauthorized"}}
+ *   Authorization: Client (capital C)             -> 401 {"error":{"Message":"Unauthorized"}}
+ *   Authorization: sample (wrong literal)         -> 401 {"error":{"Message":"Unauthorized"}}
+ *
  * Consequences encoded here:
  *   1. There are two distinct error envelopes: an application envelope wrapped
  *      in `error`, and a framework envelope that is a bare `Message`.
- *   2. Authentication is evaluated before payload validation on the read paths,
+ *   2. The literal `Authorization: client` is a case-sensitive first gate; when
+ *      it is absent or altered the request never reaches the credential check
+ *      and the server answers the generic `Unauthorized` message instead.
+ *   3. Credentials are evaluated before payload validation on the read paths,
  *      so a caller learns nothing about a payload until it authenticates.
- *   3. No success schema has ever been supplied by the provider. Therefore this
+ *   4. No success schema has ever been supplied by the provider. Therefore this
  *      module NEVER classifies a response as success - an unrecognised body is
  *      reported as unverified rather than assumed to be data.
  */
 
 const ARABIC_INVALID_USER = 'بيانات مستخدم غير صحيحة';
+// Confirmed 2026-10-18: returned when the `Authorization: client` gate is
+// missing or altered, before any credential evaluation.
+const ENGLISH_UNAUTHORIZED = 'Unauthorized';
 
 /** The provider's only confirmed application-level error envelope. */
 function applicationError(json) {
@@ -67,6 +81,23 @@ function isInvalidCredentials(status, json) {
   return result.kind === 'authentication_required' && result.message === ARABIC_INVALID_USER;
 }
 
+/**
+ * Distinguishes the two confirmed 401 outcomes on the /Client/ read paths:
+ *   'authorization_header_invalid' - the `Authorization: client` gate failed,
+ *      the generic Unauthorized envelope was returned
+ *   'credentials_invalid'          - the gate passed and the supplied
+ *      User_Name/User_Pass pair was rejected
+ * Returns null for anything else. Neither outcome is success.
+ */
+function authFailureReason(status, json) {
+  if (status !== 401) return null;
+  const app = applicationError(json);
+  if (!app) return null;
+  if (app.Message === ENGLISH_UNAUTHORIZED) return 'authorization_header_invalid';
+  if (app.Message === ARABIC_INVALID_USER) return 'credentials_invalid';
+  return null;
+}
+
 /*
  * The seven shipping states as the client named and explained them. These are
  * display vocabulary only. They are NOT Click API codes: no numeric or textual
@@ -107,8 +138,10 @@ const PORTAL_STATUS_VOCABULARY = Object.freeze([
 
 module.exports = {
   ARABIC_INVALID_USER,
+  ENGLISH_UNAUTHORIZED,
   classifyClickResponse,
   isInvalidCredentials,
+  authFailureReason,
   CLIENT_SHIPPING_VOCABULARY,
   PORTAL_STATUS_VOCABULARY,
 };

@@ -11,6 +11,13 @@ module.exports = Object.freeze({
     status: 401,
     body: { error: { Message: 'بيانات مستخدم غير صحيحة' } },
   },
+  // POST /getorder with the Authorization: client gate absent or altered
+  // (case variant or wrong literal). The generic gate rejection, returned
+  // before any credential evaluation.
+  missingAuthorization401: {
+    status: 401,
+    body: { error: { Message: 'Unauthorized' } },
+  },
   // GET|PUT on a POST-only route.
   methodNotAllowed405: {
     status: 405,

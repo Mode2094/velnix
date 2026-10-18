@@ -10,7 +10,7 @@ before(async()=>{
   process.env.ALLOWED_DELIVERY_HOSTS='admin.clickdelivery.org,local-contract.example';
   server=http.createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;
-    received={method:req.method,path:req.url,authorization:req.headers.authorization,body:JSON.parse(raw)};
+    received={method:req.method,path:req.url,authorization:req.headers.authorization,contentType:req.headers['content-type'],accept:req.headers.accept,body:JSON.parse(raw)};
     // This fixture intentionally invents NO Click success schema.
     res.setHeader('Content-Type','application/json');res.end('{"unverified_fixture":true}');
   });
@@ -21,7 +21,10 @@ test('documented getorder POST and credential fields travel only to a local fixt
   let calls=0;
   const transport=(url,options)=>{calls++;assert.equal(url,CLICK_BASE+'/getorder');assert.equal(options.redirect,'error');return fetch(local+new URL(url).pathname,options);};
   await assert.rejects(exerciseGetOrderRequest(company,credentials,1,transport),/click_response_contract_incomplete/);
-  assert.equal(calls,1);assert.deepEqual(received,{method:'POST',path:'/Client/getorder',authorization:'client',body:{Order_ID:1,...credentials}});
+  assert.equal(calls,1);
+  // The wire format is pinned to the documented contract: POST, the literal
+  // Authorization gate, JSON body with exactly the three documented fields.
+  assert.deepEqual(received,{method:'POST',path:'/Client/getorder',authorization:'client',contentType:'application/json',accept:'application/json',body:{Order_ID:1,...credentials}});
 });
 test('Click operational adapter cannot create, poll, test fictitious health or use default live transport',async()=>{
   const adapter=providerFor(company);

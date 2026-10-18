@@ -1,12 +1,30 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {ARABIC_INVALID_USER,classifyClickResponse,isInvalidCredentials,CLIENT_SHIPPING_VOCABULARY,PORTAL_STATUS_VOCABULARY}=require('../src/click_response');
+const {ARABIC_INVALID_USER,ENGLISH_UNAUTHORIZED,classifyClickResponse,isInvalidCredentials,authFailureReason,CLIENT_SHIPPING_VOCABULARY,PORTAL_STATUS_VOCABULARY}=require('../src/click_response');
 const samples=require('./fixtures/click_response_samples');
 
 test('the confirmed invalid-credentials envelope is recognised as an auth rejection',()=>{
   const {status,body}=samples.invalidCredentials401;
   assert.equal(classifyClickResponse(status,body).kind,'authentication_required');
   assert.equal(isInvalidCredentials(status,body),true);
+});
+
+test('the final diagnosis keeps the authorization gate and the credential check apart',()=>{
+  const gate=samples.missingAuthorization401;
+  // Both are 401 application envelopes, but only one means the credentials
+  // themselves were wrong; the gate rejection happens before any credential
+  // evaluation and must never be reported as an invalid credential pair.
+  assert.equal(classifyClickResponse(gate.status,gate.body).kind,'authentication_required');
+  assert.equal(authFailureReason(gate.status,gate.body),'authorization_header_invalid');
+  assert.equal(isInvalidCredentials(gate.status,gate.body),false);
+  const creds=samples.invalidCredentials401;
+  assert.equal(authFailureReason(creds.status,creds.body),'credentials_invalid');
+  assert.equal(authFailureReason(401,{error:{Message:'something else'}}),null);
+  assert.equal(authFailureReason(400,{error:{Message:ENGLISH_UNAUTHORIZED}}),null);
+  assert.equal(authFailureReason(200,{}),null);
+  // The two envelopes are distinct byte-for-byte; a regression that collapses
+  // them into one message would break this pin.
+  assert.notEqual(ENGLISH_UNAUTHORIZED,ARABIC_INVALID_USER);
 });
 
 test('a framework rejection uses a different envelope and is not read as app data',()=>{
