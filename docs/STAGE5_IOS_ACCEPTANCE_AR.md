@@ -75,12 +75,12 @@
 - `lib/main.dart` يُنشّئ `Firebase.initializeApp()` ثم `FirebaseAppCheck.instance.activate(providerApple: AppleDeviceCheckProvider)`.
 - **ما حدث فعلياً في البناء**: لم تُمرَّر أي `--dart-define`، لذا `FIREBASE_API_KEY` فارغ ⇒ يسلك `main.dart` فرع `await Firebase.initializeApp()` بلا خيارات، ويتطلّب `GoogleService-Info.plist` داخل الحزمة — وهو **غير موجود** ⇒ يُرمى استثناء ⇒ `catch (_)` ⇒ `runApp(const SetupFailureApp())`.
 - الدليل: لقطة الشاشة تعرض بالعربية "تعذر بدء التطبيق. راجع إعدادات بيئة التشغيل وFirebase وApp Check مع مسؤول المؤسسة." — وهي **حراسة مقصودة (fail-closed)** وليست انهياراً. العملية بقيت حيّة.
-- **عيب إعدادات مؤكَّد**: `ios/Runner/GoogleService-Info.plist` مُشار إليه في `project.pbxproj:71` كـ `PBXFileReference` فقط، و**لا يوجد له `PBXBuildFile`** ⇒ ليس في Resources build phase ⇒ **لن يُنسخ إلى الحزمة حتى لو وُجد الملف**. يتطلّب إضافة PBXBuildFile.
+- **~~عيب إعدادات~~ (مصحَّح في `STAGE5_FIREBASE_AUTH_RECOVERY_AR.md`)**: كان مُقدَّراً أن غياب `PBXBuildFile` يمنع تضمين الملف. **غير صحيح**: المشروع يملك طور `PBXShellScriptBuildPhase` باسم "Copy local Firebase configuration" (`project.pbxproj:382`) ينسخ الملف عبر `ios/scripts/copy_firebase_config.sh`. بعد توفير الملف، ظهر في `Runner.app` **مرة واحدة**. لم تُعدَّل `project.pbxproj` تجنّباً لتكرار النسخ.
 - لم يتم تجاوز App Check، ولم تُنشأ حسابات، ولم تُعدَّل إعدادات السحابة.
 
 ## 10. عيوب مُؤكَّدة
 1. **`VELNIX_GOOGLE_REVERSED_CLIENT_ID` غير مُعرَّف** ⇒ `CFBundleURLSchemes` فارغ ⇒ Google Sign-In معطّل على iOS (§8).
-2. **`GoogleService-Info.plist` غير مربوط بالـ Resources build phase** ⇒ غير قابل للتضمين تلقائياً (§9).
+2. **~~`GoogleService-Info.plist` غير مربوط بالـ Resources build phase~~** — بُطل هذا العيب؛ آلية السكربت تعمل (انظر `STAGE5_FIREBASE_AUTH_RECOVERY_AR.md` §2). العيب الحقيقي كان غياب الملف نفسه محلياً.
 3. **`ios/Flutter/Firebase.local.xcconfig` غير موجود** (مُتجاهَل في git) — لا يوجد مصدر محلي لإعدادات Firebase على iOS.
 4. **`pod install` معطّل**: يفشل بسبب Ruby 4.0 `unicode_normalize` (ASCII-8BIT) — عائق بيئة. الـ Pods مُثبَّتة مسبقاً و`Pods/` + `Podfile.lock` متسقان، والبناء نجح. (غير مُصلَح: خارج نطاق هذا المُهمّة.)
 5. 18 golden test تفشل على macOS (فرق بكسل 4–5% بسبب الخطوط) — عيب بيئي في baselines، لا عيب منطقي.
