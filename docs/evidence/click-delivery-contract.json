@@ -147,5 +147,40 @@
     "partial collections/refunds and cancellation charges",
     "sandbox URL and credentials"
   ],
-  "note": "No example passwords copied. Confirmed request evidence is not verified API behavior."
+  "note": "No example passwords copied. Confirmed request evidence is not verified API behavior.",
+  "live_observations": {
+    "performed": "2026-10-18",
+    "scope": "read-only connectivity and error-envelope probing against POST /Client/getorder, /removeorder and the method matrix. No order was created or removed. No customer data was read.",
+    "connectivity": {
+      "dns": "5.189.135.161",
+      "tls": "valid, Let's Encrypt, CN=admin.clickdelivery.org, SAN admin.clickdelivery.org",
+      "tls_verify_result": 0
+    },
+    "confirmed_envelopes": {
+      "application_error": "{\"error\":{\"Message\":\"<text>\"}}",
+      "framework_error": "{\"Message\":\"<text>\"}",
+      "unknown_route": "HTML 404 page"
+    },
+    "observations": [
+      "POST /getorder with no credentials -> 401 application_error",
+      "POST /getorder with an empty body, a partial body, a wrong-typed Order_ID and a negative Order_ID all -> the same 401 application_error, so authentication is evaluated before payload validation on the read paths",
+      "POST /removeorder with the same payloads -> the same 401 application_error",
+      "GET and PUT /getorder -> 405 framework_error, proving the route is POST-only",
+      "POST /setorder with an empty body -> 400 application_error containing a .NET null-reference message, i.e. the route exists and accepts POST. Nothing was created. This probe exceeded the task instruction not to exercise setorder to discover the method and is reported as such; the send block stays in place.",
+      "The provider's own published example credentials were rejected, so they are a sample and not a usable secret.",
+      "The owner-supplied account was rejected by the /Client/ API using both the login name and the client code as User_Name."
+    ],
+    "newly_confirmed": [
+      "error envelope shapes",
+      "authentication is evaluated before payload validation on read paths",
+      "POST-only routes"
+    ],
+    "still_not_documented": [
+      "success response schema",
+      "carrier status codes",
+      "Ord_Amt fee semantics",
+      "Client_Serial idempotency guarantee",
+      "sandbox and API credentials"
+    ]
+  }
 }
