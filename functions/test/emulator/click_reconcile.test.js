@@ -12,6 +12,9 @@ let clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};
 let clickReadError=null;
 let clickReadCalls=0;
 clickDelivery.readClickOrder=async()=>{clickReadCalls++;if(clickReadError)throw clickReadError;return clickReadResponse;};
+let clickSendError=null;
+let clickSendCalls=0;
+clickDelivery.sendClickOrder=async()=>{clickSendCalls++;if(clickSendError)throw clickSendError;return {trackingNumber:'SHOULD_NOT'};};
 const providers=require('../../src/providers'),actualProvider=providers.requireOperationalProvider;
 let clickCreateCalls=0;
 providers.requireOperationalProvider=company=>{
@@ -33,9 +36,19 @@ const reconcile=data=>functions.reconcileClickShipment.run({auth,data});
 const sync=id=>functions.syncClickOrder.run({auth,data:{id}});
 const salesAuth={uid:'click_sales',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}};
 before(async()=>{
+  // Keep this file idempotent when a local emulator is reused between runs.
+  for(const [field,values] of [
+    ['clickOrderRef',['VNX-CLICK-TEST-20261019-d','REF-AMBIGUOUS-SEND','REF-UNIQUE-1','REF-UNIQUE-2','REF-API-CONFIRMED','REF-GENERIC']],
+    ['providerOrderId',['1318368','7777777','7777778','8888888']],
+  ]){
+    for(const value of values){
+      const stale=await db.collection('orders').where(field,'==',value).get();
+      for(const doc of stale.docs)await doc.ref.delete();
+    }
+  }
   await db.doc('members/click_gm').set({name:'Fixture GM',role:'generalManager',active:true,permissions:[]});
   await db.doc('members/click_sales').set({name:'Fixture Sales',role:'sales',active:true,permissions:[]});
-  await db.doc('companies/click_fixture').set({name:'Click Fixture',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',clickUserId:1603,enabled:true,archived:false,statusMap:{}});
+  await db.doc('companies/click_fixture').set({name:'Click Fixture',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',clickUserId:1603,clickSendEnabled:true,enabled:true,archived:false,statusMap:{}});
   await db.doc('companySecrets/click_fixture').set({apiTokenCiphertext:'mock-ciphertext'});
   await db.doc('companies/generic_fixture').set({name:'Generic Fixture',provider:'generic_v1',apiUrl:'https://local-contract.example',enabled:true,archived:false,statusMap:{}});
   await db.doc('companySecrets/generic_fixture').set({apiTokenCiphertext:'mock-ciphertext'});
@@ -47,21 +60,36 @@ async function clickOrder(id,over={}){
     quantity:1,amountMinor:1000,createdBy:'click_gm',status:'ready',dispatchState:'idle',companyId:'click_fixture',revision:0,...over});
   return ref;
 }
-test('an ambiguous Click create keeps needs_review and a second dispatch is refused without another carrier call',async()=>{
-  clickCreateCalls=0;
+test('an ambiguous Click create keeps needs_review, stores the exact merchant reference and blocks a resend',async()=>{
+  clickSendCalls=0;
+  clickSendError=Object.assign(new Error('click_ambiguous_creation'),{code:'click_ambiguous_creation',clickOrderRef:'REF-AMBIGUOUS-SEND',clickClientSerial:'SERIAL-AMBIGUOUS-SEND'});
   const ref=await clickOrder('click_ambiguous');
   await assert.rejects(dispatch(ref.id),{code:'unavailable'});
-  assert.equal(clickCreateCalls,1,'exactly one carrier attempt is allowed');
+  assert.equal(clickSendCalls,1,'exactly one carrier attempt is allowed');
   const afterFirst=(await ref.get()).data();
   assert.equal(afterFirst.dispatchState,'needs_review');
   assert.match(afterFirst.syncError,/Click قد يكون أنشأ الشحنة/);
+  assert.equal(afterFirst.clickOrderRef,'REF-AMBIGUOUS-SEND');
+  assert.equal(afterFirst.clickClientSerial,'SERIAL-AMBIGUOUS-SEND');
   await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
-  assert.equal(clickCreateCalls,1,'the review state must block an automatic resend');
+  assert.equal(clickSendCalls,1,'the review state must block an automatic resend');
   assert.equal((await ref.collection('events').where('action','==','dispatch_attempt_failed').get()).size,1);
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_attempt_failed').get()).size,1);
+  clickSendError=null;
+});
+test('the server-side Click send flag keeps the path blocked before any carrier call',async()=>{
+  clickSendCalls=0;
+  await db.doc('companies/click_fixture').update({clickSendEnabled:false});
+  try {
+    const ref=await clickOrder('click_send_disabled_flag');
+    await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
+    assert.equal(clickSendCalls,0,'no carrier call is attempted while the flag is off');
+  } finally {
+    await db.doc('companies/click_fixture').update({clickSendEnabled:true});
+  }
 });
 test('reconciling the existing Click shipment keeps the policy number and merchant reference separate',async()=>{
-  clickCreateCalls=0;
+  clickSendCalls=0;
   const ref=await clickOrder('click_reconcile',{dispatchState:'needs_review',syncError:'نتيجة إرسال غير مؤكدة'});
   await reconcile({id:ref.id,clickOrderId:'1318368',clickOrderRef:'VNX-CLICK-TEST-20261019-d',clickClientSerial:'VNX-CLICK-TEST-20261019-d4a0f8fb',shippingStatus:'awaitingPickup',reason:'تحقق يدوي من بوابة Click Delivery'});
   const data=(await ref.get()).data();
@@ -80,9 +108,9 @@ test('reconciling the existing Click shipment keeps the policy number and mercha
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.click_reconciled').get()).size,1,'an identical reconciliation is idempotent');
   await assert.rejects(reconcile({id:ref.id,clickOrderId:'9999999',clickOrderRef:'VNX-CLICK-TEST-20261019-d',shippingStatus:'delivered',reason:'محاولة استبدال المعرف'}),{code:'already-exists'});
   assert.equal((await ref.get()).data().providerOrderId,'1318368');
-  assert.equal(clickCreateCalls,0,'reconciliation never creates a shipment');
+  assert.equal(clickSendCalls,0,'reconciliation never creates a shipment');
   await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
-  assert.equal(clickCreateCalls,0);
+  assert.equal(clickSendCalls,0);
 });
 test('the same Click policy number or merchant reference cannot be linked to two Velnix orders',async()=>{
   const first=await clickOrder('click_unique_first',{dispatchState:'needs_review'});
@@ -124,7 +152,7 @@ test('a successful mock create stores the tracking id once and blocks a second d
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.sent_to_delivery').get()).size,1);
 });
 test('syncClickOrder applies the real verified Click response and records click_api provenance',async()=>{
-  clickReadCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};clickCreateCalls=0;
+  clickReadCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};clickSendCalls=0;
   const ref=await clickOrder('click_sync_success',{status:'dispatched',dispatchState:'sent',providerOrderId:'1318368',clickOrderRef:'VNX-CLICK-TEST-20261019-d',shippingStatus:'awaitingPickup',shippingStatusSource:'manual'});
   const result=await sync(ref.id);
   assert.equal(result.applied,true);assert.equal(result.shippingStatus,'awaitingPickup');assert.equal(result.rawStatus,'قيد انتظار الموافقة');
@@ -138,7 +166,7 @@ test('syncClickOrder applies the real verified Click response and records click_
   assert.deepEqual(data.clickAmounts,{orderAmountDuo:0,shippingDiscount:0,willPay:1});
   assert.equal(data.clickSyncLockId,undefined);assert.equal(data.syncError ?? null,null);
   assert.equal(clickReadCalls,1,'exactly one read call is allowed');
-  assert.equal(clickCreateCalls,0,'sync never creates a shipment');
+  assert.equal(clickSendCalls,0,'sync never creates a shipment');
   assert.equal((await ref.collection('events').where('action','==','click_status_synced').get()).size,1);
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.click_status_synced').get()).size,1);
 });

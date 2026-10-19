@@ -1,6 +1,6 @@
 'use strict';
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict'),http=require('node:http');
-const {CLICK_BASE,CLICK_PROVIDER,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder}=require('../src/click_delivery');
+const {CLICK_BASE,CLICK_PROVIDER,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder,sendClickOrder}=require('../src/click_delivery');
 const {providerFor,requireOperationalProvider}=require('../src/providers');
 const {vendorRequest}=require('../src/delivery');
 const company={provider:CLICK_PROVIDER,apiUrl:CLICK_BASE};
@@ -105,4 +105,37 @@ test('the policy number and malformed identifiers are refused before any read tr
   let calls=0;const spy=async()=>{calls++;return new Response('{}')};
   for(const [ref,uid] of [[1318368,1603],['',1603],['x'.repeat(26),1603],['VNX-CLICK-TEST-20261019-d',0]])await assert.rejects(readClickOrder(company,ref,uid,spy),/invalid_click_order_ref|invalid_click_user_id/);
   assert.equal(calls,0);
+});
+test('the production send path is refused by the server-side flag before any transport call',async()=>{
+  let calls=0;const spy=async()=>{calls++;return new Response('{}')};
+  await assert.rejects(sendClickOrder({...company,clickSendEnabled:false},{id:'o',customer:'c',phone:'0779557077',city:'c',area:'a',address:'x',description:'d',quantity:1,amountMinor:1},{User_Name:'u',User_Pass:'p'},spy),/click_send_disabled/);
+  assert.equal(calls,0);
+});
+test('the observed setorder 400/200 outcomes are ambiguous creations that carry the exact merchant reference',async()=>{
+  const enabled={...company,clickSendEnabled:true};
+  const order={id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000};
+  const creds={User_Name:'local-user',User_Pass:'local-pass'};
+  const observed={error:{Message:"The cast to value type 'System.Int64' failed because the materialized value is null."}};
+  for(const [status,payload] of [[400,observed],[200,{}]]){
+    let received;
+    const transport=async(url,options)=>{received={url,options};return new Response(JSON.stringify(payload),{status,headers:{'content-type':'application/json'}})};
+    await assert.rejects(sendClickOrder(enabled,order,creds,transport),(e)=>{
+      assert.equal(e.code,'click_ambiguous_creation');
+      assert.equal(e.clickOrderRef,'VNX-CLICK-TEST-20261019-d');
+      assert.equal(e.clickClientSerial,'VNX-CLICK-TEST-20261019-d');
+      return true;
+    });
+    assert.equal(received.url,CLICK_BASE+'/setorder');
+    assert.equal(received.options.headers.Authorization,'client');
+    assert.deepEqual(JSON.parse(received.options.body).Client_Serial,'VNX-CLICK-TEST-20261019-d');
+  }
+});
+test('setorder auth and validation rejections stay distinct and never report a created shipment',async()=>{
+  const enabled={...company,clickSendEnabled:true};
+  const order={id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000};
+  const creds={User_Name:'local-user',User_Pass:'local-pass'};
+  const respond=(body,status)=>async()=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
+  await assert.rejects(sendClickOrder(enabled,order,creds,respond({error:{Message:'بيانات مستخدم غير صحيحة'}},401)),(e)=>{assert.equal(e.code,'click_auth_failed');assert.equal(e.clickOrderRef,undefined);return true;});
+  await assert.rejects(sendClickOrder(enabled,order,creds,respond({error:{Message:'validation failed'}},400)),(e)=>{assert.equal(e.code,'click_send_rejected');return true;});
+  await assert.rejects(sendClickOrder(enabled,order,creds,respond({error:{Message:'server error'}},500)),(e)=>{assert.equal(e.code,'click_send_rejected');return true;});
 });

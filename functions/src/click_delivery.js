@@ -131,4 +131,33 @@ async function readClickOrder(company,orderRef,userId,transport=fetch){
     return {status:response.status,json};
   } finally {clearTimeout(timer);}
 }
-module.exports={CLICK_PROVIDER,CLICK_BASE,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,assertClickUrl,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder,clickDelivery};
+// Production send path, gated by the company's server-side clickSendEnabled
+// flag. The provider never documented a success body, so every 2xx and the
+// observed Int64 HTTP 400 are treated as an ambiguous creation: the caller
+// must review the Click portal and link the existing shipment instead of
+// resending setorder.
+async function sendClickOrder(company,order,credentials,transport=fetch){
+  if(!company||company.clickSendEnabled!==true)throw Error('click_send_disabled');
+  assertClickUrl(company);
+  const body=setOrderBody(order,credentials);
+  if(typeof transport!=='function')throw Error('click_transport_unavailable');
+  const control=new AbortController(),timer=setTimeout(()=>control.abort(),15000);
+  let response,buffer;
+  try {
+    response=await transport(CLICK_BASE+'/setorder',{method:'POST',redirect:'error',signal:control.signal,
+      headers:{Authorization:'client','Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body)});
+    buffer=Buffer.from(await response.arrayBuffer());
+  } finally {clearTimeout(timer);}
+  if(buffer.length>1024*1024)throw Error('click_response_too_large');
+  let json=null;try{json=JSON.parse(buffer.toString('utf8'));}catch(_){json=null;}
+  const result=classifySetOrderResponse(response.status,json);
+  if(result.kind==='auth_required'){const e=new Error('click_auth_failed');e.code='click_auth_failed';e.httpStatus=response.status;throw e;}
+  if(result.kind==='ambiguous_creation'){
+    const e=new Error('click_ambiguous_creation');e.code='click_ambiguous_creation';e.httpStatus=response.status;
+    e.clickOrderRef=body.Client_Serial;
+    e.clickClientSerial=typeof order.clientSerial==='string'&&order.clientSerial.trim()?order.clientSerial.trim():body.Client_Serial;
+    throw e;
+  }
+  const e=new Error('click_send_rejected');e.code='click_send_rejected';e.httpStatus=response.status;e.vendorMessage=result.message||null;throw e;
+}
+module.exports={CLICK_PROVIDER,CLICK_BASE,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,assertClickUrl,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder,sendClickOrder,clickDelivery};

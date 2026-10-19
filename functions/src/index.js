@@ -16,7 +16,7 @@ const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
-const {CLICK_PROVIDER,readClickOrder}=require('./click_delivery');
+const {CLICK_PROVIDER,readClickOrder,sendClickOrder}=require('./click_delivery');
 const {parseClickOrderResponse}=require('./click_response');
 const {shippingStatus}=require('./shipping_status');
 const {directoryPage}=require('./directory');
@@ -91,7 +91,7 @@ async function oneOrder(user,id) {
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'المحافظة مطلوبة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'المحافظة مطلوبة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(['delivery_host_not_allowed','kms_not_configured','kms_not_configured_or_bad_secret','unsupported_delivery_provider'].includes(e?.message))fail('failed-precondition','إعداد شركة التوصيل أو خدمة تشفير مفاتيحها غير مكتمل؛ راجع إعدادات المؤسسة');
@@ -315,6 +315,11 @@ exports.saveCompany=callable(async req=>{
       clickUserId=Number(req.data.clickUserId);
       if(!Number.isSafeInteger(clickUserId)||clickUserId<1||clickUserId>2147483647)fail('invalid-argument','User_ID الخاص بـClick غير صالح');
     }
+    // Server-side send gate. It stays off until the financial contract and
+    // duplicate protection are explicitly approved; no API call may turn it on.
+    if(req.data?.clickSendEnabled===true)fail('failed-precondition','إرسال Click ما زال معطلاً؛ لا يمكن تفعيله حتى اعتماد عقد المبالغ ومنع التكرار');
+    if(req.data?.clickUserName)patch.clickUserNameCiphertext=await encryptSecret(str(req.data.clickUserName,2000));
+    if(req.data?.clickUserPass)patch.clickUserPassCiphertext=await encryptSecret(str(req.data.clickUserPass,2000));
   }
   let statusMap;try{statusMap=safeStatusMap(req.data.statusMap);}catch(e){return firebaseError(e);}
   const existing=await ref.get();
@@ -329,7 +334,8 @@ exports.saveCompany=callable(async req=>{
   }
   const newData={name,apiUrl,provider,enabled:req.data.enabled,
     ...(!existing.exists?{archived:false}:{}),statusMap,
-    ...(provider===CLICK_PROVIDER&&clickUserId!==null?{clickUserId}:{}),updatedAt:FieldValue.serverTimestamp()};
+    ...(provider===CLICK_PROVIDER&&clickUserId!==null?{clickUserId}:{}),
+    ...(provider===CLICK_PROVIDER?{clickSendEnabled:false}:{}),updatedAt:FieldValue.serverTimestamp()};
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);
@@ -364,6 +370,29 @@ exports.testCompanyConnection=callable(async req=>{
     return {connected:true,provider:company.provider,serviceStatus:'ok'};
   }catch(e){await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:false,lastHealthError:'تعذر الاتصال بالمزود؛ تحقق من إعداداته'});logger.warn('delivery health check failed',{companyId:id,code:e.code||'unknown'});return {connected:false,error:'فشل اختبار الاتصال بالمزود؛ تحقق من إعداداته'};}
 });
+async function deliverySendCredentials(companyId){
+  const [c,s]=await Promise.all([db.doc('companies/'+companyId).get(),db.doc('companySecrets/'+companyId).get()]);
+  if(!c.exists)fail('failed-precondition','شركة التوصيل غير موجودة');
+  const company=c.data();
+  if(company.provider===CLICK_PROVIDER){
+    if(company.archived===true)fail('failed-precondition','شركة Click مؤرشفة');
+  }else if(!company.enabled||company.archived)fail('failed-precondition','شركة التوصيل غير مفعلة');
+  if(!s.exists)fail('failed-precondition','بيانات اعتماد شركة التوصيل غير موجودة');
+  return {company,secrets:s.data()||{}};
+}
+async function createDeliveryShipment(company,secrets,order,onAttempt){
+  if(company.provider===CLICK_PROVIDER){
+    if(company.clickSendEnabled!==true)throw Error('click_send_disabled');
+    const userName=await decryptSecret(secrets.clickUserNameCiphertext);
+    const userPass=await decryptSecret(secrets.clickUserPassCiphertext);
+    onAttempt();
+    return sendClickOrder(company,order,{User_Name:userName,User_Pass:userPass});
+  }
+  const adapter=requireOperationalProvider(company);
+  const token=await decryptSecret(secrets.apiTokenCiphertext);
+  onAttempt();
+  return adapter.create(company,token,order);
+}
 exports.sendOrderToDelivery=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
   const {ref}=await oneOrder(user,req.data?.id);const lockId=crypto.randomUUID();
@@ -378,18 +407,21 @@ exports.sendOrderToDelivery=callable(async req=>{
     // A timed-out request may have reached the vendor: never auto-resend it.
     if(o.dispatchState==='sending')fail('failed-precondition','يوجد إرسال سابق يحتاج مراجعة إذا لم يكتمل');
     const company=await tx.get(db.doc('companies/'+o.companyId));
-    if(!company.exists||company.data().archived||company.data().enabled!==true)fail('failed-precondition','شركة التوصيل غير مفعلة؛ لم يبدأ إرسال الشحنة');
-    requireOperationalProvider(company.data());
+    const c=company.data();
+    if(!company.exists||!c)fail('failed-precondition','شركة التوصيل غير موجودة');
+    if(c.provider===CLICK_PROVIDER){
+      if(c.archived===true||c.clickSendEnabled!==true)fail('failed-precondition','إرسال Click غير مفعّل لهذه الشركة');
+    }else{
+      if(c.archived||c.enabled!==true)fail('failed-precondition','شركة التوصيل غير مفعلة؛ لم يبدأ إرسال الشحنة');
+      requireOperationalProvider(c);
+    }
     snapshot={...o,id:ref.id};
     tx.update(ref,{dispatchState:'sending',dispatchLockId:lockId,dispatchLockUntil:Timestamp.fromMillis(Date.now()+90000)});
   });
   let vendorAttempted=false;
   try {
-    const {company,secrets}=await companyCredentials(snapshot.companyId);
-    const adapter=requireOperationalProvider(company);
-    const token=await decryptSecret(secrets.apiTokenCiphertext);
-    vendorAttempted=true;
-    const result=await adapter.create(company,token,snapshot);
+    const {company,secrets}=await deliverySendCredentials(snapshot.companyId);
+    const result=await createDeliveryShipment(company,secrets,snapshot,()=>{vendorAttempted=true;});
     const tracking=optional(result.trackingNumber||result.tracking,120);
     if(!tracking)throw new Error('vendor_missing_tracking');
     await db.runTransaction(async tx=>{
@@ -405,9 +437,12 @@ exports.sendOrderToDelivery=callable(async req=>{
       if(o.data()?.dispatchLockId===lockId){
         // Click can create a shipment and still answer HTTP 400 (observed
         // 2026-10-19). The adapter signals that exact case so the UI keeps a
-        // Click-specific review message instead of a generic transport one.
+        // Click-specific review message and the exact merchant reference for
+        // the later reconcile/sync instead of a generic transport message.
         const clickAmbiguous=vendorAttempted&&e?.code==='click_ambiguous_creation';
-        const failure=vendorAttempted?{dispatchState:'needs_review',syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
+        const clickRef=typeof e?.clickOrderRef==='string'?e.clickOrderRef:null;
+        const clickSerial=typeof e?.clickClientSerial==='string'?e.clickClientSerial:null;
+        const failure=vendorAttempted?{dispatchState:'needs_review',...(clickRef?{clickOrderRef:clickRef}:{}),...(clickSerial?{clickClientSerial:clickSerial}:{}),syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
         tx.update(ref,{...failure,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
         const action=vendorAttempted?'dispatch_attempt_failed':'dispatch_preparation_failed';
         await addEvent(ref.id,action,user,{},tx);await audit('order.'+action,user,ref.id,{},tx);
