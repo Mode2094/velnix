@@ -202,7 +202,7 @@
 | PITR | ENABLED · 7 أيام |
 | Delete Protection | ENABLED |
 | جداول النسخ | يومي (7 أيام) + أسبوعي MON (8 أسابيع) |
-| أول Managed Backup | لم يُستحق بعد؛ لم يُعلن نجاحه أو فشله |
+| أول Managed Backup | نسختان READY: يومية تنتهي 2026-10-26 · أسبوعية تنتهي 2026-12-14 |
 | GCS Export | `gs://velnix-6c1a2-backups/exports/20261019T102733Z` SUCCESSFUL |
 | استرجاع معزول | `velnix-recovery-preview`: تطابق صارم 100% (orders/members/settings/idempotency/notices/auditEvents) ثم حُذفت القاعدة |
 | Recovery Point | حتى آخر تصدير/PITR نافذة 7 أيام |
