@@ -259,3 +259,135 @@
 8. قناة تنبيه موثقة (بريد) لتفعيل Alert Policy على المقياس الجاهز.
 9. ملفات العقد/الفيديو الأصلية للمطابقة بندًا بندًا.
 10. القبول النهائي للمالك على الأجهزة الحقيقية.
+
+---
+
+# CLICK LIVE END-TO-END PRODUCTION ACCEPTANCE
+
+**تاريخ القبول:** 2026-10-19  
+**آخر Commit قبل النشر:** `3d37636`  
+**PR:** `#1` — `https://github.com/Mode2094/velnix/pull/1`  
+**CI الناجح:** `39280913696` — flutter/firebase/android/emulator-ui كلها ناجحة  
+**Firebase Project:** `velnix-6c1a2`  
+**Production Hosting:** `https://velnix-6c1a2.web.app`
+
+## 1. الأدلة المثبتة
+
+### setorder — الشحنة الموجودة
+
+| البند | القيمة |
+|---|---|
+| رقم البوليصة | `1318368` |
+| العميل | `1603` |
+| Client_Serial الأصلي | `VNX-CLICK-TEST-20261019-d4a0f8fb` |
+| القيمة التي خزّنها Click | `VNX-CLICK-TEST-20261019-d` (25 حرفًا) |
+| إعادة الإنشاء | **لم تُنفّذ** — لم تُنشأ شحنة ثانية |
+
+### getorder — العقد المثبت
+
+```http
+POST https://admin.clickdelivery.org/Client/getorder
+Authorization: client
+Content-Type: application/json
+```
+
+```json
+{"Order_ID":"VNX-CLICK-TEST-20261019-d","User_ID":1603}
+```
+
+```json
+{
+  "result": {
+    "Stat_App_Nm": "قيد انتظار الموافقة",
+    "Status_Date": "2026-10-19T00:00:00",
+    "Ord_Status_Note": "شحنة قيد انتظار الموافقة",
+    "Ord_Amt_Duo": 0,
+    "Ord_Ship_Discount": 0,
+    "Ord_Will_Pay_Amt": 1
+  }
+}
+```
+
+HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verified-20261019.json`.
+
+### الربط الإنتاجي
+
+| البند | القيمة |
+|---|---|
+| سجل Velnix | `orders/click_e2e_1318368` |
+| شركة Click | `companies/click_delivery_1603` |
+| `providerOrderId` | `1318368` |
+| `clickOrderRef` | `VNX-CLICK-TEST-20261019-d` |
+| `clickClientSerial` | `VNX-CLICK-TEST-20261019-d4a0f8fb` |
+| `clickUserId` | `1603` |
+| `clickSendEnabled` | `false` |
+
+### المزامنة الإنتاجية
+
+نُفّذت قراءة Click الحقيقية وتحديث Firestore الإنتاجي:
+
+- `shippingStatus`: `awaitingPickup`
+- `shippingStatusSource`: `click_api`
+- `clickStatusRaw`: `قيد انتظار الموافقة`
+- `clickStatusDate`: `2026-10-19T00:00:00`
+- `clickStatusNote`: `شحنة قيد انتظار الموافقة`
+- `clickAmounts`: `{ "orderAmountDuo": 0, "shippingDiscount": 0, "willPay": 1 }`
+- `revision`: `1`
+- `syncError`: `null`
+- الحدث: `click_status_synced`
+- Audit: `order.click_status_synced` بهوية `Iodwqf7C1APYJGGaXMNvMPzI6sp1`
+
+**ملاحظة:** التحديث أُجري عبر مسار إداري آمن يعيد استخدام نفس Parser والعقد، وليس عبر استدعاء `syncClickOrder` من الواجهة، لأن تسجيل الدخول إلى Velnix يتطلب حساب Google مصرحًا به غير متوفر في الجلسة الحالية.
+
+## 2. ما نُشر
+
+| المورد | النتيجة |
+|---|---|
+| `syncClickOrder` | **ACTIVE** — `https://syncclickorder-i32ccqmgqq-ew.a.run.app` |
+| `reconcileClickShipment` | **ACTIVE** — `https://reconcileclickshipment-i32ccqmgqq-ew.a.run.app` |
+| `sendOrderToDelivery` | **ACTIVE** — كود الإرسال المنشور، لكن `clickSendEnabled=false` |
+| باقي دوال Firebase | نُشرت من نفس HEAD وظهرت ACTIVE |
+| Hosting | النسخة الجديدة منشورة؛ `main.dart.js` يحتوي `syncClickOrder` و`reconcileClickShipment` |
+| Firestore Rules/Indexes | لم تُغيَّر؛ لا حاجة لتغييرها في هذه الجولة |
+| App Check Enforcement | لم يُغيَّر |
+| IAM/KMS/Backups | لم تُغيَّر؛ PITR مفعّل ونسختان READY |
+| شحنة Click جديدة | **لم تُنشأ** |
+| `removeorder` | **لم يُنفّذ** |
+
+## 3. جدول القبول
+
+| العملية | النتيجة | الدليل |
+|---|---|---|
+| setorder | **PASS** | الشحنة `1318368` موجودة من الاختبار السابق ولم تُكرر |
+| getorder | **PASS** | HTTP 200 + بيانات الحالة الحقيقية |
+| Velnix Link | **PASS** | `orders/click_e2e_1318368` يحمل المعرفات الثلاثة الصحيحة |
+| Manual Sync (data path) | **PASS** | Click 200 → Firestore الإنتاجي محدّث |
+| Manual Sync (deployed callable/UI) | **BLOCKED** | لا جلسة Google مصرح بها لاستدعاء الوظيفة من الواجهة |
+| Shipping Status | **PASS** | `awaitingPickup` + `click_api` + التاريخ والملاحظة |
+| Audit | **PASS** | حدث الطلب + Audit بالمنفذ نفسه |
+| Security | **PASS** | استدعاء الوظيفتين بلا مصادقة أعاد 401؛ اختبارات الأدوار في Emulator ناجحة |
+| Duplicate Protection | **PASS** | منع ربط نفس المعرف بطلبين، `needs_review` عند الغموض، وعدم إنشاء شحنة ثانية |
+| Firebase Deploy | **PASS** | الوظائف الجديدة ACTIVE |
+| Hosting | **PASS** | الحزمة الجديدة منشورة وتحتوي استدعاءات المزامنة |
+| Chrome E2E | **BLOCKED** | شاشة الدخول تتطلب حساب Google؛ لا توجد بيانات دخول اختبار مصرح بها |
+| CI | **PASS** | `39280913696` — جميع الوظائف ناجحة |
+| الإرسال الفعلي من واجهة Velnix | **BLOCKED** | `clickSendEnabled=false`، واعتماد بيانات الاعتماد وتفسير `Ord_Amt` المالي لم يُستكملا |
+
+## 4. حدود الأمان المتبقية
+
+1. **الإرسال من Velnix غير مفعّل:** `clickSendEnabled=false`، و`saveCompany` يرفض تفعيله. لا شحنة Click ثانية.
+2. **دلالة `Ord_Amt` المالية غير محسومة:** `Ord_Amt_Duo` و`Ord_Ship_Discount` و`Ord_Will_Pay_Amt` تُحفظ خامًا ولا تُستخدم في محاسبة Velnix.
+3. **بيانات اعتماد setorder الإنتاجية:** تحتاج توفيرًا آمنًا عبر KMS ثم اعتمادًا منفصلًا؛ لم تُكتب في Git أو الواجهة.
+4. **Chrome E2E:** يحتاج حساب Google اختباريًا مصرحًا به أو جلسة المالك.
+5. **المزامنة المجدولة:** غير مفعلة؛ المزامنة اليدوية/الإدارية فقط.
+6. **الشحنة 1318368:** ما زالت «قيد انتظار الموافقة»، والمدينة/المنطقة فيها فارغتان من إنشاء الاختبار السابق.
+
+## 5. الحكم النهائي
+
+**Click read/sync production data path: VERIFIED.**  
+**Click send from the Velnix UI: BLOCKED.**  
+**Chrome production E2E: BLOCKED (missing authorized Google login).**  
+**Overall PRODUCTION READY: NO** — لأن إرسال الشحنات من الواجهة ما زال محجوبًا، واختبار Chrome الإنتاجي لم يُنفّذ.
+
+هذا ليس فشلًا في القراءة أو الربط: الشحنة الحقيقية `1318368` قُرئت من Click، وحُفظت حالتها ومصدرها وتاريخها وملاحظتها في Firestore الإنتاجي، وظهر أثر Audit. المتبقي هو تفعيل الإرسال المالي الآمن واختبار الواجهة بحساب مصرح.
+
