@@ -116,13 +116,117 @@ class LiveLogin extends StatefulWidget {
 class _LiveLoginState extends State<LiveLogin> {
   bool busy = false;
   String? error;
+  String? info;
+  bool obscurePassword = true;
+  final formKey = GlobalKey<FormState>();
+  final email = TextEditingController();
+  final password = TextEditingController();
   static Future<void>? _googleInitialization;
+
+  @override
+  void dispose() {
+    email.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  String? _emailValidator(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return 'أدخل البريد الإلكتروني';
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(text)) {
+      return 'أدخل بريداً إلكترونياً صالحاً';
+    }
+    return null;
+  }
+
+  String _emailError(FirebaseAuthException e) => switch (e.code) {
+    'invalid-email' => 'أدخل بريداً إلكترونياً صالحاً',
+    'user-disabled' => 'هذا الحساب معطل؛ راجع مسؤول المؤسسة',
+    'user-not-found' ||
+    'wrong-password' ||
+    'invalid-credential' => 'البريد الإلكتروني أو كلمة المرور غير صحيحة',
+    'email-not-verified' => 'وثّق بريدك الإلكتروني قبل تسجيل الدخول',
+    'too-many-requests' => 'محاولات كثيرة؛ انتظر قليلاً ثم أعد المحاولة',
+    'network-request-failed' => 'تعذر الاتصال؛ تحقق من الشبكة ثم أعد المحاولة',
+    'operation-not-allowed' =>
+      'تسجيل الدخول بالبريد غير مفعّل؛ راجع مسؤول Firebase',
+    _ => 'تعذر تسجيل الدخول. تحقق من البريد وكلمة المرور.',
+  };
+
+  Future<void> signInWithEmailPassword() async {
+    if (busy || !(formKey.currentState?.validate() ?? false)) return;
+    setState(() {
+      busy = true;
+      error = null;
+      info = null;
+    });
+    try {
+      final credential = await VelnixGateway.instance.auth
+          .signInWithEmailAndPassword(
+            email: email.text.trim(),
+            password: password.text,
+          );
+      final user = credential.user;
+      if (user == null || !user.emailVerified) {
+        await VelnixGateway.instance.auth.signOut();
+        throw FirebaseAuthException(
+          code: 'email-not-verified',
+          message: 'email not verified',
+        );
+      }
+      // authStateChanges opens the workspace. Cloud Functions still require an
+      // active members/{uid} record; login alone grants no Velnix permission.
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => error = _emailError(e));
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => error = 'تعذر تسجيل الدخول. تحقق من البريد وكلمة المرور.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> sendPasswordReset() async {
+    final address = email.text.trim();
+    final validation = _emailValidator(address);
+    if (validation != null) {
+      setState(() => error = validation);
+      return;
+    }
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+      info = null;
+    });
+    try {
+      await VelnixGateway.instance.auth.sendPasswordResetEmail(email: address);
+      if (mounted) {
+        setState(
+          () => info =
+              'أُرسل رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني إن كان الحساب موجوداً.',
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      if (mounted) setState(() => error = _emailError(e));
+    } catch (_) {
+      if (mounted) {
+        setState(() => error = 'تعذر إرسال رابط إعادة التعيين الآن.');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   Future<void> signInWithGoogle() async {
     if (busy) return;
     setState(() {
       busy = true;
       error = null;
+      info = null;
     });
     try {
       if (kIsWeb) {
@@ -220,6 +324,7 @@ class _LiveLoginState extends State<LiveLogin> {
               const SizedBox(height: 30),
               VLivePanel(
                 child: Form(
+                  key: formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -230,16 +335,103 @@ class _LiveLoginState extends State<LiveLogin> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       if (error != null)
                         Padding(
-                          padding: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.only(bottom: 10),
                           child: Text(
                             error!,
                             style: const TextStyle(color: VColors.danger),
                           ),
                         ),
-                      const SizedBox(height: 20),
+                      if (info != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Text(
+                            info!,
+                            style: const TextStyle(color: Color(0xFF006D55)),
+                          ),
+                        ),
+                      TextFormField(
+                        controller: email,
+                        enabled: !busy,
+                        textDirection: TextDirection.ltr,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        textInputAction: TextInputAction.next,
+                        validator: _emailValidator,
+                        decoration: const InputDecoration(
+                          labelText: 'البريد الإلكتروني',
+                          prefixIcon: Icon(Icons.alternate_email),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: password,
+                        enabled: !busy,
+                        textDirection: TextDirection.ltr,
+                        obscureText: obscurePassword,
+                        autofillHints: const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) => signInWithEmailPassword(),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'أدخل كلمة المرور';
+                          }
+                          if (value.length < 6) {
+                            return 'كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+                          }
+                          return null;
+                        },
+                        decoration: InputDecoration(
+                          labelText: 'كلمة المرور',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            tooltip: obscurePassword
+                                ? 'إظهار كلمة المرور'
+                                : 'إخفاء كلمة المرور',
+                            onPressed: () => setState(
+                              () => obscurePassword = !obscurePassword,
+                            ),
+                            icon: Icon(
+                              obscurePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: busy ? null : signInWithEmailPassword,
+                        icon: busy
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.login),
+                        label: const Text('تسجيل الدخول بالبريد'),
+                      ),
+                      TextButton(
+                        onPressed: busy ? null : sendPasswordReset,
+                        child: const Text('نسيت كلمة المرور؟'),
+                      ),
+                      const Row(
+                        children: [
+                          Expanded(child: Divider()),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              'أو',
+                              style: TextStyle(color: VColors.muted),
+                            ),
+                          ),
+                          Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       FilledButton.icon(
                         onPressed:
                             busy ||

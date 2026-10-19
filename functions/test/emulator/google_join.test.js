@@ -35,7 +35,7 @@ test('pending users cannot access any privileged callable; provider and identity
   const endpoints=['searchOrders','listOrderCreators','registerDevice','unregisterDevice','getSettings','saveSettings','me','listOrders','getOrder','createOrder','updateOrder','changeOrderStatus','assignCompany','sendOrderToDelivery','resolveDispatchException','dashboardStats','companyStats','listMembers','saveMember','listCompanies','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','listNotices','markNoticeRead','listSyncEvents','listAudit','listJoinRequests','decideJoinRequest'];
   for(const name of endpoints)await assert.rejects(invoke(name,newcomer,{id:gm.uid,decision:'approved',role:'generalManager'}),{code:'permission-denied'},name);
   await assert.rejects(invoke('joinSession',null),{code:'unauthenticated'});
-  for(const token of [{...newcomer,firebase:{sign_in_provider:'password'}},{...newcomer,email_verified:false}])await assert.rejects(invoke('joinSession',token),{code:'permission-denied'});
+  for(const token of [{...newcomer,firebase:{sign_in_provider:'custom'}},{...newcomer,email_verified:false}])await assert.rejects(invoke('joinSession',token),{code:'permission-denied'});
   const noGoogle=await auth.createUser({email:'join_no_google@example.test',emailVerified:true});
   await assert.rejects(invoke('joinSession',{...newcomer,uid:noGoogle.uid}),{code:'failed-precondition'});
 });

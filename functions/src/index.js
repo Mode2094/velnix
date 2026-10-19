@@ -30,9 +30,9 @@ const str=(v,max=120)=>typeof v==='string'&&v.trim()&&v.trim().length<=max?v.tri
 const idValue=v=>{try{return documentId(v);}catch(e){return firebaseError(e);}};
 const optional=(v,max=120)=>typeof v==='string'?v.trim().slice(0,max):'';
 const requiredPerm=(user,perm)=>{if(!can(user,perm))fail('permission-denied','الصلاحية غير متاحة');};
-const {requireGoogleSession}=require('./google_identity');
+const {requireSession}=require('./google_identity');
 const requireAuth=async req=>{
-  const uid=requireGoogleSession(req);
+  const uid=requireSession(req);
   const snap=await db.doc(`members/${uid}`).get();
   if(!snap.exists || snap.data().active!==true || !validRole(snap.data().role))fail('permission-denied','الحساب غير مفعل');
   const user={...snap.data(),id:uid};

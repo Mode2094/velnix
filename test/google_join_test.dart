@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
@@ -7,6 +8,13 @@ void main() {
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
   Widget app(Widget child) => MaterialApp(
+    locale: const Locale('ar'),
+    supportedLocales: const [Locale('ar')],
+    localizationsDelegates: const [
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
     home: Directionality(textDirection: TextDirection.rtl, child: child),
   );
   final manager = SessionPolicy({
@@ -15,13 +23,13 @@ void main() {
     'active': true,
   });
 
-  testWidgets('Live login offers only Google, without passwords or reset', (
-    tester,
-  ) async {
+  testWidgets('Live login offers password, reset and Google', (tester) async {
     await tester.pumpWidget(app(const LiveLogin()));
+    expect(find.text('البريد الإلكتروني'), findsOneWidget);
+    expect(find.text('كلمة المرور'), findsOneWidget);
+    expect(find.text('تسجيل الدخول بالبريد'), findsOneWidget);
+    expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
     expect(find.text('المتابعة باستخدام Google'), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
-    expect(find.text('نسيت كلمة المرور؟'), findsNothing);
     expect(find.text('دخول إلى مساحة العمل'), findsNothing);
   });
 
