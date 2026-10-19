@@ -565,6 +565,8 @@ exports.deliveryWebhook=onRequest({region:REGION,invoker:'public',maxInstances:1
   try {
     const companyId=optional(req.query.companyId,140);
     if(!/^[\w-]{3,140}$/.test(companyId)){res.status(400).send('invalid_company');return;}
+    const company=await db.doc('companies/'+companyId).get();
+    if(!company.exists){res.status(404).send('unknown_company');return;}
     const credentials=await companyCredentials(companyId,{allowInactive:true,requireSecrets:false});
     if(credentials.company.provider===CLICK_PROVIDER){res.status(409).send('provider_contract_unconfirmed');return;}
     const secret=await decryptSecret(credentials.secrets.webhookKeyCiphertext);

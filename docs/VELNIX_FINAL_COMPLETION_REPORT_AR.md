@@ -1,199 +1,136 @@
-# VELNIX — تقرير الإكمال النهائي
+# VELNIX — تقرير الإكمال النهائي (تحديث ما بعد التنفيذ الإنتاجي)
 
-الفرع: `audit/production-readiness` · آخر Commit: `dc02ec768ef6e1c8fdc1b09461a4aa31cdd55f3d`
-PR #1: Draft / Open · `main`: `0d10904ff6109096c0b361f2fca8719042160a1c` (لم يُمسّ)
+الفرع: `audit/production-readiness` · PR #1: Draft / Open · `main`: `0d10904ff6109096c0b361f2fca8719042160a1c` (لم يُمسّ)
 
-> لم يُنشر أي Function، ولم تُعدّل Firebase Production أو قواعدها أو فهارسها أو إعدادات النسخ الاحتياطي، ولم تُنشأ أو تُلغَ أي شحنة Click، ولم تُفعّل أي خدمة مدفوعة.
+> نُفّذ هذا التحديث بموجب تفويض المالك الصريح للتنفيذ الإنتاجي. تم التحقق من المشروع `velnix-6c1a2` والحساب `moderohe8@gmail.com` والفوترة قبل أي تغيير. لم تُنشأ أو تُلغَ أي شحنة Click، ولم تُعطَّل قواعد أمان، ولم يُفعَّل App Check Enforcement.
 
 ---
 
 ## 1. ملخص تنفيذي
 
-اكتملت محليًا جميع الأعمال البرمجية والاختبارية والواجهية القابلة للإنجاز دون موافقات إنتاجية:
-
-- تحسينات UI/UX شاملة: كثافة الجداول، فلاتر الهاتف في Bottom Sheet، طي الشريط الجانبي، حماية التغييرات غير المحفوظة، وإصلاح ظهور حقول RTL في Web.
-- قبول Web حقيقي على 10 مقاسات × 5 أدوار: **300 فحص، 0 فشل، 0 Overflow**.
-- Stage 3: **11/11** · Stage 4D: **8/8** · Stage 4C: **7 ناجح / 2 Skip**.
-- Functions Unit: **174/174** · Emulator: **133/133**.
-- Flutter Analyze/Format نظيفان، وCI أخضر على Ubuntu.
-- بناء Android Debug وiOS Simulator Debug ناجح، مع تشغيل فعلي جزئي.
-- Click معزول بالكامل: لا 401 جديد، ولا setorder/removeorder، والحواجز سليمة.
-- الأدوات المحلية للنسخ/الاسترجاع مختبَرة على المحاكي؛ الإنتاج **غير مفعّل**.
-- لم يُلمس `main`، ولم يُدمج PR #1.
-
-**الحكم:** نطاق الويب والواجهات **READY FOR OWNER ACCEPTANCE**، والإنتاج الكامل **BLOCKED EXTERNALLY** بموافقات وموارد المالك/المزود.
+- **Cloud Functions:** أصبحت **35/35 ACTIVE** منشورة (كانت 23).
+- **Firestore Indexes:** أصبحت **109/109 READY** (كانت 2).
+- **KMS:** مفتاح إنتاجي `company-secrets` في `europe-west1` + ربط أقل صلاحيات بحساب التشغيل + اختبار تشفير/فك ناجح.
+- **Backup:** PITR مُفعّل (7 أيام) · Delete Protection مُفعّل · جدولا نسخ (يومي 7 أيام، أسبوعي 8 أسابيع) · تصدير GCS حقيقي ناجح.
+- **Hosting:** نُشرت الواجهة المعتمدة على `https://velnix-6c1a2.web.app` مع زر Google مُفعّل وبدون أخطاء Console.
+- **Smoke Tests:** كل callable غير مصادق يعيد 401 · webhook لشركة مجهولة يعيد 404 · KMS roundtrip ناجح.
+- **CI:** أخضر على Ubuntu (Runs `39226291510` و`39226297695` وما بعده).
+- **Click:** ما زال معزولًا ومحجوبًا بانتظار اعتماد المزود.
+- **الحكم:** **PARTIALLY READY** — البنية الخلفية جاهزة ومختبرة، ويتبقى Click وApp Check Enforcement وAPNs والتوقيع وAuth Export وقبول المالك.
 
 ---
 
-## 2. العمل المنجز
+## 2. جدول BEFORE → ACTION → AFTER → VERIFIED/BLOCKED
 
-### 2.1 UI/UX
+| الخدمة | BEFORE | ACTION TAKEN | AFTER | الحالة |
+|---|---|---|---|---|
+| Cloud Functions | 23/35 ACTIVE · SA = default compute | تفعيل KMS/Scheduler، ضبط `.env`، نشر 12 دالة جديدة، إصلاح webhook 404، إعادة ضبط SA إلى `velnix-runtime-internal` عبر Cloud Run | **35/35 ACTIVE** · كل الدوال على SA مخصص أقل صلاحيات | **VERIFIED** |
+| Firestore Indexes | 2 READY / 107 ناقصة | `firebase deploy --only firestore:indexes` | **109/109 READY** | **VERIFIED** |
+| Firestore Rules | مطابقة للمصدر | لم تُغيَّر (لا حاجة) | مطابقة | **VERIFIED (read-only)** |
+| Firestore PITR | DISABLED | `--enable-pitr` | ENABLED · 604800s (7 أيام) | **VERIFIED** |
+| Delete Protection | DISABLED | `--delete-protection` | ENABLED | **VERIFIED** |
+| Backup Schedules | 0 | إنشاء يومي 7d + أسبوعي MON 8w | جدولان نشطان · أول نسخة مُدارة لم تُنشأ بعد | **SCHEDULED** |
+| GCS Export | لا Bucket | إنشاء `gs://velnix-6c1a2-backups` + lifecycle 90d + تصدير كامل | Export `20261019T102733Z` SUCCESSFUL (9 ملفات) | **VERIFIED** |
+| Cloud KMS | API معطّل | تفعيل API + Keyring `velnix` + Key `company-secrets` + IAM للـSA + `VELNIX_KMS_KEY` | مفتاح ENABLED + اختبار roundtrip ناجح | **VERIFIED** |
+| Cloud Scheduler | API معطّل | تفعيل API + نشر `reconcileDeliveryStatuses` | Job `firebase-schedule-reconcileDeliveryStatuses-europe-west1` ENABLED كل 15 دقيقة | **VERIFIED** |
+| Hosting | نسخة سابقة | بناء Live بالإعدادات العامة + نشر | `https://velnix-6c1a2.web.app` يحمل واجهة جديدة، زر Google مُفعّل، 0 Console errors | **VERIFIED** |
+| App Check | UNENFORCED | لم يُفعَّل Enforcement | Providers مقروءة · Enforcement كما هو | **BLOCKED (مقصود)** |
+| Authentication | Google مُفعّل · Email/Password مُفعّل | لا تغيير | كما هو | **NOT TESTED (حساب حقيقي)** |
+| FCM | API مُفعّل · دوال غير منشورة | نشر `registerDevice`/`unregisterDevice`/`pushNotice` | دوال ACTIVE · لا جهاز/APNs | **PARTIAL** |
+| Click Delivery | محجوب | لا تغيير | محجوب · setorder/removeorder لم يُستدعيا | **BLOCKED (مزود)** |
+| Workflow CI | patch محلي | فحص فقط · التوكن بلا `workflow` | patch محفوظ خارج Git | **BLOCKED (صلاحية)** |
 
-| البند | التنفيذ |
+---
+
+## 3. الموارد الفعلية المنشأة/المعدلة
+
+- **Functions:** 12 دالة جديدة + تحديث 23 دالة؛ كلها `ACTIVE` على `europe-west1` باستثناء `orderEventNotice` على `us-central1`.
+- **Service Account:** `velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com` لكل الدوال (أقل صلاحيات من `roles/editor`).
+- **KMS:** `projects/velnix-6c1a2/locations/europe-west1/keyRings/velnix/cryptoKeys/company-secrets`.
+- **Backups:** `gs://velnix-6c1a2-backups` · Export ناجح · جدولا نسخ.
+- **Hosting:** release جديد على الموقع `velnix-6c1a2`.
+- **APIs مفعّلة:** `cloudkms.googleapis.com` · `cloudscheduler.googleapis.com`.
+
+---
+
+## 4. الاختبارات قبل/بعد
+
+| المجموعة | قبل | بعد |
+|---|---|---|
+| Functions Unit | 174/174 | **174/174** |
+| Functions Emulator | 133/133 | **133/133** |
+| Stage 3 Web | 11/11 | **11/11** |
+| Stage 4D | 8/8 | **8/8** |
+| Stage 4C | 7 + 2 Skip | **7 + 2 Skip** |
+| Responsive 10 مقاسات | 300/0/0 | **300/0/0** |
+| Flutter Functional | ✅ | ✅ |
+| Golden (CI Ubuntu) | ✅ | ✅ |
+| Builds | Web/Android/iOS | ✅ |
+| Smoke إنتاجي | — | 401 للـcallables · 404 للـwebhook · KMS roundtrip · Hosting بلا أخطاء |
+
+---
+
+## 5. التكاليف المعلنة
+
+| الخدمة | التقدير |
 |---|---|
-| جدول/بطاقات الطلبات | بطاقات أكثف + رقم الطلب والنطاق والتاريخ، والمبلغ حسب الصلاحية |
-| فلاتر الهاتف | زر «الفلاتر والترتيب» + Badge + Bottom Sheet قابل للتمرير والإغلاق |
-| الشريط الجانبي | زر طي/توسيع فعلي (230↔85) |
-| قائمة «المزيد» | عناوين: التشغيل / الإدارة / التحليلات والتدقيق |
-| كثافة السجلات | Audit / Reports / Notices / Sync بصفوف `dense` و`VisualDense.compact` |
-| حماية النماذج | حوار «تغييرات غير محفوظة» في الطلب/الموظف/الشركة/الإعدادات |
-| RTL Web | إصلاح ظهور اسم الموظف/الشركة قبل التركيز |
-| فلتر محذوف | تجاهل شركة/موظف غير موجود بدل Assertion |
+| Cloud KMS | مفتاح/إصدار واحد ≈ $0.06/شهر + عمليات نادرة (تُحتسب بالتسعيرة الرسمية) |
+| Cloud Scheduler | مهمة واحدة داخل الحد المجاني (أول 3 مهام) ≈ $0 |
+| PITR | تخزين نسخ النسخ الزمني على حجم البيانات الحالي (~KB) ≈ أقل من $0.01/شهر |
+| Managed Backups | تخزين النسخ على حجم البيانات الحالي ≈ أقل من $0.01/شهر |
+| GCS Export Bucket | تخزين ~9KB + دورة حياة 90 يومًا ≈ أقل من $0.01/شهر |
+| Cloud Build/Artifact Registry | ضمن الحد المجاني اليومي للبناء تقريبًا؛ تخزين حزم صغير |
+| Hosting | ضمن الحد المجاني الحالي |
 
-### 2.2 الأدوار والصلاحيات
-
-- الأدوار من المصدر: `generalManager` · `manager` · `warehouse` · `sales` · `dataEntry`.
-- الحالات: `pending` · `rejected` · `disabled`.
-- الرفض خادمي عبر `functions/src/policy.js` و`requireAuth` و`currentActor`، وليس إخفاء أزرار.
-- رحلات GM الكاملة: إنشاء/تعديل/بحث/حالات/إشعارات/شركات/فريق/انضمام/إعدادات/تدقيق/مزامنة/تقارير.
-- الأدوار الأخرى مغطاة باختبارات المحاكي و`browser.cjs` ومصفوفة الأدوار.
-
-### 2.3 الكود المحلي لتكامل Click
-
-- `getOrderBody` يتحقق من `Order_ID` و`User_Name`/`User_Pass`.
-- `vendorRequest` يفرض HTTPS والسماح بالمضيف و`Authorization: client` والمهلات.
-- منع النجاح الوهمي: أي استجابة غير موثقة تُرفض ولا تُفسر كبيانات.
-- إدارة الفشل: مهلة، حجم استجابة، JSON غير صالح، وعدم إعادة المحاولة العشوائية.
-- `sendOrderToDelivery` و`resolveDispatchException` وقفل الإرسال ومنع التكرار موجودة ومختبرة.
-- `Ord_Amt` و`Client_Serial` وحالات الرد تبقى محجوبة حتى وثيقة Click.
+لا توجد التزامات مالية غير محدودة أو تغيير خطة.
 
 ---
 
-## 3. الأخطاء التي تم إصلاحها
+## 6. حالة Click المعزولة
 
-| # | العيب | الملف | الاختبار |
+- `POST /Client/getorder` · `Authorization: client` · `Order_ID`/`User_Name`/`User_Pass`.
+- آخر نتيجة موثقة: **401** «بيانات مستخدم غير صحيحة» بالحساب الفعلي.
+- **لم يُعَد أي اختبار مصادقة**، ولم تُجرَّب كلمات مرور، ولم يُنفَّذ `setorder` أو `removeorder`.
+- إعداد Postman الأصلي **VERIFIED** ومطابق لطلب Velnix.
+- `sendOrderToDelivery` منشورة لكنها تبقى **محجوبة وظيفيًا**: لا شركات في الإنتاج + `ALLOWED_DELIVERY_HOSTS` فارغ + محول Click يرفض.
+- الأدلة: `docs/evidence/click-postman-verification.json`.
+
+---
+
+## 7. العوائق النهائية
+
+| # | العائق | المسؤول | ما يلزم |
 |---|---|---|---|
-| 1 | تحديث جزئي لشركة يعطّل/يمسح الحالات | `functions/src/index.js` | محاكي |
-| 2 | تحديث جزئي لموظف يعيد التفعيل/يمسح الصلاحيات | `functions/src/index.js` | محاكي |
-| 3 | `restoreCompany` يعطّل شركة غير مؤرشفة | `functions/src/index.js` | محاكي |
-| 4 | `assignCompany` بلا تحقق وجود الطلب | `functions/src/index.js` | مراجعة |
-| 5 | نسخة احتياطية تُنسب لتطبيق مشروع آخر | `functions/scripts/firestore_snapshot.js` | وحدة |
-| 6 | عدم اكتشاف مجموعات جديدة بعد الاستعادة | نفس الملف | محاكي |
-| 7 | صلاحية ملف النسخة `0644` | نفس الملف | محاكي |
-| 8 | `listNotices`/`listAudit`/`listSyncEvents`/`getOrder` اقتطاع صامت | `functions/src/index.js` + UI | وحدة/محاكي/Widget |
-| 9 | فشل تهيئة Google يُخزَّن للأبد | `lib/live/live_app.dart` | مراجعة |
-| 10 | سباق `loadMore` في الإشعارات | `lib/live/live_notices.dart` | مراجعة |
-| 11 | صفوف قديمة بعد فشل تحديث الطلبات | `lib/live/live_orders.dart` | Widget |
-| 12 | فلتر شركة/موظف محذوف يسبب Assertion | `lib/live/order_filters.dart` | Widget |
-| 13 | اسم الموظف/الشركة RTL لا يظهر في Web | `lib/live/live_admin.dart` | Widget + لقطات |
-| 14 | فقدان تغييرات غير محفوظة | 4 نماذج | Widget |
-| 15 | Stage 4D harness: رجوع/إلغاء حوار | `scripts/emulator-preview/stage4d-*.cjs` | Stage 4D 8/8 |
-| 16 | Golden الطلبات بعد إعادة التصميم | `test/goldens/delivery_quality/*-orders-*.png` | CI Ubuntu |
+| 1 | اعتماد/تفعيل Click API + `Order_ID` آمن | المزود/المالك | رد Click وتفعيل الاعتماد |
+| 2 | App Check Enforcement | المالك | إثبات عمل كل العملاء ثم تفعيل |
+| 3 | Firebase Auth Export | المالك | خزنة آمنة + موافقة منفصلة |
+| 4 | APNs + أجهزة iOS | المالك | Apple Developer + APNs Key + جهاز |
+| 5 | توقيع Android Release | المالك | keystore معتمد |
+| 6 | GitHub `workflow` scope | المالك | إعادة تفويض لإيداع `ci.yml` |
+| 7 | macOS Accessibility لاختبار iOS تفاعليًا | المالك | منح الإذن |
+| 8 | AVD مستقر لاختبار Android تفاعليًا | البيئة | AVD بديل/إعداد مضيف |
+| 9 | ملفات العقد/الفيديو للمطابقة | المالك | تزويد الملفات |
+| 10 | قبول المالك النهائي | المالك | جولة قبول على الويب/الأجهزة |
 
 ---
 
-## 4. الأدلة والاختبارات
-
-| المجموعة | النتيجة | الدليل |
-|---|---|---|
-| Functions Unit | **174/174** | `npm test` |
-| Functions Emulator | **133/133** | `npm run test:emulator` |
-| Stage 3 Web | **11/11** · 14/14 mandatory | `build/qa/emulator-ui/stage3-acceptance.json` |
-| Stage 4D | **8/8** | `build/qa/emulator-stage4d/stage4d.json` |
-| Stage 4C | **7 ناجح / 2 Skip** | `build/qa/emulator-stage4c/stage4c.json` |
-| Responsive 10 مقاسات | **300/0/0** | `build/qa/visual-audit-10/responsive.json` |
-| Stage 4B | **150/0/0** | `build/qa/emulator-stage4b/responsive.json` |
-| Widget/UI | ✅ | `flutter test` (Functional) |
-| Golden | CI Ubuntu ✅ · macOS 18 فشل بيئي | CI runs |
-| Analyze/Format | ✅ | `flutter analyze` · `dart format` |
-| Builds | Web Demo/Live · Android Debug · iOS Simulator Debug ✅ | CI + محلي |
-
-**قيود صريحة:** Goldens محليًا على macOS غير حتمية (خطوط/AA)؛ المرجع المعتمد هو CI Ubuntu. لا Skip يُحسب نجاحًا.
-
----
-
-## 5. جاهزية Web / Android / iOS
-
-| المنصة | الحالة | التفصيل |
-|---|---|---|
-| Web (Chrome حقيقي) | **READY FOR OWNER ACCEPTANCE** | 300+150 فحصًا، رحلات Stage 3/4C/4D، لقطات فعلية |
-| Android | **PARTIAL / NOT TESTED تفاعليًا** | Demo Debug ثُبّت ووصل لشاشة الإقلاع؛ AVD تجمّد قبل التفاعل. CI يبني APK Debug Demo/Live |
-| iOS | **PARTIAL / NOT TESTED تفاعليًا** | Simulator Debug ثُبّت وظهرت شاشة الدور؛ النقر عبر AppleScript رُفض بصلاحية macOS Accessibility `-25204` |
-| أجهزة حقيقية/توقيع | **BLOCKED** | لا مفاتيح/حسابات/أجهزة |
-
----
-
-## 6. جاهزية Firebase وخدمات الإنتاج
-
-| الخدمة | الحالة | ملاحظة |
-|---|---|---|
-| Cloud Functions | **PARTIAL DEPLOYED** | 23/35 منشورة؛ 12 ناقصة |
-| Firestore Rules | **VERIFIED (read-only)** | مطابقة للمصدر `e1c900b7…` |
-| Firestore Indexes | **BLOCKED** | 109 في المصدر · 2 READY · 107 ناقصة |
-| Authentication | **CONFIGURED / NOT TESTED** | Google مُفعّل · Email/Password ما زال مُفعّلًا |
-| App Check | **BLOCKED** | `UNENFORCED` على Firestore/Identity/OAuth2 |
-| KMS | **BLOCKED** | API معطّل ولا مفتاح إنتاجي |
-| Cloud Scheduler | **BLOCKED** | API معطّل |
-| FCM | **PARTIAL** | API مفعّل؛ APNs/جهاز حقيقي NOT TESTED |
-| Hosting | **NOT TESTED هذه الجولة** | بناء Web ناجح في CI |
-| Backups/PITR | **BLOCKED** | PITR معطّل · 0 جداول · 0 نسخ · Delete Protection معطّل |
-| Monitoring/Alerts | **NOT TESTED** | لا قنوات تنبيه مهيأة |
-
-**الدوال الناقصة (12):** `saveCompany` · `archiveCompany` · `restoreCompany` · `testCompanyConnection` · `assignCompany` · `sendOrderToDelivery` · `resolveDispatchException` · `deliveryWebhook` · `reconcileDeliveryStatuses` · `registerDevice` · `unregisterDevice` · `pushNotice`.
-
-**خطة النشر المقترحة (بعد الموافقة):**
-1. `firebase deploy --only firestore:indexes` (107 فهارس).
-2. تفعيل `cloudscheduler.googleapis.com` ثم نشر `reconcileDeliveryStatuses`.
-3. نشر مجموعة الشركات (5 دوال) + FCM (3 دوال) بعد KMS/App Check.
-4. نشر دوال Click (4) تبقى محجوبة وظيفيًا حتى العقد.
-5. التحقق بعد كل مرحلة، والتراجع بملف القواعد/إعادة نشر النسخة السابقة.
-
----
-
-## 7. جاهزية الأمان والنسخ الاحتياطي
-
-- **عزل الشركات**: كل الطلبات والعمليات تمر بـ`canSeeOrder` و`scopeQueries` و`currentActor`.
-- **Idempotency**: `requestKey` + معاملة + `idempotency` collection، واختبارات سباق.
-- **المبالغ**: `fils` صحيحة (`amountMinor`) ولا عشرية عائمة في التخزين.
-- **منع التكرار**: قفل إرسال + `needs_review` + مراجعة GM، و`Client_Serial` بلا رفع حاجز.
-- **الأسرار**: KMS و`companySecrets`؛ لا أسرار في Git أو الواجهة.
-- **النسخ المحلي**: 12 سيناريو على المحاكي (نسخ/تحقق/استرجاع/انقطاع/تلف/تكرار/رفض الإنتاج).
-- **الإنتاج**: لا PITR ولا جداول ولا تصدير Auth — يتطلب موافقة وميزانية.
-
----
-
-## 8. حالة Click المعزولة
+## 8. Git / CI
 
 | البند | القيمة |
 |---|---|
-| POSTMAN CONFIG | **VERIFIED** من المجموعة الأصلية المسجلة |
-| REQUEST SENT | **NOT SENT** — لا `Order_ID` آمن |
-| HTTP | آخر محاولة موثقة: **401** «بيانات مستخدم غير صحيحة» |
-| setorder/removeorder | لم يُستدعَ أي منهما |
-| الحواجز | `Ord_Amt` · `Client_Serial` · الحالات · التكرار — سليمة |
-| الأدلة | `docs/evidence/click-postman-verification.json` |
-| المطلوب | اعتماد/تفعيل `/Client/` API + `Order_ID` آمن للقراءة |
+| Branch | `audit/production-readiness` |
+| HEAD قبل تحديث التقرير | `dc02ec768ef6e1c8fdc1b09461a4aa31cdd55f3d` |
+| PR #1 | Draft / Open |
+| CI | `39219193270` · `39219201021` · `39226291510` · `39226297695` ✅ |
+| main | `0d10904` دون تغيير |
+| محلي غير مرفوع | `.github/workflows/ci.yml` + نسخته في `~/Desktop/velnix-ci-workflow-local.patch` |
 
 ---
 
-## 9. العوائق المتبقية
+## 9. الحكم النهائي
 
-### موافقات المالك (طلب واحد مجمّع)
+**PARTIALLY READY**
 
-| # | الموافقة | يحجب | التكلفة/المخاطر |
-|---|---|---|---|
-| A1 | تفعيل/تزويد اعتماد Click API + `Order_ID` آمن | كل تكامل Click | لا تكلفة مباشرة |
-| A2 | مفتاح KMS + IAM `cryptoKeyEncrypterDecrypter` | حفظ أسرار الشركات | تكلفة KMS |
-| A3 | تفعيل App Check + حساب Google اختبار + مراجعة Email/Password | المصادقة الحقيقية | مخاطر قطع مستخدمين إن فُعّل خطأ |
-| A4 | Apple Developer + APNs + أجهزة اختبار | FCM/APNs | رسوم سنوية |
-| A5 | مفتاح توقيع Android Release | نشر المتجر | إدارة مفتاح |
-| A6 | قرار النسخ الاحتياطي (PITR/جداول/تصدير/Auth export) + RPO/RTO + ميزانية | أي بيانات إنتاجية | تكلفة تخزين/قراءات |
-| A7 | نشر الـ12 دالة + الفهارس + Scheduler | التشغيل الكامل | تغييرات إنتاجية |
-| A8 | صلاحية GitHub `workflow` لإيداع `ci.yml` | خطوة Stage 3 في CI | لا تكلفة |
-| A9 | صلاحية macOS Accessibility لتشغيل iOS تفاعليًا | قبول iOS | إعداد محلي |
-| A10 | ملفات العقد/الفيديو الأصلية | مطابقة المتطلبات | لا تكلفة |
-
-### عوائق بيئية/مزود
-- AVD غير مستقر على هذا المضيف.
-- Golden macOS غير حتمي (المرجع CI Ubuntu).
-- Click ينتظر المزود.
-
----
-
-## 10. الحكم النهائي
-
-- **UI/UX والأدوار والويب:** **READY FOR OWNER ACCEPTANCE** — الأدلة والاختبارات والبناء وCI خضراء.
-- **الإنتاج الكامل:** **BLOCKED EXTERNALLY** — Click، KMS، App Check، FCM/APNs، النسخ الاحتياطي، النشر، التوقيع، والأجهزة.
-- **لا يوجد عيب محلي مؤكد غير مُصلَح** في نطاق هذه المهمة.
-
-> لا يُعد نجاح محاكي الويب أو نجاح البناء دليلًا على جاهزية الإنتاج. الإنتاج يبدأ فقط بعد تنفيذ الموافقات A1–A10 والتحقق الفعلي.
+- الخلفية الإنتاجية (Functions، Indexes، KMS، PITR، Backups، Scheduler، Hosting) **جاهزة ومتحققة**.
+- المتبقي ليس عيبًا محليًا: Click، App Check Enforcement، Auth Export، APNs، التوقيع، الأجهزة، وقبول المالك.
+- لا يُعلن `PRODUCTION READY` قبل إغلاق Click والقبول النهائي على الأجهزة.

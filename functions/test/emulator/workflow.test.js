@@ -328,3 +328,11 @@ test('order event history paginates without loss or duplicates',async()=>{
   await assert.rejects(invoke('getOrder','gm',{id:created.id,eventsAfterId:'missing_event'}),{code:'invalid-argument'});
   await assert.rejects(invoke('getOrder','gm',{id:created.id,eventsPageSize:101}),{code:'invalid-argument'});
 });
+
+test('webhook rejects an unknown company with 404 before signature checks',async()=>{
+  let code,body;
+  const response={status(value){code=value;return this;},send(value){body=value;return this;}};
+  await functions.deliveryWebhook({method:'POST',query:{companyId:'missing_company_123'},rawBody:Buffer.from('{}'),headers:{},body:{}},response);
+  assert.equal(code,404);
+  assert.equal(body,'unknown_company');
+});
