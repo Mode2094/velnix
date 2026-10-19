@@ -21,7 +21,15 @@ firebase deploy --only hosting --config firebase.hosting.json \
 - Firestore Rules/Indexes لم تتغير في هذه الجولة.
 - لا تنشر `setorder` الإنتاجي أو جدولة المزامنة دون اعتماد مالي وسياسة معدل.
 
-## 3. التحقق بعد النشر
+## 3. Scheduler والمزامنة التلقائية
+
+- الوظيفة: `syncClickStatuses` (كل 15 دقيقة، حد 10 طلبات/تشغيل).
+- Job: `firebase-schedule-syncClickStatuses-europe-west1`.
+- التحقق: `gcloud scheduler jobs describe firebase-schedule-syncClickStatuses-europe-west1 --location=europe-west1 --project=velnix-6c1a2`.
+- التشغيل اليدوي: `gcloud scheduler jobs run firebase-schedule-syncClickStatuses-europe-west1 --location=europe-west1 --project=velnix-6c1a2`.
+- Feature Flag: `CLICK_SEND_ALLOWED_COMPANY_IDS=click_delivery_1603` (خادمي).
+
+## 4. التحقق بعد النشر
 
 ```bash
 firebase functions:list --project velnix-6c1a2
@@ -33,7 +41,7 @@ curl -sS https://velnix-6c1a2.web.app/main.dart.js | grep -c syncClickOrder
 - اضغط «مزامنة حالة Click» وتحقق من آخر مزامنة.
 - راجع Cloud Logs لأي `ERROR` جديد.
 
-## 4. النسخ الاحتياطي
+## 5. النسخ الاحتياطي
 
 | المورد | الحالة |
 |---|---|
@@ -45,14 +53,14 @@ curl -sS https://velnix-6c1a2.web.app/main.dart.js | grep -c syncClickOrder
 | GCS Export | `gs://velnix-6c1a2-backups/exports/20261019T102733Z` |
 | استرجاع معزول | تم سابقًا في `velnix-recovery-preview` وتطابق 100% |
 
-## 5. التراجع
+## 6. التراجع
 
 - Functions: أعد نشر الإصدار السابق من نفس الفرع/الـcommit.
 - Hosting: أعد نشر آخر إصدار سليم من `build/web` أو استخدم Release سابق.
 - Firestore: لا تسترجع فوق الإنتاج مباشرة؛ استخدم PITR/Backup إلى قاعدة معزولة ثم تحقق.
 - إذا كان العطل من `syncClickOrder` فقط، يمكن تعطيل الوظيفة/إزالة الزر دون تعطيل الطلبات.
 
-## 6. الأمان
+## 7. الأمان
 
 - لا أسرار في Git أو Flutter.
 - App Check Web مستخدم بـreCAPTCHA Enterprise و`minValidScore=0.5`.

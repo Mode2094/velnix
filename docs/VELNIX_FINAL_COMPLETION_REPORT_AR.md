@@ -448,3 +448,48 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 **Full client handover: NOT READY** بسبب إرسال Click المعطّل، وغموض `Ord_Amt`، وغياب العقد/الفيديو، وعدم اختبار Google Login في جلسة إنتاجية، والحاجة إلى توفير حسابات Email/Password إداريًا.
 
 الوثائق في `delivery/` والتقرير التفصيلي في `delivery/VELNIX_FINAL_CLIENT_ACCEPTANCE_REPORT_AR.md`.
+
+---
+
+# FINAL SEND PATH, AUTO SYNC & ACCOUNT LOADING FIX
+
+**الكود المنشور:** `d953dbb`  
+**CI:** `39320802815` — ناجح  
+**Hosting:** https://velnix-6c1a2.web.app
+
+## 1. إصلاح تحميل الحساب
+
+- Root cause: جلسة Auth لمستخدم محذوف/قديم كانت ترمي `auth/user-not-found`، فتحوّل إلى `internal` ورسالة عامة.
+- الإصلاح: `auth/user-not-found` → `unauthenticated` برسالة عربية، و`VelnixException.code`، والواجهة تسجّل الخروج تلقائيًا وتعود لشاشة الدخول.
+- تم إثباته بحذف مستخدم اختبار أثناء جلسته: عاد التطبيق لشاشة الدخول بدل الخطأ العام.
+
+## 2. تفعيل الإرسال
+
+- `clickSendEnabled=true` للشركة `click_delivery_1603` فقط.
+- `CLICK_SEND_ALLOWED_COMPANY_IDS=click_delivery_1603` (خادمي).
+- اعتماد Click مشفّر في `companySecrets` عبر Cloud KMS.
+- `Ord_Amt` = مبلغ Velnix بالدينار (Fils → 3 decimals) دون رسوم مضافة.
+- زر «إرسال إلى Click» يظهر للطلب الجاهز.
+- الطلب `click_send_test_ready` مجهّز (1.000 د.أ) ولم يُرسل؛ ينتظر موافقة المالك.
+- لم تُنشأ شحنة Click جديدة.
+
+## 3. المزامنة التلقائية
+
+- `syncClickStatuses` ACTIVE.
+- Scheduler `firebase-schedule-syncClickStatuses-europe-west1` ENABLED كل 15 دقيقة.
+- أول تشغيل إنتاجي: `checked=1, updated=0, failed=0, skipped=0`.
+- `lastSyncAt` تحدّث و`nextClickSyncAt` انتقل 15 دقيقة.
+- حد 10 طلبات/تشغيل، Backoff حتى 240 دقيقة، إيقاف بعد 5 أخطاء متتالية.
+
+## 4. الاختبارات
+
+- Functions Unit: **192/192**
+- Firebase Emulator: **149/149**
+- Flutter Full: **343 نجاح / 18 Golden قديم على macOS**
+- CI: **جميع الوظائف ناجحة**
+
+## 5. الحكم
+
+**Login/Account loading/Sync/Auto Sync/Scheduler/Deploy: PASS.**  
+**Live UI send: BLOCKED — ينتظر موافقة المالك على الطلب `click_send_test_ready`.**  
+**Full Client Handover: NOT READY** — بسبب الإرسال الحي غير المنفذ، وغياب العقد/الفيديو، وعدم اختبار Google Login إنتاجيًا.
