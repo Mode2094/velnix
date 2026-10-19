@@ -62,6 +62,10 @@ void main() {
                 'shippingStatus': state.name,
                 'shippingStatusSource': 'manual',
                 'providerOrderId': '1318368',
+                'clickOrderRef': 'VNX-CLICK-TEST-20261019-d',
+                'clickClientSerial': 'VNX-CLICK-TEST-20261019-d4a0f8fb',
+                'clickStatusDate': '2026-10-19T00:00:00',
+                'clickStatusNote': 'شحنة قيد انتظار الموافقة',
                 'phone': '0791234567',
                 'city': 'عمان',
                 'area': 'وسط',
@@ -78,6 +82,12 @@ void main() {
                   'statuses': [],
                 },
                 if (role == 'generalManager') 'amount': 12.345,
+                if (role == 'generalManager')
+                  'clickAmounts': {
+                    'orderAmountDuo': 0,
+                    'shippingDiscount': 0,
+                    'willPay': 1,
+                  },
                 // Untrusted fixture fields must not become displayed settlement data.
                 'collectedAmount': 987.654,
                 'deliveryFee': 543.210,
@@ -104,6 +114,22 @@ void main() {
             findsOneWidget,
           );
           expect(find.text('رقم شحنة Click: 1318368'), findsOneWidget);
+          expect(
+            find.text('مرجع Click (Order_ID): VNX-CLICK-TEST-20261019-d'),
+            findsOneWidget,
+          );
+          expect(
+            find.text('كود التاجر الأصلي: VNX-CLICK-TEST-20261019-d4a0f8fb'),
+            findsOneWidget,
+          );
+          expect(
+            find.text('تاريخ حالة Click: 2026-10-19T00:00:00'),
+            findsOneWidget,
+          );
+          expect(
+            find.text('ملاحظة حالة Click: شحنة قيد انتظار الموافقة'),
+            findsOneWidget,
+          );
           expect(find.text('الحالة: تم الإرسال'), findsOneWidget);
           expect(find.textContaining('987.654'), findsNothing);
           expect(find.textContaining('543.210'), findsNothing);
@@ -151,6 +177,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('تكامل Click Delivery غير مفعّل'), findsOneWidget);
+        expect(find.text('User_ID لحساب Click'), findsOneWidget);
         expect(find.text('بيانات الاتصال السرية'), findsNothing);
         expect(find.text('ربط حالات التوصيل'), findsNothing);
         final toggle = tester.widget<SwitchListTile>(
@@ -209,6 +236,67 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('ربط شحنة Click موجودة'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'a linked Click order offers a read-only status sync and shows API provenance',
+    (tester) async {
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        expect(name, 'getOrder');
+        return {
+          'events': [],
+          'order': {
+            'id': 'fixture-order',
+            'customer': 'عميل اختبار',
+            'status': 'dispatched',
+            'companyId': 'click',
+            'companyName': 'Click Delivery',
+            'companyProvider': 'click_delivery_v1',
+            'shippingStatus': 'awaitingPickup',
+            'shippingStatusSource': 'click_api',
+            'providerOrderId': '1318368',
+            'clickOrderRef': 'VNX-CLICK-TEST-20261019-d',
+            'clickStatusDate': '2026-10-19T00:00:00',
+            'clickStatusNote': 'شحنة قيد انتظار الموافقة',
+            'phone': '0791234567',
+            'city': 'عمان',
+            'area': 'وسط',
+            'address': 'عنوان اختبار',
+            'description': 'طرد',
+            'quantity': 1,
+            'dispatchState': 'sent',
+            'createdBy': 'owner',
+            'actions': {
+              'edit': false,
+              'assign': false,
+              'dispatch': false,
+              'resolve': false,
+              'statuses': [],
+            },
+          },
+        };
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrderDetail(
+            id: 'fixture-order',
+            policy: SessionPolicy({
+              'id': 'gm',
+              'role': 'generalManager',
+              'active': true,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('مزامنة حالة Click'), findsOneWidget);
+      expect(
+        find.text('مصدر حالة الشحنة: تحديث تلقائي مؤكد من Click API'),
+        findsOneWidget,
+      );
+      expect(find.text('ربط شحنة Click موجودة'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

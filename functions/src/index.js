@@ -16,7 +16,8 @@ const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
-const {CLICK_PROVIDER}=require('./click_delivery');
+const {CLICK_PROVIDER,readClickOrder}=require('./click_delivery');
+const {parseClickOrderResponse}=require('./click_response');
 const {shippingStatus}=require('./shipping_status');
 const {directoryPage}=require('./directory');
 const {aggregateGroups}=require('./aggregations');
@@ -292,6 +293,7 @@ exports.listCompanies=callable(async req=>{
   const user=await requireAuth(req);const collection=db.collection('companies');const page=await directoryPage(collection,collection,req.data);
   return {more:page.more,afterId:page.afterId,items:page.docs.map(d=>({id:d.id,name:d.data().name,apiUrl:can(user,'manageCompanies')?d.data().apiUrl:null,
     provider:d.data().provider,enabled:d.data().enabled,archived:d.data().archived||false,
+    clickUserId:can(user,'manageCompanies')?(d.data().clickUserId??null):null,
     statusMap:d.data().statusMap||{},lastHealthCheck:safeDate(d.data().lastHealthCheck),lastHealthConnected:d.data().lastHealthConnected??null,lastHealthError:d.data().lastHealthError||null}))};
 });
 exports.saveCompany=callable(async req=>{
@@ -305,9 +307,14 @@ exports.saveCompany=callable(async req=>{
   const patch={};
   if(!['generic_v1',CLICK_PROVIDER].includes(provider))fail('invalid-argument','اختر محول شركة التوصيل المتاح');
   providerFor({provider,apiUrl});
+  let clickUserId=null;
   if(provider===CLICK_PROVIDER){
     if(req.data?.enabled===true)fail('failed-precondition','يمكن حفظ Click Delivery كمسودة معطلة فقط حتى استكمال عقد API');
     if(req.data?.apiToken||req.data?.webhookKey||Object.keys(req.data?.statusMap||{}).length)fail('invalid-argument','لا تستخدم token أو webhook أو أكواد حالات generic مع Click Delivery');
+    if(req.data?.clickUserId!=null){
+      clickUserId=Number(req.data.clickUserId);
+      if(!Number.isSafeInteger(clickUserId)||clickUserId<1||clickUserId>2147483647)fail('invalid-argument','User_ID الخاص بـClick غير صالح');
+    }
   }
   let statusMap;try{statusMap=safeStatusMap(req.data.statusMap);}catch(e){return firebaseError(e);}
   const existing=await ref.get();
@@ -321,7 +328,8 @@ exports.saveCompany=callable(async req=>{
     if(!patch.apiTokenCiphertext&&!savedSecrets.data()?.apiTokenCiphertext)fail('failed-precondition','أدخل مفتاح API قبل تفعيل الشركة');
   }
   const newData={name,apiUrl,provider,enabled:req.data.enabled,
-    ...(!existing.exists?{archived:false}:{}),statusMap,updatedAt:FieldValue.serverTimestamp()};
+    ...(!existing.exists?{archived:false}:{}),statusMap,
+    ...(provider===CLICK_PROVIDER&&clickUserId!==null?{clickUserId}:{}),updatedAt:FieldValue.serverTimestamp()};
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);
@@ -443,7 +451,13 @@ exports.reconcileClickShipment=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
   const {ref}=await oneOrder(user,req.data?.id);
   const clickOrderId=str(req.data?.clickOrderId,40);
-  if(!/^[0-9]{1,20}$/.test(clickOrderId))fail('invalid-argument','رقم شحنة Click يجب أن يكون رقماً');
+  if(!/^[0-9]{1,20}$/.test(clickOrderId))fail('invalid-argument','رقم البوليصة في Click يجب أن يكون رقماً');
+  const rawRef=typeof req.data?.clickOrderRef==='string'?req.data.clickOrderRef.trim():'';
+  if(!rawRef||rawRef.length>25)fail('invalid-argument','مرجع Click (Order_ID) يجب أن يكون بين 1 و25 حرفاً');
+  const clickOrderRef=rawRef;
+  const rawSerial=typeof req.data?.clickClientSerial==='string'?req.data.clickClientSerial.trim():'';
+  if(rawSerial.length>200)fail('invalid-argument','كود التاجر الأصلي أطول من الحد المسموح');
+  const clickClientSerial=rawSerial||null;
   const state=shippingStatus(req.data?.shippingStatus);
   if(!state)fail('invalid-argument','اختر حالة شحنة صحيحة من الحالات السبع');
   const reason=str(req.data?.reason,400);
@@ -456,23 +470,112 @@ exports.reconcileClickShipment=callable(async req=>{
     const company=await tx.get(db.doc('companies/'+o.companyId));
     if(!company.exists||company.data().provider!==CLICK_PROVIDER)fail('failed-precondition','الطلب غير مرتبط بـClick Delivery');
     if(o.providerOrderId&&o.providerOrderId!==clickOrderId)fail('already-exists','الطلب مرتبط بشحنة Click أخرى؛ لن يُستبدل المعرف');
-    // A Click Order_ID is globally unique. Never attach it to a second Velnix
-    // order, even if the two orders belong to different companies.
-    const linked=await tx.get(db.collection('orders').where('providerOrderId','==',clickOrderId).limit(2));
-    if(linked.docs.some(d=>d.id!==ref.id))fail('already-exists','رقم شحنة Click مرتبط بطلب Velnix آخر؛ لن يُكرر الربط');
+    if(o.clickOrderRef&&o.clickOrderRef!==clickOrderRef)fail('already-exists','الطلب مرتبط بمرجع Click آخر؛ لن يُستبدل المرجع');
+    // Click identifiers are globally unique. Never attach either the policy
+    // number or the merchant reference to a second Velnix order.
+    const linkedPolicy=await tx.get(db.collection('orders').where('providerOrderId','==',clickOrderId).limit(2));
+    if(linkedPolicy.docs.some(d=>d.id!==ref.id))fail('already-exists','رقم شحنة Click مرتبط بطلب Velnix آخر؛ لن يُكرر الربط');
+    const linkedRef=await tx.get(db.collection('orders').where('clickOrderRef','==',clickOrderRef).limit(2));
+    if(linkedRef.docs.some(d=>d.id!==ref.id))fail('already-exists','مرجع Click مرتبط بطلب Velnix آخر؛ لن يُكرر الربط');
     // An API-confirmed state must not be silently downgraded to a manual one.
     if(o.shippingStatusSource==='click_api'){
       if(o.shippingStatus!==state)fail('failed-precondition','حالة الشحنة مؤكدة من Click API ولا يمكن استبدالها يدويًا');
       return;
     }
-    if(o.providerOrderId===clickOrderId&&o.shippingStatus===state&&o.shippingStatusSource==='manual')return;
+    if(o.providerOrderId===clickOrderId&&o.clickOrderRef===clickOrderRef&&o.shippingStatus===state&&o.shippingStatusSource==='manual')return;
     if(!['ready','dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
-    tx.update(ref,{providerOrderId:clickOrderId,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
+    tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
       status:o.status==='ready'?'dispatched':o.status,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    await addEvent(ref.id,'click_reconciled',user,{clickOrderId,shippingStatus:state,reason},tx);
-    await audit('order.click_reconciled',user,ref.id,{clickOrderId,shippingStatus:state,reason},tx);
+    await addEvent(ref.id,'click_reconciled',user,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
+    await audit('order.click_reconciled',user,ref.id,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
   });
   return {ok:true};
+});
+
+// Read-only Click status sync. It never calls setorder/removeorder and never
+// creates a shipment. The manual path stays available as a fallback.
+exports.syncClickOrder=callable(async req=>{
+  const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
+  const {ref}=await oneOrder(user,req.data?.id);
+  const lockId=crypto.randomUUID();
+  let snapshot;
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const doc=await tx.get(ref),o=doc.data();
+    if(!o)fail('not-found','الطلب غير موجود');
+    if(!o.companyId)fail('failed-precondition','لم يتم تعيين شركة توصيل للطلب');
+    const company=await tx.get(db.doc('companies/'+o.companyId)),c=company.data();
+    if(!company.exists||c.provider!==CLICK_PROVIDER||c.archived===true)fail('failed-precondition','الطلب غير مرتبط بشركة Click Delivery نشطة');
+    const clickUserId=Number(c.clickUserId);
+    if(!Number.isSafeInteger(clickUserId)||clickUserId<1)fail('failed-precondition','لم يُضبط User_ID لحساب Click');
+    const clickOrderRef=typeof o.clickOrderRef==='string'?o.clickOrderRef.trim():'';
+    if(!clickOrderRef||clickOrderRef.length>25)fail('failed-precondition','لا يوجد مرجع Click مرتبط بالطلب؛ اربط الشحنة يدويًا أولًا');
+    if(o.clickSyncLockUntil?.toMillis?.()>Date.now())fail('aborted','مزامنة Click قيد التنفيذ؛ انتظر انتهاءها');
+    tx.update(ref,{clickSyncLockId:lockId,clickSyncLockUntil:Timestamp.fromMillis(Date.now()+60000)});
+    snapshot={...o,id:ref.id,clickOrderRef,clickUserId,company:{...c,id:o.companyId}};
+  });
+  let parsed;
+  try {
+    const {status,json}=await readClickOrder(snapshot.company,snapshot.clickOrderRef,snapshot.clickUserId);
+    if(status!==200){const e=new Error(`click_http_${status}`);e.reason=`http_${status}`;throw e;}
+    parsed=parseClickOrderResponse(json);
+    if(!parsed.ok){const e=new Error('click_response_'+parsed.reason);e.reason=parsed.reason;throw e;}
+  } catch(e) {
+    const reason=typeof e?.reason==='string'?e.reason:(typeof e?.name==='string'?e.name:'transport_error');
+    await db.runTransaction(async tx=>{
+      const current=await tx.get(ref);
+      if(current.data()?.clickSyncLockId===lockId){
+        tx.update(ref,{clickSyncLockId:FieldValue.delete(),clickSyncLockUntil:FieldValue.delete(),lastSyncAttemptAt:FieldValue.serverTimestamp(),syncError:'تعذرت مزامنة حالة Click؛ لم تُعدّل الحالة المحلية.'});
+        await addEvent(ref.id,'click_sync_failed',user,{reason},tx);
+        await audit('order.click_sync_failed',user,ref.id,{reason},tx);
+      }
+    });
+    logger.warn('click status sync failed',{id:ref.id,reason});
+    fail('unavailable','تعذرت مزامنة حالة Click؛ لم تُعدّل الحالة المحلية.');
+  }
+  let applied=false,ignored=null;
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const current=await tx.get(ref),o=current.data();
+    if(o?.clickSyncLockId!==lockId)fail('aborted','تغيّر قفل مزامنة Click');
+    const now=FieldValue.serverTimestamp();
+    const currentSource=o.shippingStatusSource;
+    const currentMs=Number.isFinite(o.clickStatusDateMs)?o.clickStatusDateMs:null;
+    const incomingMs=parsed.statusDateMs;
+    const clearLock={clickSyncLockId:FieldValue.delete(),clickSyncLockUntil:FieldValue.delete(),lastSyncAttemptAt:now,lastSyncAt:now,syncError:null};
+    if(currentSource==='click_api'&&incomingMs===null){
+      ignored='missing_status_date';
+      tx.update(ref,clearLock);
+      await addEvent(ref.id,'click_status_conflict',user,{rawStatus:parsed.rawStatus,statusDate:null},tx);
+      await audit('order.click_status_conflict',user,ref.id,{rawStatus:parsed.rawStatus,reason:'missing_status_date'},tx);
+      return;
+    }
+    if(currentSource==='click_api'&&currentMs!==null&&incomingMs!==null&&incomingMs<currentMs){
+      ignored='stale_status';
+      tx.update(ref,clearLock);
+      await addEvent(ref.id,'click_status_stale',user,{rawStatus:parsed.rawStatus,statusDate:parsed.statusDate},tx);
+      await audit('order.click_status_stale',user,ref.id,{rawStatus:parsed.rawStatus,statusDate:parsed.statusDate},tx);
+      return;
+    }
+    if(currentSource==='click_api'&&currentMs!==null&&incomingMs!==null&&incomingMs===currentMs&&o.shippingStatus!==parsed.shippingStatus){
+      ignored='status_conflict';
+      tx.update(ref,clearLock);
+      await addEvent(ref.id,'click_status_conflict',user,{rawStatus:parsed.rawStatus,statusDate:parsed.statusDate},tx);
+      await audit('order.click_status_conflict',user,ref.id,{rawStatus:parsed.rawStatus,statusDate:parsed.statusDate},tx);
+      return;
+    }
+    const unchanged=currentSource==='click_api'&&o.shippingStatus===parsed.shippingStatus&&o.clickStatusDateMs===parsed.statusDateMs;
+    const patch={...clearLock,shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',
+      shippingStatusUpdatedAt:parsed.statusDateMs!==null?Timestamp.fromMillis(parsed.statusDateMs):now,
+      clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,updatedAt:now};
+    if(!unchanged){patch.revision=FieldValue.increment(1);applied=true;}
+    tx.update(ref,patch);
+    if(!unchanged){
+      await addEvent(ref.id,'click_status_synced',user,{rawStatus:parsed.rawStatus,shippingStatus:parsed.shippingStatus,statusDate:parsed.statusDate},tx);
+      await audit('order.click_status_synced',user,ref.id,{rawStatus:parsed.rawStatus,shippingStatus:parsed.shippingStatus,statusDate:parsed.statusDate},tx);
+    }
+  });
+  return {ok:true,applied,ignored,shippingStatus:parsed.shippingStatus,rawStatus:parsed.rawStatus,statusDate:parsed.statusDate,note:parsed.note,amounts:parsed.amounts};
 });
 
 exports.listMembers=callable(async req=>{

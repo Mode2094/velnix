@@ -18,18 +18,23 @@ function getOrderBody(orderId,credentials) {
   if(!credentials||!['User_Name','User_Pass'].every(k=>typeof credentials[k]==='string'&&credentials[k].length>0&&credentials[k].length<=2000))throw Error('invalid_click_credentials');
   return {Order_ID:orderId,User_Name:credentials.User_Name,User_Pass:credentials.User_Pass};
 }
-// The programmer-supplied read format reported on 2026-10-19. It is kept
-// separate from the documented Postman shape and adds no other field.
-function getOrderBodyByUserId(orderId,clientCode) {
-  if(!Number.isSafeInteger(orderId)||orderId<1)throw Error('invalid_click_order_id');
+// Verified live on 2026-10-19: getorder accepts the exact 25-character
+// Client_Serial as Order_ID plus the client code as User_ID. The policy number
+// (1318368) is not accepted in this field.
+function getOrderBodyByUserId(orderRef,clientCode) {
+  const ref=typeof orderRef==='string'?orderRef.trim():'';
+  if(!ref||ref.length>CLICK_CLIENT_SERIAL_MAX)throw Error('invalid_click_order_ref');
   const userId=Number(clientCode);
-  if(!Number.isSafeInteger(userId)||userId<1)throw Error('invalid_click_client_code');
-  return {Order_ID:orderId,User_ID:userId};
+  if(!Number.isSafeInteger(userId)||userId<1)throw Error('invalid_click_user_id');
+  return {Order_ID:ref,User_ID:userId};
 }
 const CLICK_AMBIGUOUS_CREATE_MESSAGE="The cast to value type 'System.Int64' failed";
 function clickClientSerial(value,orderId){
   const raw=typeof value==='string'&&value.trim()?value.trim():`VNX-${orderId}`;
-  return raw.slice(0,CLICK_CLIENT_SERIAL_MAX);
+  // Click stores only 25 characters. Silently truncating can merge two
+  // different references, so an overlong caller-supplied value is refused.
+  if(raw.length>CLICK_CLIENT_SERIAL_MAX)throw Error('invalid_click_client_serial');
+  return raw;
 }
 function clickText(value,max,error){
   const out=typeof value==='string'?value.trim():'';
@@ -110,4 +115,20 @@ async function exerciseGetOrderRequest(company,credentials,orderId,transport){
   // unverified response: no IDs/statuses/amounts are guessed or persisted.
   throw Error('click_response_contract_incomplete');
 }
-module.exports={CLICK_PROVIDER,CLICK_BASE,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,assertClickUrl,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,clickDelivery};
+// The one verified read-only Click contract. This function never creates,
+// removes or modifies a shipment; production creation remains blocked.
+async function readClickOrder(company,orderRef,userId,transport=fetch){
+  assertClickUrl(company);
+  const body=getOrderBodyByUserId(orderRef,userId);
+  if(typeof transport!=='function')throw Error('click_transport_unavailable');
+  const control=new AbortController(),timer=setTimeout(()=>control.abort(),12000);
+  try {
+    const response=await transport(CLICK_BASE+'/getorder',{method:'POST',redirect:'error',signal:control.signal,
+      headers:{Authorization:'client','Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body)});
+    const buffer=Buffer.from(await response.arrayBuffer());
+    if(buffer.length>1024*1024)throw Error('click_response_too_large');
+    let json;try{json=JSON.parse(buffer.toString('utf8'));}catch(_){throw Error('click_invalid_json');}
+    return {status:response.status,json};
+  } finally {clearTimeout(timer);}
+}
+module.exports={CLICK_PROVIDER,CLICK_BASE,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,assertClickUrl,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder,clickDelivery};

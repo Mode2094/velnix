@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {ARABIC_INVALID_USER,ENGLISH_UNAUTHORIZED,classifyClickResponse,isInvalidCredentials,authFailureReason,CLIENT_SHIPPING_VOCABULARY,PORTAL_STATUS_VOCABULARY}=require('../src/click_response');
+const {ARABIC_INVALID_USER,ENGLISH_UNAUTHORIZED,classifyClickResponse,isInvalidCredentials,authFailureReason,CLICK_STATUS_LABELS,CLIENT_SHIPPING_VOCABULARY,PORTAL_STATUS_VOCABULARY,parseClickOrderResponse}=require('../src/click_response');
 const samples=require('./fixtures/click_response_samples');
 
 test('the confirmed invalid-credentials envelope is recognised as an auth rejection',()=>{
@@ -127,4 +127,54 @@ test('the portal status vocabulary pins the twelve labels confirmed from the pro
   }
   assert.equal(Object.isFrozen(PORTAL_STATUS_VOCABULARY),true);
   for(const entry of PORTAL_STATUS_VOCABULARY)assert.equal(Object.isFrozen(entry),true);
+});
+const verifiedResponse={
+  result:{
+    Stat_App_Nm:'قيد انتظار الموافقة',
+    Status_Date:'2026-10-19T00:00:00',
+    Ord_Status_Note:'شحنة قيد انتظار الموافقة',
+    Ord_Amt_Duo:0,
+    Ord_Ship_Discount:0,
+    Ord_Will_Pay_Amt:1,
+  },
+};
+test('the real verified getorder response maps its exact Arabic label and keeps only confirmed fields',()=>{
+  const parsed=parseClickOrderResponse(verifiedResponse);
+  assert.equal(parsed.ok,true);
+  assert.equal(parsed.rawStatus,'قيد انتظار الموافقة');
+  assert.equal(parsed.shippingStatus,'awaitingPickup');
+  assert.equal(parsed.statusDate,'2026-10-19T00:00:00');
+  assert.equal(parsed.statusDateMs,Date.parse('2026-10-19T00:00:00Z'));
+  assert.equal(parsed.note,'شحنة قيد انتظار الموافقة');
+  assert.deepEqual(parsed.amounts,{orderAmountDuo:0,shippingDiscount:0,willPay:1});
+  assert.equal('Ord_Amt' in parsed,false,'no financial meaning is invented');
+});
+test('all seven owner-confirmed labels map to the internal business states',()=>{
+  for(const [label,key] of [
+    ['قيد انتظار الموافقة','awaitingPickup'],
+    ['مخزن الشحن','carrierWarehouse'],
+    ['في مخزن الشحن','carrierWarehouse'],
+    ['في الشحن','outForDelivery'],
+    ['تم التسليم','delivered'],
+    ['تسليم جزئي','partiallyDelivered'],
+    ['مؤجل','deferred'],
+    ['ملغي','cancelled'],
+  ]){
+    const parsed=parseClickOrderResponse({result:{Stat_App_Nm:label,Status_Date:'2026-10-19T00:00:00'}});
+    assert.equal(parsed.ok,true,label);assert.equal(parsed.shippingStatus,key,label);
+  }
+  assert.equal(Object.isFrozen(CLICK_STATUS_LABELS),true);
+});
+test('an unknown label, missing result/status, error envelope and malformed payload are never guessed as success',()=>{
+  assert.equal(parseClickOrderResponse({result:{Stat_App_Nm:'حالة جديدة',Status_Date:'2026-10-19T00:00:00'}}).reason,'unknown_status');
+  assert.equal(parseClickOrderResponse({result:{Status_Date:'2026-10-19T00:00:00'}}).reason,'missing_status');
+  assert.equal(parseClickOrderResponse({}).reason,'missing_result');
+  assert.equal(parseClickOrderResponse({error:{Message:'boom'}}).reason,'application_error');
+  assert.equal(parseClickOrderResponse({error:'لا يوجد بيانات لهذا الكود'}).reason,'application_error');
+  for(const value of [null,[],'text',{result:[]}])assert.equal(parseClickOrderResponse(value).ok,false);
+});
+test('an invalid or missing Status_Date does not get invented; amounts accept only finite numbers',()=>{
+  const parsed=parseClickOrderResponse({result:{Stat_App_Nm:'قيد انتظار الموافقة',Status_Date:'not-a-date',Ord_Amt_Duo:'0',Ord_Ship_Discount:null,Ord_Will_Pay_Amt:1}});
+  assert.equal(parsed.ok,true);assert.equal(parsed.statusDate,null);assert.equal(parsed.statusDateMs,null);
+  assert.deepEqual(parsed.amounts,{orderAmountDuo:null,shippingDiscount:null,willPay:1});
 });

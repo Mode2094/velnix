@@ -105,16 +105,23 @@ class VelnixGateway {
   Future<void> reconcileClickShipment(
     String id, {
     required String clickOrderId,
+    required String clickOrderRef,
+    String? clickClientSerial,
     required String shippingStatus,
     required String reason,
   }) async {
     await call('reconcileClickShipment', {
       'id': id,
       'clickOrderId': clickOrderId,
+      'clickOrderRef': clickOrderRef,
+      'clickClientSerial': ?clickClientSerial,
       'shippingStatus': shippingStatus,
       'reason': reason,
     });
   }
+
+  Future<Map<String, dynamic>> syncClickOrder(String id) =>
+      call('syncClickOrder', {'id': id});
 
   Future<Map<String, dynamic>> companyStats(String id) =>
       call('companyStats', {'id': id});

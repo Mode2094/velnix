@@ -640,6 +640,19 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                             'رقم التتبع': o['trackingNumber'],
                             if (o['providerOrderId'] != null)
                               'رقم شحنة Click': o['providerOrderId'],
+                            if (o['clickOrderRef'] != null)
+                              'مرجع Click (Order_ID)': o['clickOrderRef'],
+                            if (o['clickClientSerial'] != null)
+                              'كود التاجر الأصلي': o['clickClientSerial'],
+                            if (o['clickStatusDate'] != null)
+                              'تاريخ حالة Click': o['clickStatusDate'],
+                            if (o['clickStatusNote'] != null)
+                              'ملاحظة حالة Click': o['clickStatusNote'],
+                            if (o['clickAmounts'] is Map)
+                              'مبالغ Click الخام (غير معتمدة للتسوية)':
+                                  (o['clickAmounts'] as Map).entries
+                                      .map((e) => '${e.key}=${e.value}')
+                                      .join(' • '),
                             if (o['shippingStatusUpdatedAt'] != null)
                               'آخر تحديث لحالة الشحنة': businessDate(
                                 o['shippingStatusUpdatedAt'],
@@ -775,6 +788,14 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                                 onPressed: () => _reconcileClick(),
                                 icon: const Icon(Icons.link),
                                 label: const Text('ربط شحنة Click موجودة'),
+                              ),
+                            if (o['companyProvider'] == 'click_delivery_v1' &&
+                                o['clickOrderRef'] != null &&
+                                widget.policy.can('sendToDelivery'))
+                              OutlinedButton.icon(
+                                onPressed: _syncClick,
+                                icon: const Icon(Icons.sync),
+                                label: const Text('مزامنة حالة Click'),
                               ),
                           ],
                         ),
@@ -966,8 +987,14 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     }
   }
 
+  Future<void> _syncClick() async {
+    await action(() => VelnixGateway.instance.syncClickOrder(widget.id));
+  }
+
   Future<void> _reconcileClick() async {
     final clickOrderId = TextEditingController(),
+        clickOrderRef = TextEditingController(),
+        clickClientSerial = TextEditingController(),
         reason = TextEditingController();
     var state = ShippingStatus.awaitingPickup;
     try {
@@ -983,14 +1010,31 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'أدخل رقم شحنة Click الموجود واختر الحالة المؤكدة من البوابة. لن يُنشئ هذا الإجراء شحنة جديدة.',
+                      'أدخل رقم البوليصة ومرجع Click (Order_ID) والحالة المؤكدة من البوابة. لن يُنشئ هذا الإجراء شحنة جديدة.',
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: clickOrderId,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'رقم شحنة Click',
+                        labelText: 'رقم البوليصة في Click (مثال 1318368)',
+                      ),
+                      textDirection: TextDirection.ltr,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: clickOrderRef,
+                      maxLength: 25,
+                      decoration: const InputDecoration(
+                        labelText: 'مرجع Click (Order_ID / Client_Serial)',
+                      ),
+                      textDirection: TextDirection.ltr,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: clickClientSerial,
+                      decoration: const InputDecoration(
+                        labelText: 'كود التاجر الأصلي الكامل (اختياري)',
                       ),
                       textDirection: TextDirection.ltr,
                     ),
@@ -1031,6 +1075,8 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, {
                   'clickOrderId': clickOrderId.text.trim(),
+                  'clickOrderRef': clickOrderRef.text.trim(),
+                  'clickClientSerial': clickClientSerial.text.trim(),
                   'shippingStatus': state.name,
                   'reason': reason.text.trim(),
                 }),
@@ -1041,14 +1087,17 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         ),
       );
       if (decision != null) {
+        final ref = decision['clickOrderRef'] ?? '';
         if (!RegExp(
               r'^[0-9]{1,20}$',
             ).hasMatch(decision['clickOrderId'] ?? '') ||
+            ref.isEmpty ||
+            ref.length > 25 ||
             (decision['reason'] ?? '').length < 10) {
           if (mounted) {
             showError(
               context,
-              'أدخل رقم شحنة Click وسبب الربط (10 أحرف فأكثر)',
+              'أدخل رقم البوليصة ومرجع Click (حتى 25 حرفاً) وسبب الربط (10 أحرف فأكثر)',
             );
           }
           return;
@@ -1057,6 +1106,10 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
           () => VelnixGateway.instance.reconcileClickShipment(
             widget.id,
             clickOrderId: decision['clickOrderId']!,
+            clickOrderRef: ref,
+            clickClientSerial: (decision['clickClientSerial'] ?? '').isEmpty
+                ? null
+                : decision['clickClientSerial'],
             shippingStatus: decision['shippingStatus']!,
             reason: decision['reason']!,
           ),
@@ -1064,6 +1117,8 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
       }
     } finally {
       clickOrderId.dispose();
+      clickOrderRef.dispose();
+      clickClientSerial.dispose();
       reason.dispose();
     }
   }

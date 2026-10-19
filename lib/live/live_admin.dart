@@ -443,7 +443,8 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
   late final TextEditingController url;
   final token = TextEditingController(),
       webhook = TextEditingController(),
-      remote = TextEditingController();
+      remote = TextEditingController(),
+      clickUserId = TextEditingController();
   late final Map<String, String> mappings = {
     for (final e in (widget.initial?['statusMap'] as Map? ?? {}).entries)
       e.key.toString(): e.value.toString(),
@@ -463,6 +464,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
       if (!mounted) return;
       name.text = widget.initial?['name']?.toString() ?? '';
       url.text = widget.initial?['apiUrl']?.toString() ?? '';
+      clickUserId.text = widget.initial?['clickUserId']?.toString() ?? '';
       setState(() {});
     });
   }
@@ -474,6 +476,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
     token.dispose();
     webhook.dispose();
     remote.dispose();
+    clickUserId.dispose();
     super.dispose();
   }
 
@@ -494,6 +497,9 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
           'apiToken': token.text,
         if (provider == 'generic_v1' && webhook.text.isNotEmpty)
           'webhookKey': webhook.text,
+        if (provider == 'click_delivery_v1' &&
+            clickUserId.text.trim().isNotEmpty)
+          'clickUserId': clickUserId.text.trim(),
       });
       _dirty = false;
       token.clear();
@@ -631,6 +637,44 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                     title: 'تكامل Click Delivery غير مفعّل',
                     message:
                         'لا اتصال أو إنشاء شحنة في هذه المرحلة. نحتاج استجابات الشركة وأكواد الحالات وتفسير المبالغ قبل إدخال الاعتمادات وتفعيل التكامل.',
+                  ),
+                if (provider == 'click_delivery_v1')
+                  VLivePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'User_ID لحساب Click',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 17,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: clickUserId,
+                          textDirection: TextDirection.ltr,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          decoration: const InputDecoration(
+                            labelText: 'Client ID / User_ID (مثال 1603)',
+                          ),
+                          validator: (v) {
+                            final value = v?.trim() ?? '';
+                            if (value.isEmpty) return null;
+                            final parsed = int.tryParse(value);
+                            return parsed == null || parsed < 1
+                                ? 'أدخل User_ID رقماً صالحاً'
+                                : null;
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'يُستخدم لقراءة حالة الشحنة فقط عبر getorder. لا يفعّل إنشاء الشحنات.',
+                          style: TextStyle(color: VColors.muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
                   ),
                 if (provider == 'generic_v1')
                   VLivePanel(

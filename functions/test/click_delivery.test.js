@@ -1,6 +1,6 @@
 'use strict';
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict'),http=require('node:http');
-const {CLICK_BASE,CLICK_PROVIDER,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest}=require('../src/click_delivery');
+const {CLICK_BASE,CLICK_PROVIDER,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest,readClickOrder}=require('../src/click_delivery');
 const {providerFor,requireOperationalProvider}=require('../src/providers');
 const {vendorRequest}=require('../src/delivery');
 const company={provider:CLICK_PROVIDER,apiUrl:CLICK_BASE};
@@ -50,16 +50,18 @@ test('invalid IDs/credentials, HTTP errors and malformed/oversized responses do 
   assert.equal(getOrderBody(1,{...credentials,User_Pass:' password with spaces '}).User_Pass,' password with spaces ');
   for(const [response,error] of [[new Response('{}',{status:401}),/vendor_http_401/],[new Response('not JSON'),/vendor_invalid_json/],[new Response('[]'),/vendor_invalid_payload/],[new Response('{}',{headers:{'content-length':'1048577'}}),/vendor_response_too_large/]])await assert.rejects(exerciseGetOrderRequest(company,credentials,1,async()=>response),error);
 });
-test('setorder builder emits exactly the twelve supplied fields and mirrors the observed 25-character Client_Serial limit',()=>{
-  const body=setOrderBody({id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d4a0f8fb',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000,note:'ملاحظة'},{User_Name:'local-user',User_Pass:'local-pass'});
+test('setorder builder emits exactly the twelve supplied fields and refuses an overlong Client_Serial instead of silently truncating it',()=>{
+  const serial='VNX-CLICK-TEST-20261019-d';
+  const body=setOrderBody({id:'order-1',clientSerial:serial,customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000,note:'ملاحظة'},{User_Name:'local-user',User_Pass:'local-pass'});
   assert.deepEqual(Object.keys(body).sort(),[...CLICK_SETORDER_FIELDS].sort());
+  assert.equal(body.Client_Serial,serial);
   assert.equal(body.Client_Serial.length,CLICK_CLIENT_SERIAL_MAX);
-  assert.equal(body.Client_Serial,'VNX-CLICK-TEST-20261019-d');
   assert.equal(body.Reciver_Address,'عمان - وسط - شارع اختبار');
   assert.equal(body.Ord_Amt,1);
   assert.equal(body.Ord_Quantity,1);
   assert.equal(body.Is_Ord_Exchange,false);
   assert.equal(body.Open_Shippment,false);
+  assert.throws(()=>setOrderBody({id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d4a0f8fb',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000},{User_Name:'local-user',User_Pass:'local-pass'}),/invalid_click_client_serial/);
 });
 test('setorder builder rejects missing or invalid values instead of inventing them',()=>{
   const creds={User_Name:'u',User_Pass:'p'};
@@ -82,9 +84,25 @@ test('only a numeric positive Order_ID is extracted; no other identifier key is 
   assert.equal(clickOrderIdFromSetOrderResponse({Order_ID:1318368}),1318368);
   for(const value of [{},{orderId:1318368},{Order_ID:'1318368'},{Order_ID:0},{Order_ID:-1},null,[],'1318368'])assert.equal(clickOrderIdFromSetOrderResponse(value),null);
 });
-test('the programmer-supplied read shape is exactly Order_ID plus User_ID and nothing else',()=>{
-  assert.deepEqual(Object.keys(getOrderBodyByUserId(1318368,1603)).sort(),['Order_ID','User_ID']);
-  assert.deepEqual(getOrderBodyByUserId(1318368,1603),{Order_ID:1318368,User_ID:1603});
-  assert.throws(()=>getOrderBodyByUserId(0,1603),/invalid_click_order_id/);
-  assert.throws(()=>getOrderBodyByUserId(1318368,'abc'),/invalid_click_client_code/);
+test('the verified read shape is exactly the 25-character Client_Serial as Order_ID plus numeric User_ID',()=>{
+  assert.deepEqual(Object.keys(getOrderBodyByUserId('VNX-CLICK-TEST-20261019-d',1603)).sort(),['Order_ID','User_ID']);
+  assert.deepEqual(getOrderBodyByUserId('VNX-CLICK-TEST-20261019-d',1603),{Order_ID:'VNX-CLICK-TEST-20261019-d',User_ID:1603});
+  for(const ref of [1318368,'', 'x'.repeat(26)])assert.throws(()=>getOrderBodyByUserId(ref,1603),/invalid_click_order_ref/);
+  for(const uid of [0,-1,'abc'])assert.throws(()=>getOrderBodyByUserId('VNX-CLICK-TEST-20261019-d',uid),/invalid_click_user_id/);
+});
+test('the live-verified read request is POST getorder with the exact serial and User_ID and no extra field',async()=>{
+  const fixture={result:{Stat_App_Nm:'قيد انتظار الموافقة',Status_Date:'2026-10-19T00:00:00',Ord_Status_Note:'شحنة قيد انتظار الموافقة',Ord_Amt_Duo:0,Ord_Ship_Discount:0,Ord_Will_Pay_Amt:1}};
+  let received;
+  const transport=async(url,options)=>{received={url,options};return new Response(JSON.stringify(fixture),{status:200,headers:{'content-type':'application/json'}})};
+  const out=await readClickOrder(company,'VNX-CLICK-TEST-20261019-d',1603,transport);
+  assert.equal(out.status,200);assert.deepEqual(out.json,fixture);
+  assert.equal(received.url,CLICK_BASE+'/getorder');
+  assert.equal(received.options.method,'POST');assert.equal(received.options.redirect,'error');
+  assert.equal(received.options.headers.Authorization,'client');
+  assert.deepEqual(JSON.parse(received.options.body),{Order_ID:'VNX-CLICK-TEST-20261019-d',User_ID:1603});
+});
+test('the policy number and malformed identifiers are refused before any read transport call',async()=>{
+  let calls=0;const spy=async()=>{calls++;return new Response('{}')};
+  for(const [ref,uid] of [[1318368,1603],['',1603],['x'.repeat(26),1603],['VNX-CLICK-TEST-20261019-d',0]])await assert.rejects(readClickOrder(company,ref,uid,spy),/invalid_click_order_ref|invalid_click_user_id/);
+  assert.equal(calls,0);
 });

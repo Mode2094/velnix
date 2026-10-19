@@ -136,12 +136,74 @@ const PORTAL_STATUS_VOCABULARY = Object.freeze([
   Object.freeze({key: 'clientReceivedReturn', label: 'تم استلام المرتجع', english: 'Delivered to sender', portalToken: 'LnkClientReturned'}),
 ]);
 
+/*
+ * Exact Arabic labels confirmed in the real successful getorder response
+ * (2026-10-19, order VNX-CLICK-TEST-20261019-d) and in the owner's seven-state
+ * list. Only exact labels are mapped; no numeric or guessed carrier code is
+ * accepted.
+ */
+const CLICK_STATUS_LABELS = Object.freeze({
+  'قيد انتظار الموافقة': 'awaitingPickup',
+  'مخزن الشحن': 'carrierWarehouse',
+  'في مخزن الشحن': 'carrierWarehouse',
+  'في الشحن': 'outForDelivery',
+  'تم التسليم': 'delivered',
+  'تسليم جزئي': 'partiallyDelivered',
+  'مؤجل': 'deferred',
+  'ملغي': 'cancelled',
+});
+
+function clickDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value.trim())) return null;
+  const parsed = Date.parse(value.trim() + 'Z');
+  return Number.isFinite(parsed) ? { raw: value.trim(), ms: parsed } : null;
+}
+
+function clickNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Parses only the fields confirmed in the real getorder response. It never
+ * assigns a financial meaning to the raw amounts and never invents a status
+ * when the Arabic label is unknown.
+ */
+function parseClickOrderResponse(json) {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return { ok: false, reason: 'invalid_payload' };
+  const app = applicationError(json);
+  if (app) return { ok: false, reason: 'application_error', message: app.Message };
+  // The live "no data for this code" rejection uses a bare string envelope.
+  if (typeof json.error === 'string' && json.error.trim()) return { ok: false, reason: 'application_error', message: json.error.trim() };
+  const result = json.result;
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return { ok: false, reason: 'missing_result' };
+  if (typeof result.Stat_App_Nm !== 'string' || !result.Stat_App_Nm.trim()) return { ok: false, reason: 'missing_status' };
+  const rawStatus = result.Stat_App_Nm.trim();
+  const shippingStatus = CLICK_STATUS_LABELS[rawStatus];
+  if (!shippingStatus) return { ok: false, reason: 'unknown_status', rawStatus };
+  const statusDate = clickDate(result.Status_Date);
+  return {
+    ok: true,
+    rawStatus,
+    shippingStatus,
+    statusDate: statusDate ? statusDate.raw : null,
+    statusDateMs: statusDate ? statusDate.ms : null,
+    note: typeof result.Ord_Status_Note === 'string' ? result.Ord_Status_Note : null,
+    amounts: {
+      orderAmountDuo: clickNumber(result.Ord_Amt_Duo),
+      shippingDiscount: clickNumber(result.Ord_Ship_Discount),
+      willPay: clickNumber(result.Ord_Will_Pay_Amt),
+    },
+  };
+}
+
 module.exports = {
   ARABIC_INVALID_USER,
   ENGLISH_UNAUTHORIZED,
   classifyClickResponse,
   isInvalidCredentials,
   authFailureReason,
+  CLICK_STATUS_LABELS,
   CLIENT_SHIPPING_VOCABULARY,
   PORTAL_STATUS_VOCABULARY,
+  parseClickOrderResponse,
 };
