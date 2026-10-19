@@ -26,7 +26,7 @@ async function login(role){
  const p=await ctx.newPage();p.on('pageerror',e=>pageErrors.push({role,error:e.message,stack:e.stack}));
  await p.goto('http://127.0.0.1:8767',{waitUntil:'networkidle'});await p.locator('flt-glass-pane').waitFor({state:'attached',timeout:60000});await p.evaluate(()=>document.querySelector('flt-semantics-placeholder')?.click());
  await p.getByRole('button',{name:'المتابعة باستخدام Google'}).waitFor({timeout:60000});
- const popup=ctx.waitForEvent('page',{timeout:30000});await p.mouse.click(720,600);const pop=await popup;
+ const popup=ctx.waitForEvent('page',{timeout:30000});await click(p,'المتابعة باستخدام Google');const pop=await popup;
  await pop.getByText(role.toLowerCase()+'@velnix.test',{exact:true}).click();
  if(names[role])await p.getByText('أهلاً، '+names[role],{exact:true}).waitFor({timeout:60000});
  else await p.getByText(role==='pending'?/بانتظار موافقة/:/معطل|موقوف/).first().waitFor({timeout:30000});
