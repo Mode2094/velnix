@@ -60,6 +60,7 @@ void main() {
                 'companyName': 'Click Delivery',
                 'companyProvider': 'click_delivery_v1',
                 'shippingStatus': state.name,
+                'providerOrderId': '1318368',
                 'phone': '0791234567',
                 'city': 'عمان',
                 'area': 'وسط',
@@ -97,6 +98,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(find.text('حالة الشحنة: ${state.label}'), findsOneWidget);
+          expect(find.text('رقم شحنة Click: 1318368'), findsOneWidget);
           expect(find.text('الحالة: تم الإرسال'), findsOneWidget);
           expect(find.textContaining('987.654'), findsNothing);
           expect(find.textContaining('543.210'), findsNothing);
@@ -155,4 +157,55 @@ void main() {
       },
     );
   }
+  testWidgets(
+    'an authorized Click order without a linked shipment offers the reconcile action',
+    (tester) async {
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        expect(name, 'getOrder');
+        return {
+          'events': [],
+          'order': {
+            'id': 'fixture-order',
+            'customer': 'عميل اختبار',
+            'status': 'ready',
+            'companyId': 'click',
+            'companyName': 'Click Delivery',
+            'companyProvider': 'click_delivery_v1',
+            'shippingStatus': null,
+            'phone': '0791234567',
+            'city': 'عمان',
+            'area': 'وسط',
+            'address': 'عنوان اختبار',
+            'description': 'طرد',
+            'quantity': 1,
+            'dispatchState': 'needs_review',
+            'createdBy': 'owner',
+            'actions': {
+              'edit': false,
+              'assign': false,
+              'dispatch': false,
+              'resolve': false,
+              'statuses': [],
+            },
+          },
+        };
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrderDetail(
+            id: 'fixture-order',
+            policy: SessionPolicy({
+              'id': 'gm',
+              'role': 'generalManager',
+              'active': true,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('ربط شحنة Click موجودة'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

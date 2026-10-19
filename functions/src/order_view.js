@@ -7,7 +7,7 @@ function publicOrder(d) {
   return {id:d.id,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
-    companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,shippingStatus:shippingStatus(o.shippingStatus),completionSource:o.completionSource||null,
+    companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,shippingStatus:shippingStatus(o.shippingStatus),shippingStatusUpdatedAt:safeDate(o.shippingStatusUpdatedAt),completionSource:o.completionSource||null,
     syncError:o.syncError||null,lastSyncAt:safeDate(o.lastSyncAt),lastSyncAttemptAt:safeDate(o.lastSyncAttemptAt),dispatchState:o.dispatchState||'idle',revision:o.revision||0,
     createdAt:safeDate(o.createdAt),updatedAt:safeDate(o.updatedAt)};
 }

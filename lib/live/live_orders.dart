@@ -434,6 +434,11 @@ class _LiveOrdersState extends State<LiveOrders> {
                       'تتبع: ${o['trackingNumber']}',
                       style: const TextStyle(fontSize: 12),
                     ),
+                  if (o['providerOrderId'] != null)
+                    Text(
+                      'شحنة Click: ${o['providerOrderId']}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                 ],
               ),
               const SizedBox(height: 4),
@@ -627,6 +632,12 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                               'التحصيل ورسوم التوصيل':
                                   'غير مؤكدة؛ قيمة الطلب المسجلة ليست مبلغ التحصيل أو صافي التسوية',
                             'رقم التتبع': o['trackingNumber'],
+                            if (o['providerOrderId'] != null)
+                              'رقم شحنة Click': o['providerOrderId'],
+                            if (o['shippingStatusUpdatedAt'] != null)
+                              'آخر تحديث لحالة الشحنة': businessDate(
+                                o['shippingStatusUpdatedAt'],
+                              ),
                             if (o['lastSyncAt'] != null)
                               'آخر مزامنة': businessDate(o['lastSyncAt']),
                             if (o['lastSyncAttemptAt'] != null)
@@ -750,6 +761,14 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                                 onPressed: () => _resolveDispatch(),
                                 icon: const Icon(Icons.fact_check_outlined),
                                 label: const Text('مراجعة إرسال غير مؤكد'),
+                              ),
+                            if (o['companyProvider'] == 'click_delivery_v1' &&
+                                o['providerOrderId'] == null &&
+                                widget.policy.can('sendToDelivery'))
+                              OutlinedButton.icon(
+                                onPressed: () => _reconcileClick(),
+                                icon: const Icon(Icons.link),
+                                label: const Text('ربط شحنة Click موجودة'),
                               ),
                           ],
                         ),
@@ -938,6 +957,108 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     } finally {
       reason.dispose();
       tracking.dispose();
+    }
+  }
+
+  Future<void> _reconcileClick() async {
+    final clickOrderId = TextEditingController(),
+        reason = TextEditingController();
+    var state = ShippingStatus.awaitingPickup;
+    try {
+      final decision = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            title: const Text('ربط شحنة Click موجودة'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'أدخل رقم شحنة Click الموجود واختر الحالة المؤكدة من البوابة. لن يُنشئ هذا الإجراء شحنة جديدة.',
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: clickOrderId,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'رقم شحنة Click',
+                      ),
+                      textDirection: TextDirection.ltr,
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<ShippingStatus>(
+                      initialValue: state,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'حالة الشحنة المؤكدة',
+                      ),
+                      items: [
+                        for (final value in ShippingStatus.values)
+                          DropdownMenuItem(
+                            value: value,
+                            child: Text(value.label),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialog(() => state = value ?? state),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: reason,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'مرجع التحقق / سبب الربط (10 أحرف فأكثر)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('رجوع'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, {
+                  'clickOrderId': clickOrderId.text.trim(),
+                  'shippingStatus': state.name,
+                  'reason': reason.text.trim(),
+                }),
+                child: const Text('ربط الشحنة'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (decision != null) {
+        if (!RegExp(
+              r'^[0-9]{1,20}$',
+            ).hasMatch(decision['clickOrderId'] ?? '') ||
+            (decision['reason'] ?? '').length < 10) {
+          if (mounted) {
+            showError(
+              context,
+              'أدخل رقم شحنة Click وسبب الربط (10 أحرف فأكثر)',
+            );
+          }
+          return;
+        }
+        await action(
+          () => VelnixGateway.instance.reconcileClickShipment(
+            widget.id,
+            clickOrderId: decision['clickOrderId']!,
+            shippingStatus: decision['shippingStatus']!,
+            reason: decision['reason']!,
+          ),
+        );
+      }
+    } finally {
+      clickOrderId.dispose();
+      reason.dispose();
     }
   }
 

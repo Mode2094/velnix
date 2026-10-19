@@ -1,6 +1,6 @@
 'use strict';
 const {test,before,after}=require('node:test'),assert=require('node:assert/strict'),http=require('node:http');
-const {CLICK_BASE,CLICK_PROVIDER,getOrderBody,exerciseGetOrderRequest}=require('../src/click_delivery');
+const {CLICK_BASE,CLICK_PROVIDER,CLICK_CLIENT_SERIAL_MAX,CLICK_SETORDER_FIELDS,getOrderBody,getOrderBodyByUserId,setOrderBody,classifySetOrderResponse,isAmbiguousSetOrderOutcome,clickOrderIdFromSetOrderResponse,exerciseGetOrderRequest}=require('../src/click_delivery');
 const {providerFor,requireOperationalProvider}=require('../src/providers');
 const {vendorRequest}=require('../src/delivery');
 const company={provider:CLICK_PROVIDER,apiUrl:CLICK_BASE};
@@ -49,4 +49,42 @@ test('invalid IDs/credentials, HTTP errors and malformed/oversized responses do 
   assert.throws(()=>getOrderBody(1,{User_Name:'user',User_Pass:''}),/invalid_click_credentials/);
   assert.equal(getOrderBody(1,{...credentials,User_Pass:' password with spaces '}).User_Pass,' password with spaces ');
   for(const [response,error] of [[new Response('{}',{status:401}),/vendor_http_401/],[new Response('not JSON'),/vendor_invalid_json/],[new Response('[]'),/vendor_invalid_payload/],[new Response('{}',{headers:{'content-length':'1048577'}}),/vendor_response_too_large/]])await assert.rejects(exerciseGetOrderRequest(company,credentials,1,async()=>response),error);
+});
+test('setorder builder emits exactly the twelve supplied fields and mirrors the observed 25-character Client_Serial limit',()=>{
+  const body=setOrderBody({id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d4a0f8fb',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000,note:'ملاحظة'},{User_Name:'local-user',User_Pass:'local-pass'});
+  assert.deepEqual(Object.keys(body).sort(),[...CLICK_SETORDER_FIELDS].sort());
+  assert.equal(body.Client_Serial.length,CLICK_CLIENT_SERIAL_MAX);
+  assert.equal(body.Client_Serial,'VNX-CLICK-TEST-20261019-d');
+  assert.equal(body.Reciver_Address,'عمان - وسط - شارع اختبار');
+  assert.equal(body.Ord_Amt,1);
+  assert.equal(body.Ord_Quantity,1);
+  assert.equal(body.Is_Ord_Exchange,false);
+  assert.equal(body.Open_Shippment,false);
+});
+test('setorder builder rejects missing or invalid values instead of inventing them',()=>{
+  const creds={User_Name:'u',User_Pass:'p'};
+  const base={id:'o',customer:'c',phone:'0779557077',city:'c',area:'a',address:'x',description:'d',quantity:1,amountMinor:1};
+  for(const [patch,error] of [[{customer:''},/invalid_click_receiver_name/],[{phone:'123'},/invalid_click_receiver_phone/],[{city:'',area:'',address:''},/invalid_click_receiver_address/],[{quantity:0},/invalid_click_quantity/],[{amountMinor:-1},/invalid_click_amount/]])assert.throws(()=>setOrderBody({...base,...patch},creds),error);
+  assert.throws(()=>setOrderBody(base,{User_Name:'u'}),/invalid_click_credentials/);
+  assert.throws(()=>setOrderBody(null,creds),/invalid_click_order/);
+});
+test('the observed HTTP 400 Int64 response is an ambiguous creation, never a success or a plain rejection',()=>{
+  const observed={error:{Message:"The cast to value type 'System.Int64' failed because the materialized value is null. Either the result type's generic parameter or the query must use a nullable type."}};
+  assert.equal(classifySetOrderResponse(400,observed).kind,'ambiguous_creation');
+  assert.equal(isAmbiguousSetOrderOutcome(400,observed),true);
+  assert.equal(classifySetOrderResponse(401,{error:{Message:'بيانات مستخدم غير صحيحة'}}).kind,'auth_required');
+  assert.equal(classifySetOrderResponse(400,{error:{Message:'validation failed'}}).kind,'rejected');
+  assert.equal(classifySetOrderResponse(500,{error:{Message:'boom'}}).kind,'rejected');
+  assert.equal(classifySetOrderResponse(200,{}).kind,'ambiguous_creation');
+  assert.equal(classifySetOrderResponse(200,{Order_ID:1318368}).kind,'ambiguous_creation');
+});
+test('only a numeric positive Order_ID is extracted; no other identifier key is invented',()=>{
+  assert.equal(clickOrderIdFromSetOrderResponse({Order_ID:1318368}),1318368);
+  for(const value of [{},{orderId:1318368},{Order_ID:'1318368'},{Order_ID:0},{Order_ID:-1},null,[],'1318368'])assert.equal(clickOrderIdFromSetOrderResponse(value),null);
+});
+test('the programmer-supplied read shape is exactly Order_ID plus User_ID and nothing else',()=>{
+  assert.deepEqual(Object.keys(getOrderBodyByUserId(1318368,1603)).sort(),['Order_ID','User_ID']);
+  assert.deepEqual(getOrderBodyByUserId(1318368,1603),{Order_ID:1318368,User_ID:1603});
+  assert.throws(()=>getOrderBodyByUserId(0,1603),/invalid_click_order_id/);
+  assert.throws(()=>getOrderBodyByUserId(1318368,'abc'),/invalid_click_client_code/);
 });

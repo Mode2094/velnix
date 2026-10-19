@@ -139,6 +139,7 @@ class OrderRecord {
     this.paymentMethod = 'عند الاستلام',
     this.companyId,
     this.trackingNumber,
+    this.providerOrderId,
     this.remoteStatus,
     this.status = OrderStatus.created,
     List<OrderEvent>? events,
@@ -157,6 +158,7 @@ class OrderRecord {
   String note;
   String? companyId;
   String? trackingNumber;
+  String? providerOrderId;
   String? remoteStatus;
   OrderStatus status;
   final String createdBy;

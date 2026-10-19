@@ -17,6 +17,7 @@ const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remote
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
 const {CLICK_PROVIDER}=require('./click_delivery');
+const {shippingStatus}=require('./shipping_status');
 const {directoryPage}=require('./directory');
 const {aggregateGroups}=require('./aggregations');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
@@ -394,7 +395,11 @@ exports.sendOrderToDelivery=callable(async req=>{
     logger.error('delivery dispatch failed',{id:ref.id,code:e.code||'unknown'});
     await db.runTransaction(async tx=>{const o=await tx.get(ref);
       if(o.data()?.dispatchLockId===lockId){
-        const failure=vendorAttempted?{dispatchState:'needs_review',syncError:'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
+        // Click can create a shipment and still answer HTTP 400 (observed
+        // 2026-10-19). The adapter signals that exact case so the UI keeps a
+        // Click-specific review message instead of a generic transport one.
+        const clickAmbiguous=vendorAttempted&&e?.code==='click_ambiguous_creation';
+        const failure=vendorAttempted?{dispatchState:'needs_review',syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
         tx.update(ref,{...failure,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
         const action=vendorAttempted?'dispatch_attempt_failed':'dispatch_preparation_failed';
         await addEvent(ref.id,action,user,{},tx);await audit('order.'+action,user,ref.id,{},tx);
@@ -426,6 +431,37 @@ exports.resolveDispatchException=callable(async req=>{
     tx.update(ref,{...change,revision:FieldValue.increment(1),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'dispatch_exception_resolved',user,{outcome,trackingNumber:tracking,reason},tx);
     await audit('order.dispatch_exception_resolved',user,ref.id,{outcome,trackingNumber:tracking,reason},tx);
+  });
+  return {ok:true};
+});
+
+// Links an existing Click shipment to its Velnix order without ever creating a
+// second shipment. The operator supplies the Click Order_ID and one of the
+// seven owner-confirmed business states; no unconfirmed Click API code is
+// interpreted and no financial settlement is derived.
+exports.reconcileClickShipment=callable(async req=>{
+  const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
+  const {ref}=await oneOrder(user,req.data?.id);
+  const clickOrderId=str(req.data?.clickOrderId,40);
+  if(!/^[0-9]{1,20}$/.test(clickOrderId))fail('invalid-argument','رقم شحنة Click يجب أن يكون رقماً');
+  const state=shippingStatus(req.data?.shippingStatus);
+  if(!state)fail('invalid-argument','اختر حالة شحنة صحيحة من الحالات السبع');
+  const reason=str(req.data?.reason,400);
+  if(reason.length<10)fail('invalid-argument','اكتب مرجع التحقق أو سبب الربط (10 أحرف على الأقل)');
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const doc=await tx.get(ref),o=doc.data();
+    if(!o)fail('not-found','الطلب غير موجود');
+    if(!o.companyId)fail('failed-precondition','لم يتم تعيين شركة توصيل للطلب');
+    const company=await tx.get(db.doc('companies/'+o.companyId));
+    if(!company.exists||company.data().provider!==CLICK_PROVIDER)fail('failed-precondition','الطلب غير مرتبط بـClick Delivery');
+    if(o.providerOrderId&&o.providerOrderId!==clickOrderId)fail('already-exists','الطلب مرتبط بشحنة Click أخرى؛ لن يُستبدل المعرف');
+    if(o.providerOrderId===clickOrderId&&o.shippingStatus===state)return;
+    if(!['ready','dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
+    tx.update(ref,{providerOrderId:clickOrderId,shippingStatus:state,shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
+      status:o.status==='ready'?'dispatched':o.status,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    await addEvent(ref.id,'click_reconciled',user,{clickOrderId,shippingStatus:state,reason},tx);
+    await audit('order.click_reconciled',user,ref.id,{clickOrderId,shippingStatus:state,reason},tx);
   });
   return {ok:true};
 });
