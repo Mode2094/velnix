@@ -6,7 +6,13 @@ module.exports=({db,auth,FieldValue,FieldPath,requireAuth,currentActor,audit,fai
   async function joinSession(req){
     const uid=requireSession(req);
     // Never trust caller-supplied UID, email, name, status, role or permissions.
-    const profile=sessionProfile(await auth.getUser(uid));
+    let record;
+    try { record=await auth.getUser(uid); }
+    catch(e){
+      if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
+      throw e;
+    }
+    const profile=sessionProfile(record);
     return db.runTransaction(async tx=>{
       const member=await tx.get(db.doc('members/'+uid));
       const ref=db.doc('joinRequests/'+uid),join=await tx.get(ref);

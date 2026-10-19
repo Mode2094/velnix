@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=path.resolve(__dirname,'../..');
 const plan=JSON.parse(fs.readFileSync(path.join(root,'config/first-internal-deploy.json')));
-const forbidden=['deliveryWebhook','reconcileDeliveryStatuses','pushNotice','registerDevice','unregisterDevice','assignCompany','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','sendOrderToDelivery','resolveDispatchException','reconcileClickShipment','syncClickOrder'];
+const forbidden=['deliveryWebhook','reconcileDeliveryStatuses','pushNotice','registerDevice','unregisterDevice','assignCompany','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','sendOrderToDelivery','resolveDispatchException','reconcileClickShipment','syncClickOrder','syncClickStatuses'];
 function prepare(destination=path.join(root,'build/first-internal')){
  assert.equal(plan.projectId,'velnix-6c1a2');assert.equal(plan.cloudChangesAuthorized,false);
  assert.equal(plan.functions.length,23);assert.equal(new Set(plan.functions).size,23);

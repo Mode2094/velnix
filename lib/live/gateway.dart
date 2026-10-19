@@ -21,7 +21,10 @@ class VelnixGateway {
       final result = await functions.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {
-      throw VelnixException(callableErrorMessage(e.code, e.message));
+      throw VelnixException(
+        callableErrorMessage(e.code, e.message),
+        code: e.code,
+      );
     } on FirebaseAuthException catch (e) {
       throw VelnixException(authErrorMessage(e.code));
     }
@@ -215,8 +218,9 @@ class VelnixGateway {
 }
 
 class VelnixException implements Exception {
-  VelnixException(this.message);
+  VelnixException(this.message, {this.code});
   final String message;
+  final String? code;
   @override
   String toString() => message;
 }
@@ -231,6 +235,10 @@ String callableErrorMessage(
   'internal' =>
     'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
   'aborted' => 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ',
+  'unauthenticated' =>
+    serverMessage?.trim().isNotEmpty == true
+        ? serverMessage!
+        : 'انتهت الجلسة أو تعذر التحقق من أمان المتصفح؛ أعد تسجيل الدخول.',
   _ => serverMessage ?? 'حدث خطأ أثناء الاتصال بالخادم',
 };
 

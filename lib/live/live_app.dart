@@ -43,6 +43,11 @@ const eventLabels = {
   'dispatch_exception_resolved': 'مراجعة نتيجة الإرسال',
   'dispatch_preparation_failed': 'تعذر تجهيز الاتصال قبل إرسال الشحنة',
   'dispatch_attempt_failed': 'نتيجة إرسال الشحنة تحتاج مراجعة',
+  'click_reconciled': 'ربط شحنة Click',
+  'click_status_synced': 'تحديث حالة Click',
+  'click_status_stale': 'تجاهل حالة Click أقدم',
+  'click_status_conflict': 'تعارض حالة Click',
+  'click_sync_failed': 'فشل مزامنة Click',
 };
 String eventLabel(dynamic action) =>
     eventLabels[action?.toString()] ?? 'تحديث الطلب';
@@ -494,9 +499,20 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? joinDecision;
 
   Future<Map<String, dynamic>> loadSession() async {
-    final status = await VelnixGateway.instance.call('joinSession');
-    if (status['status'] != 'approved') return status;
-    return {'status': 'approved', 'member': await VelnixGateway.instance.me()};
+    try {
+      final status = await VelnixGateway.instance.call('joinSession');
+      if (status['status'] != 'approved') return status;
+      return {
+        'status': 'approved',
+        'member': await VelnixGateway.instance.me(),
+      };
+    } on VelnixException catch (e) {
+      if (e.code == 'unauthenticated') {
+        await VelnixGateway.instance.auth.signOut();
+        return {'status': 'signed_out'};
+      }
+      rethrow;
+    }
   }
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? membership;

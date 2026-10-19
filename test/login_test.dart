@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:velnix/core/theme.dart';
+import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
 
 Widget app(Widget child) => MaterialApp(
@@ -43,4 +44,15 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  test('unauthenticated errors produce a clear session message', () {
+    expect(
+      callableErrorMessage('unauthenticated', null),
+      contains('انتهت الجلسة'),
+    );
+    expect(
+      callableErrorMessage('unauthenticated', 'App Check token rejected'),
+      'App Check token rejected',
+    );
+  });
 }

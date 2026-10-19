@@ -773,7 +773,11 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                               FilledButton.icon(
                                 onPressed: () => _confirmDispatch(),
                                 icon: const Icon(Icons.send),
-                                label: const Text('إرسال لشركة التوصيل'),
+                                label: Text(
+                                  o['companyProvider'] == 'click_delivery_v1'
+                                      ? 'إرسال إلى Click'
+                                      : 'إرسال لشركة التوصيل',
+                                ),
                               ),
                             if (actions['resolve'] == true)
                               OutlinedButton.icon(

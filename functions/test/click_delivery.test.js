@@ -63,6 +63,15 @@ test('setorder builder emits exactly the twelve supplied fields and refuses an o
   assert.equal(body.Open_Shippment,false);
   assert.throws(()=>setOrderBody({id:'order-1',clientSerial:'VNX-CLICK-TEST-20261019-d4a0f8fb',customer:'Velnix API Test',phone:'0779557077',city:'عمان',area:'وسط',address:'شارع اختبار',description:'طرد اختبار',quantity:1,amountMinor:1000},{User_Name:'local-user',User_Pass:'local-pass'}),/invalid_click_client_serial/);
 });
+test('the owner-approved mapping sends the Velnix JOD amount as a clean 3-decimal Ord_Amt',()=>{
+  const creds={User_Name:'u',User_Pass:'p'};
+  const base={id:'o',customer:'c',phone:'0779557077',city:'c',area:'a',address:'x',description:'d',quantity:1};
+  for(const [minor,expected] of [[0,0],[1,0.001],[12345,12.345],[1000,1]]){
+    const body=setOrderBody({...base,amountMinor:minor},creds);
+    assert.equal(body.Ord_Amt,expected);
+    assert.equal(String(body.Ord_Amt).includes('000000000'),false);
+  }
+});
 test('setorder builder rejects missing or invalid values instead of inventing them',()=>{
   const creds={User_Name:'u',User_Pass:'p'};
   const base={id:'o',customer:'c',phone:'0779557077',city:'c',area:'a',address:'x',description:'d',quantity:1,amountMinor:1};

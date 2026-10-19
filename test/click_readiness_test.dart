@@ -301,4 +301,54 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('a ready Click order labels the dispatch action for Click', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      expect(name, 'getOrder');
+      return {
+        'events': [],
+        'order': {
+          'id': 'fixture-order',
+          'customer': 'عميل اختبار',
+          'status': 'ready',
+          'companyId': 'click',
+          'companyName': 'Click Delivery',
+          'companyProvider': 'click_delivery_v1',
+          'phone': '0791234567',
+          'city': 'عمان',
+          'area': 'وسط',
+          'address': 'عنوان اختبار',
+          'description': 'طرد',
+          'quantity': 1,
+          'dispatchState': 'idle',
+          'createdBy': 'owner',
+          'actions': {
+            'edit': false,
+            'assign': false,
+            'dispatch': true,
+            'resolve': false,
+            'statuses': [],
+          },
+        },
+      };
+    });
+    await tester.pumpWidget(
+      app(
+        LiveOrderDetail(
+          id: 'fixture-order',
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('إرسال إلى Click'), findsOneWidget);
+    expect(find.text('إرسال لشركة التوصيل'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }

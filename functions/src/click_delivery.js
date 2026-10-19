@@ -46,6 +46,12 @@ function clickPhone(value){
   if(!/^[0-9]{9,15}$/.test(digits))throw Error('invalid_click_receiver_phone');
   return digits;
 }
+function clickAmount(amountMinor){
+  if(!Number.isSafeInteger(amountMinor)||amountMinor<0)throw Error('invalid_click_amount');
+  // Velnix stores JOD in fils. Send a clean 3-decimal JOD number; no fees are
+  // added or subtracted here.
+  return Number((amountMinor/1000).toFixed(3));
+}
 // Local, test-covered model of a future setorder payload. It is NOT wired to
 // the live route: requireOperationalProvider still blocks Click creation until
 // the financial and idempotency contract is confirmed.
@@ -67,9 +73,9 @@ function setOrderBody(order,credentials) {
     Reciver_Address:address,
     Ord_Content:clickText(order.description,500,'invalid_click_content'),
     Ord_Quantity:quantity,
-    // The financial meaning of Ord_Amt is NOT confirmed. The caller supplies
-    // the local order amount only; this builder does not decide goods-vs-total.
-    Ord_Amt:amountMinor/1000,
+    // Owner-approved operational mapping: Velnix order amount -> Click Ord_Amt.
+    // No fees, discounts or settlement values are added by Velnix.
+    Ord_Amt:clickAmount(amountMinor),
     Ord_Note:typeof order.note==='string'?order.note.trim().slice(0,600):'',
     Is_Ord_Exchange:order.isOrderExchange===true,
     Open_Shippment:order.openShipment===true,
