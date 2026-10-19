@@ -456,9 +456,18 @@ exports.reconcileClickShipment=callable(async req=>{
     const company=await tx.get(db.doc('companies/'+o.companyId));
     if(!company.exists||company.data().provider!==CLICK_PROVIDER)fail('failed-precondition','الطلب غير مرتبط بـClick Delivery');
     if(o.providerOrderId&&o.providerOrderId!==clickOrderId)fail('already-exists','الطلب مرتبط بشحنة Click أخرى؛ لن يُستبدل المعرف');
-    if(o.providerOrderId===clickOrderId&&o.shippingStatus===state)return;
+    // A Click Order_ID is globally unique. Never attach it to a second Velnix
+    // order, even if the two orders belong to different companies.
+    const linked=await tx.get(db.collection('orders').where('providerOrderId','==',clickOrderId).limit(2));
+    if(linked.docs.some(d=>d.id!==ref.id))fail('already-exists','رقم شحنة Click مرتبط بطلب Velnix آخر؛ لن يُكرر الربط');
+    // An API-confirmed state must not be silently downgraded to a manual one.
+    if(o.shippingStatusSource==='click_api'){
+      if(o.shippingStatus!==state)fail('failed-precondition','حالة الشحنة مؤكدة من Click API ولا يمكن استبدالها يدويًا');
+      return;
+    }
+    if(o.providerOrderId===clickOrderId&&o.shippingStatus===state&&o.shippingStatusSource==='manual')return;
     if(!['ready','dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
-    tx.update(ref,{providerOrderId:clickOrderId,shippingStatus:state,shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
+    tx.update(ref,{providerOrderId:clickOrderId,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
       status:o.status==='ready'?'dispatched':o.status,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'click_reconciled',user,{clickOrderId,shippingStatus:state,reason},tx);
     await audit('order.click_reconciled',user,ref.id,{clickOrderId,shippingStatus:state,reason},tx);

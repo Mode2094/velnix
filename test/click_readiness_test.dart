@@ -60,6 +60,7 @@ void main() {
                 'companyName': 'Click Delivery',
                 'companyProvider': 'click_delivery_v1',
                 'shippingStatus': state.name,
+                'shippingStatusSource': 'manual',
                 'providerOrderId': '1318368',
                 'phone': '0791234567',
                 'city': 'عمان',
@@ -98,6 +99,10 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(find.text('حالة الشحنة: ${state.label}'), findsOneWidget);
+          expect(
+            find.text('مصدر حالة الشحنة: إدخال يدوي بعد التحقق من بوابة Click'),
+            findsOneWidget,
+          );
           expect(find.text('رقم شحنة Click: 1318368'), findsOneWidget);
           expect(find.text('الحالة: تم الإرسال'), findsOneWidget);
           expect(find.textContaining('987.654'), findsNothing);

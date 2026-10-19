@@ -59,6 +59,7 @@ test('reconciling the existing Click shipment links its id and one owner-confirm
   const data=(await ref.get()).data();
   assert.equal(data.providerOrderId,'1318368');
   assert.equal(data.shippingStatus,'awaitingPickup');
+  assert.equal(data.shippingStatusSource,'manual');
   assert.equal(data.dispatchState,'sent');
   assert.equal(data.status,'dispatched');
   assert.equal(data.trackingNumber ?? null,null,'the Click order id is not copied into the carrier tracking field');
@@ -72,6 +73,24 @@ test('reconciling the existing Click shipment links its id and one owner-confirm
   assert.equal(clickCreateCalls,0,'reconciliation never creates a shipment');
   await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
   assert.equal(clickCreateCalls,0);
+});
+test('the same Click Order_ID cannot be linked to two different Velnix orders',async()=>{
+  const first=await clickOrder('click_unique_first',{dispatchState:'needs_review'});
+  await reconcile({id:first.id,clickOrderId:'7777777',shippingStatus:'awaitingPickup',reason:'ربط أول لشحنة Click فريدة'});
+  const second=await clickOrder('click_unique_second',{dispatchState:'needs_review'});
+  await assert.rejects(reconcile({id:second.id,clickOrderId:'7777777',shippingStatus:'awaitingPickup',reason:'محاولة تكرار نفس معرف Click'}),{code:'already-exists'});
+  assert.equal((await second.get()).data().providerOrderId ?? null,null);
+});
+test('a manual reconciliation cannot overwrite an API-confirmed Click state',async()=>{
+  const ref=await clickOrder('click_api_confirmed',{dispatchState:'sent',status:'dispatched',providerOrderId:'8888888',shippingStatus:'delivered',shippingStatusSource:'click_api'});
+  await assert.rejects(reconcile({id:ref.id,clickOrderId:'8888888',shippingStatus:'cancelled',reason:'محاولة استبدال حالة API يدويًا'}),{code:'failed-precondition'});
+  let data=(await ref.get()).data();
+  assert.equal(data.shippingStatus,'delivered');
+  assert.equal(data.shippingStatusSource,'click_api');
+  await reconcile({id:ref.id,clickOrderId:'8888888',shippingStatus:'delivered',reason:'تأكيد نفس الحالة المؤكدة'});
+  data=(await ref.get()).data();
+  assert.equal(data.shippingStatus,'delivered');
+  assert.equal(data.shippingStatusSource,'click_api');
 });
 test('only a Click-linked order can be reconciled, and only by an authorized user',async()=>{
   const generic=db.doc('orders/generic_reconcile');

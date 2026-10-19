@@ -627,6 +627,12 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                                     o['shippingStatus'],
                                   )?.label ??
                                   'غير مؤكدة؛ لم يكتمل عقد Click Delivery',
+                            if (o['shippingStatusSource'] == 'manual')
+                              'مصدر حالة الشحنة':
+                                  'إدخال يدوي بعد التحقق من بوابة Click',
+                            if (o['shippingStatusSource'] == 'click_api')
+                              'مصدر حالة الشحنة':
+                                  'تحديث تلقائي مؤكد من Click API',
                             if (o['companyProvider'] == 'click_delivery_v1' &&
                                 o['amount'] != null)
                               'التحصيل ورسوم التوصيل':
