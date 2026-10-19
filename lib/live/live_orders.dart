@@ -106,9 +106,118 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
   }
 
+  int get _activeFilterCount =>
+      (bucket != 'all' ? 1 : 0) +
+      (status != null ? 1 : 0) +
+      (filters.isNotEmpty ? 1 : 0) +
+      (sort != 'desc' ? 1 : 0);
+
+  Widget _searchField() => TextField(
+    controller: search,
+    textInputAction: TextInputAction.search,
+    onChanged: (_) => setState(() {}),
+    onSubmitted: (_) => load(reset: true),
+    decoration: InputDecoration(
+      prefixIcon: const Icon(Icons.search),
+      labelText: 'بحث في كل الطلبات المسموح لك بها',
+      hintText: 'رقم الطلب، رقم الهاتف الكامل أو بداية الاسم',
+      suffixIcon: IconButton(
+        tooltip: 'تنفيذ البحث',
+        onPressed: () => load(reset: true),
+        icon: const Icon(Icons.search),
+      ),
+    ),
+  );
+
+  Widget _filterControls() => Column(
+    children: [
+      LayoutBuilder(
+        builder: (context, box) {
+          final wide = box.maxWidth > 680;
+          final a = DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue: bucket,
+            decoration: const InputDecoration(labelText: 'مجموعة الطلبات'),
+            items: const [
+              DropdownMenuItem(value: 'all', child: Text('كل الطلبات')),
+              DropdownMenuItem(value: 'delivery', child: Text('شركات التوصيل')),
+              DropdownMenuItem(value: 'internal', child: Text('غير المسندة')),
+            ],
+            onChanged: (v) {
+              setState(() => bucket = v ?? 'all');
+              load(reset: true);
+            },
+          );
+          final b = DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue: status ?? 'all',
+            decoration: const InputDecoration(labelText: 'حالة الطلب'),
+            items: [
+              const DropdownMenuItem(value: 'all', child: Text('جميع الحالات')),
+              ...statusLabels.entries.map(
+                (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ),
+            ],
+            onChanged: (v) {
+              setState(() => status = v == 'all' ? null : v);
+              load(reset: true);
+            },
+          );
+          return wide
+              ? Row(
+                  children: [
+                    Expanded(child: a),
+                    const SizedBox(width: 12),
+                    Expanded(child: b),
+                  ],
+                )
+              : Column(children: [a, const SizedBox(height: 9), b]);
+        },
+      ),
+      const SizedBox(height: 10),
+      OrderFilters(
+        fixedCompanyId: widget.companyId,
+        initialFilters: filters,
+        onChanged: (value) {
+          filters = value;
+          widget.onFiltersChanged?.call(value);
+          load(reset: true);
+        },
+      ),
+      DropdownButtonFormField<String>(
+        initialValue: sort,
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: 'ترتيب الإنشاء'),
+        items: const [
+          DropdownMenuItem(value: 'desc', child: Text('الأحدث أولاً')),
+          DropdownMenuItem(value: 'asc', child: Text('الأقدم أولاً')),
+        ],
+        onChanged: search.text.trim().length >= 2
+            ? null
+            : (value) {
+                sort = value ?? 'desc';
+                load(reset: true);
+              },
+      ),
+    ],
+  );
+
+  Future<void> _openFilters(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        child: _filterControls(),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final visible = rows;
+    final compact = MediaQuery.sizeOf(context).width < 720;
     return RefreshIndicator(
       onRefresh: () => load(reset: true),
       child: SingleChildScrollView(
@@ -148,124 +257,31 @@ class _LiveOrdersState extends State<LiveOrders> {
               ),
               const SizedBox(height: 15),
               VLivePanel(
+                padding: const EdgeInsets.all(12),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    LayoutBuilder(
-                      builder: (context, box) {
-                        final wide = box.maxWidth > 680;
-                        final a = DropdownButtonFormField<String>(
-                          isExpanded: true,
-
-                          initialValue: bucket,
-                          decoration: const InputDecoration(
-                            labelText: 'مجموعة الطلبات',
+                    if (compact)
+                      Row(
+                        children: [
+                          Expanded(child: _searchField()),
+                          const SizedBox(width: 8),
+                          Badge(
+                            isLabelVisible: _activeFilterCount > 0,
+                            label: Text('$_activeFilterCount'),
+                            child: IconButton.filledTonal(
+                              tooltip: 'الفلاتر والترتيب',
+                              onPressed: () => _openFilters(context),
+                              icon: const Icon(Icons.tune),
+                            ),
                           ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'all',
-                              child: Text('كل الطلبات'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'delivery',
-                              child: Text('شركات التوصيل'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'internal',
-                              child: Text('غير المسندة'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            setState(() => bucket = v ?? 'all');
-                            load(reset: true);
-                          },
-                        );
-                        final b = DropdownButtonFormField<String>(
-                          isExpanded: true,
-
-                          initialValue: status ?? 'all',
-                          decoration: const InputDecoration(
-                            labelText: 'حالة الطلب',
-                          ),
-                          items: [
-                            const DropdownMenuItem(
-                              value: 'all',
-                              child: Text('جميع الحالات'),
-                            ),
-                            ...statusLabels.entries.map(
-                              (e) => DropdownMenuItem(
-                                value: e.key,
-                                child: Text(e.value),
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            setState(() => status = v == 'all' ? null : v);
-                            load(reset: true);
-                          },
-                        );
-                        return wide
-                            ? Row(
-                                children: [
-                                  Expanded(child: a),
-                                  const SizedBox(width: 12),
-                                  Expanded(child: b),
-                                ],
-                              )
-                            : Column(
-                                children: [a, const SizedBox(height: 9), b],
-                              );
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    OrderFilters(
-                      fixedCompanyId: widget.companyId,
-                      initialFilters: filters,
-                      onChanged: (value) {
-                        filters = value;
-                        widget.onFiltersChanged?.call(value);
-                        load(reset: true);
-                      },
-                    ),
-                    DropdownButtonFormField<String>(
-                      initialValue: sort,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'ترتيب الإنشاء',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'desc',
-                          child: Text('الأحدث أولاً'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'asc',
-                          child: Text('الأقدم أولاً'),
-                        ),
-                      ],
-                      onChanged: search.text.trim().length >= 2
-                          ? null
-                          : (value) {
-                              sort = value ?? 'desc';
-                              load(reset: true);
-                            },
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: search,
-                      textInputAction: TextInputAction.search,
-                      onChanged: (_) => setState(() {}),
-                      onSubmitted: (_) => load(reset: true),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.search),
-                        labelText: 'بحث في كل الطلبات المسموح لك بها',
-                        hintText: 'رقم الطلب، رقم الهاتف الكامل أو بداية الاسم',
-                        suffixIcon: IconButton(
-                          tooltip: 'تنفيذ البحث',
-                          onPressed: () => load(reset: true),
-                          icon: const Icon(Icons.search),
-                        ),
-                      ),
-                    ),
+                        ],
+                      )
+                    else ...[
+                      _filterControls(),
+                      const SizedBox(height: 10),
+                      _searchField(),
+                    ],
                     if (search.text.trim().isNotEmpty)
                       Align(
                         alignment: Alignment.centerLeft,
@@ -278,9 +294,9 @@ class _LiveOrdersState extends State<LiveOrders> {
                           label: const Text('مسح البحث'),
                         ),
                       ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     const Text(
-                      'البحث على الخادم. اضغط بحث في لوحة المفاتيح. الاسم من حرفين، والهاتف برقم كامل؛ تظهر أول 50 نتيجة.',
+                      'البحث على الخادم. الاسم من حرفين، والهاتف برقم كامل؛ تظهر أول 50 نتيجة.',
                       style: TextStyle(fontSize: 11, color: VColors.muted),
                     ),
                   ],
@@ -336,7 +352,12 @@ class _LiveOrdersState extends State<LiveOrders> {
   Widget _orderCard(Map<String, dynamic> o) {
     final state = o['status']?.toString() ?? 'created',
         color = statusColors[state] ?? VColors.brand;
+    final scope = o['companyId'] != null ? 'شركة توصيل' : 'غير مسندة';
+    final created = o['createdAt'] != null
+        ? businessDate(o['createdAt'])
+        : null;
     return VLivePanel(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: InkWell(
         onTap: () => Navigator.push(
           context,
@@ -346,7 +367,7 @@ class _LiveOrdersState extends State<LiveOrders> {
           ),
         ).then((_) => load(reset: true)),
         child: Padding(
-          padding: const EdgeInsets.all(2),
+          padding: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -383,18 +404,21 @@ class _LiveOrdersState extends State<LiveOrders> {
                   ),
                 ],
               ),
-              const SizedBox(height: 7),
+              const SizedBox(height: 4),
               Text(
-                'طلب #${o['id']} • ${o['city'] ?? ''} / ${o['area'] ?? ''}',
-                style: const TextStyle(color: VColors.muted, fontSize: 12),
+                'طلب #${o['id']} • $scope • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
+                '${created != null ? ' • $created' : ''}',
+                style: const TextStyle(color: VColors.muted, fontSize: 11),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
               Wrap(
                 spacing: 12,
-                runSpacing: 6,
+                runSpacing: 5,
                 children: [
                   Text(
                     '${o['description'] ?? ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 12),
                   ),
                   if (o['amount'] != null)
@@ -412,20 +436,20 @@ class _LiveOrdersState extends State<LiveOrders> {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Flexible(
                     child: Text(
-                      'فتح تفاصيل الطلب',
-                      style: TextStyle(color: VColors.brand, fontSize: 12),
+                      'فتح التفاصيل',
+                      style: TextStyle(color: VColors.brand, fontSize: 11),
                     ),
                   ),
-                  SizedBox(width: 6),
+                  SizedBox(width: 4),
                   Icon(
                     Icons.arrow_back_ios_new,
-                    size: 12,
+                    size: 11,
                     color: VColors.brand,
                   ),
                 ],
