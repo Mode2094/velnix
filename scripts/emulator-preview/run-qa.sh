@@ -19,4 +19,5 @@ for _ in range(240):
 else:raise SystemExit('Preview startup not verified; inspect launcher/build/emulator logs')
 PY
 node scripts/emulator-preview/browser.cjs
+node scripts/emulator-preview/join-approval.cjs
 node scripts/emulator-preview/readback.cjs
