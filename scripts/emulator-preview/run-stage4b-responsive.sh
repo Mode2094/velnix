@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 4B — responsive / RTL acceptance across five viewports and five roles.
+# Stage 4B — responsive / RTL acceptance across ten viewports and five roles.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p build/qa/emulator-stage4b

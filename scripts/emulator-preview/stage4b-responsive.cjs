@@ -20,11 +20,16 @@ const out = path.join(root, 'build/qa/emulator-stage4b');
 fs.mkdirSync(out, { recursive: true });
 
 const VIEWPORTS = [
-  { name: 'desktop-extended', width: 1440, height: 1000, layout: 'extended' },
-  { name: 'laptop-wide', width: 1024, height: 768, layout: 'wide' },
-  { name: 'tablet-portrait', width: 768, height: 1024, layout: 'mobile' },
-  { name: 'phone-large', width: 390, height: 844, layout: 'mobile' },
-  { name: 'phone-small', width: 360, height: 800, layout: 'mobile' }
+  { name: 'phone-320', width: 320, height: 640, layout: 'mobile' },
+  { name: 'phone-375', width: 375, height: 812, layout: 'mobile' },
+  { name: 'phone-390', width: 390, height: 844, layout: 'mobile' },
+  { name: 'phone-430', width: 430, height: 932, layout: 'mobile' },
+  { name: 'tablet-768', width: 768, height: 1024, layout: 'mobile' },
+  { name: 'laptop-1024', width: 1024, height: 768, layout: 'wide' },
+  { name: 'laptop-1280', width: 1280, height: 800, layout: 'wide' },
+  { name: 'laptop-1366', width: 1366, height: 768, layout: 'wide' },
+  { name: 'laptop-1440', width: 1440, height: 900, layout: 'extended' },
+  { name: 'desktop-1920', width: 1920, height: 1080, layout: 'extended' }
 ];
 const ROLES = ['generalManager', 'manager', 'warehouse', 'sales', 'dataEntry'];
 const AR = {
@@ -185,7 +190,7 @@ async function nav(p, kind) {
     kind: 'stage4b-responsive-rtl',
     sourceCommit: process.env.SOURCE_COMMIT || null,
     viewports: VIEWPORTS, roles: ROLES, results,
-    frameworkErrors: consoleErrors.length,
+    frameworkErrors: consoleErrors.length, frameworkErrorDetail: consoleErrors.slice(0, 100),
     overflowErrors: overflows.length,
     overflowDetail: overflows.slice(0, 20),
     productionTouched: false
