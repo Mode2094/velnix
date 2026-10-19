@@ -163,7 +163,7 @@ async function main(){
    await okay(sessions.generalManager.p,'saveMember',{id:'qa-dataEntry',name:names.dataEntry,role:'dataEntry',permissions:[],salesSupervisorId:'qa-sales',active:false});
    releaseRefresh();const response=await refreshed;assert.equal(response.status(),400);await response.finished();
   }finally{releaseRefresh();await p.unroute('**/europe-west1/joinSession',refreshRoute);await p.evaluate(()=>window.resumeAuthorizationFrames());}
-  await p.getByText(/حسابك معطل|يلزم حساب Google موثق وفعال/).first().waitFor({timeout:15000});await denied(p,'getOrder',{id:orders.dataEntry.id});assert.equal(await p.getByText('إدارة الطلبات',{exact:true}).count(),0);await p.screenshot({path:path.join(out,'disabled-live-session.png')});
+  await p.getByText(/حسابك معطل|يلزم حساب (?:Google )?موثق وفعال/).first().waitFor({timeout:15000});await denied(p,'getOrder',{id:orders.dataEntry.id});assert.equal(await p.getByText('إدارة الطلبات',{exact:true}).count(),0);await p.screenshot({path:path.join(out,'disabled-live-session.png')});
   await okay(sessions.generalManager.p,'decideJoinRequest',{id:'qa-pending',decision:'rejected'});await sessions.pending.p.getByText('تم رفض طلب انضمامك. راجع المدير العام',{exact:true}).waitFor({timeout:15000});await denied(sessions.pending.p,'getOrder',{id:orders.generalManager.id});
  });
  assert.equal(results.length,21);assert.deepEqual(pageErrors,[]);
