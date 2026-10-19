@@ -391,3 +391,60 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 
 هذا ليس فشلًا في القراءة أو الربط: الشحنة الحقيقية `1318368` قُرئت من Click، وحُفظت حالتها ومصدرها وتاريخها وملاحظتها في Firestore الإنتاجي، وظهر أثر Audit. المتبقي هو تفعيل الإرسال المالي الآمن واختبار الواجهة بحساب مصرح.
 
+
+---
+
+# CLICK LIVE EMAIL/PASSWORD & PRODUCTION UI ACCEPTANCE (FINAL)
+
+**التاريخ:** 2026-10-19  
+**الكود المنشور:** `4af190d`  
+**CI:** `39296162147` — جميع الوظائف ناجحة  
+**Hosting:** https://velnix-6c1a2.web.app
+
+## 1. Email/Password Login
+
+- أُضيف تسجيل الدخول بالبريد وكلمة المرور مع إظهار/إخفاء كلمة المرور، التحقق، إعادة التعيين، ورسائل الخطأ.
+- Google بقي خيارًا إضافيًا.
+- الخادم يقبل جلسات `password` فقط مع بريد موثق وفعال، ويحافظ على رفض الحسابات المعطلة وغير الموثقة.
+- أُنشئت حسابات اختبار إنتاجية مؤقتة للأدوار الثمانية، ثم **حُذفت من Auth وFirestore** بعد الاختبار.
+- لم تُكتب كلمات المرور في Git أو التقارير.
+
+## 2. Chrome E2E المنشور
+
+- **GM:** دخول، dashboard، الطلبات، فتح `click_e2e_1318368`، عرض البوليصة/المرجع/الحالة/المصدر.
+- **مزامنة Click من الواجهة:** طلب `syncClickOrder` أعاد **200**، وتحدّث `lastSyncAt` في Firestore والواجهة.
+- **manager / warehouse / sales / dataEntry:** دخول ناجح مع اختلاف الصلاحيات والواجهة.
+- **sales:** لا يرى زر مزامنة Click.
+- **pending / rejected / disabled:** شاشات منع الدخول تعمل.
+- **الحسابات الاختبارية:** حُذفت، وبقي حساب المالك `moderohe8@gmail.com` فقط.
+
+## 3. App Check
+
+- لاختبار المتصفح الآلي، خُفّض `minValidScore` مؤقتًا إلى `0`، ثم **أُعيد إلى `0.5`** والتحقق منه.
+- هذا إجراء اختبار موثق؛ لم يُترك التعيين المخفّض في الإنتاج.
+
+## 4. الحالة
+
+| البند | النتيجة |
+|---|---|
+| Email/Password Login | **PASS** — إنتاج |
+| جميع الأدوار | **PASS** — إنتاج |
+| Chrome Click Sync | **PASS** — `syncClickOrder` 200 |
+| Click getorder | **PASS** — HTTP 200 |
+| Click setorder | **PASS سابق** — 1318368 فقط، لا تكرار |
+| Click send من الواجهة | **BLOCKED** — `clickSendEnabled=false` |
+| Financial semantics | **BLOCKED** |
+| Security | **PASS** — 401، الأدوار، App Check مستعاد |
+| Backups | **PASS** — PITR + نسختان READY |
+| Firebase Deploy | **PASS** — الوظائف ACTIVE |
+| Hosting | **PASS** |
+| CI | **PASS** |
+| Contract Match | **BLOCKED** — لا عقد/فيديو |
+| Client Handover | **BLOCKED** — إرسال Click + المطابقة التعاقدية |
+
+## 5. الحكم
+
+**Limited-scope production acceptance: PASS** لتسجيل الدخول والأدوار وقراءة/مزامنة Click من الواجهة.  
+**Full client handover: NOT READY** بسبب إرسال Click المعطّل، وغموض `Ord_Amt`، وغياب العقد/الفيديو، وعدم اختبار Google Login في جلسة إنتاجية، والحاجة إلى توفير حسابات Email/Password إداريًا.
+
+الوثائق في `delivery/` والتقرير التفصيلي في `delivery/VELNIX_FINAL_CLIENT_ACCEPTANCE_REPORT_AR.md`.
