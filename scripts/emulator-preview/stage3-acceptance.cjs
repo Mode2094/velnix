@@ -16,6 +16,8 @@
 process.env.VELNIX_SDK_BASE = process.env.VELNIX_SDK_BASE || '/firebase-sdk/12.19.0/';
 
 const assert = require('node:assert/strict');
+const frame = p => p.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+async function activate(p, locator) { await p.bringToFront(); await p.waitForTimeout(60); await locator.evaluate(el => (el.closest('[flt-tappable]') || el).click()); await frame(p); }
 const { chromium } = require('playwright');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -68,7 +70,7 @@ async function login(role) {
   await p.evaluate(() => document.querySelector('flt-semantics-placeholder')?.click());
   await p.getByRole('button', { name: 'المتابعة باستخدام Google' }).waitFor({ timeout: 60000 });
   const popup = ctx.waitForEvent('page', { timeout: 30000 });
-  await p.mouse.click(720, 600);
+  await activate(p, p.getByRole('button', { name: 'المتابعة باستخدام Google' }).first());
   await (await popup).getByText(role.toLowerCase() + '@velnix.test', { exact: true }).click();
   await p.getByText('أهلاً، ' + (role === 'generalManager' ? 'مدير عام اصطناعي' : 'مبيعات اصطناعي'), { exact: true }).waitFor({ timeout: 60000 });
   return p;
