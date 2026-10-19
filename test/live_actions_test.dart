@@ -589,4 +589,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('تغييرات غير محفوظة'), findsOneWidget);
   });
+
+  testWidgets('order filters open in a sheet on phones and close on back', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name == 'listCompanies' || name == 'listOrderCreators') {
+        return {'items': <Map<String, dynamic>>[]};
+      }
+      if (name == 'listOrders') {
+        return {'items': <Map<String, dynamic>>[], 'nextAfterId': null};
+      }
+      throw StateError(name);
+    });
+    await tester.pumpWidget(
+      app(
+        LiveOrders(
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('الفلاتر والترتيب'), findsOneWidget);
+    await tester.tap(find.byTooltip('الفلاتر والترتيب'));
+    await tester.pumpAndSettle();
+    expect(find.text('ترتيب الإنشاء'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('ترتيب الإنشاء'), findsNothing);
+  });
 }
