@@ -672,3 +672,115 @@ Audit:
 - CI run: `39445675185` — **PASS** (firebase, flutter, android, emulator-ui).
 - Production deploy: `saveCompany`, `assignCompany`, `listAudit`, Hosting.
 - Scheduler: `firebase-schedule-syncClickStatuses-europe-west1` **ENABLED** every 15 minutes.
+
+---
+
+# FINAL UX, PERFORMANCE & TEAM MANAGEMENT RELEASE — 2026-10-20
+
+## 1. Order Details Redesign
+
+The order detail route now uses a decision-oriented layout instead of a single dense text block:
+
+- Header: customer, order number with copy, status badge, delivery company, policy number, last update, refresh.
+- Customer card: name, phone with copy, address, contents, quantity, notes.
+- Order card: Velnix status, amount, creation date, responsible employee, delivery company, payment method.
+- Click Delivery card: shipping status, policy, Click reference, last sync, last status update, source, Click note, and the sync action with inline success/failure feedback.
+- Actions card: print, status transitions, edit, assign company, send, uncertain-send review, and reconcile. Unavailable actions carry a clear reason.
+- Technical details: raw Click amounts, sync diagnostics, internal IDs and provider data are inside a collapsed section visible only to authorized roles.
+- Timeline: icon per event, Arabic label, actor, date/time, and expandable details. Duplicate events are suppressed.
+- Loading uses a dedicated skeleton; RTL, mobile/desktop layouts and no-overflow behavior are covered by the screen matrix.
+
+The payment-method field remains removed from order creation.
+
+## 2. Hidden Operations and Sync Tabs
+
+- `المزامنة` and `العمليات` are removed from the sidebar, drawer, mobile navigation and account menu.
+- A navigation guard prevents programmatic access to those indices.
+- `LiveAudit`/`LiveSyncCenter`, Cloud Functions, Firestore collections, scheduler jobs and audit logging remain intact.
+- Order details keep the Click sync action and the order timeline; CI asserts that the tabs are absent while backend audit remains callable.
+
+## 3. Performance Before / After
+
+Environment: Chrome production, same GM account, fresh browser context, same data. Times are wall-clock UI transitions unless noted.
+
+| Journey | Before | After | Notes |
+|---|---:|---:|---|
+| Orders tab (first open) | 235 ms | 132 ms | `listOrders` warm |
+| New order form | 138 ms | 115 ms | no payment field |
+| Companies (first open) | 3,667 ms | 3,506 ms | cold `companyStats` dominates |
+| Team (first open) | 1,290 ms | 1,213 ms | cold `listMembers` |
+| Orders revisit | 84 ms | 77 ms | |
+| Dashboard revisit | 3,301 ms | **115 ms** | 30s scoped cache |
+| Companies revisit | not measured | **89 ms** | cached list + stats |
+| Team revisit | not measured | **83 ms** | cached directory |
+| Order detail (warm) | 1,663 ms | 1,930 ms | `getOrder` 1,881 → 1,824 ms; layout is richer |
+| Session bootstrap calls | 2× `joinSession` + `me` (≈4.7 s total) | 1× `joinSession` (≈2.1 s) | `joinSession` now returns member; duplicate initial snapshot ignored |
+| Cloud Function calls in measured journey | 17 | 8 | dedupe/cache |
+| `main.dart.js` | 4,701,158 B | 4,779,954 B | +1.7%; Brotli 986,750 B |
+
+Cache policy:
+
+- 30 seconds max, keyed by authenticated UID.
+- Only reference data (`listCompanies`, `listMembers`, `listOrderCreators`), dashboard aggregates, company stats and first directory pages are cached.
+- Invalidated on company/member/order mutations; cleared on permission change and sign-out.
+- Authentication/session policy is never cached; all authorization remains server-side.
+- Click shipping status is not cached and still refreshes through the order route/scheduler.
+
+Cold Cloud Functions and first-page network latency remain the dominant cost on first visit; these are backend/network costs and were not hidden behind a fake progress UI. Revisits and session bootstrap are materially faster.
+
+## 4. Team Management
+
+New Admin SDK callables:
+
+- `createEmployee`: general-manager only. Validates role/permissions/email/password, checks duplicate Auth and Firestore profiles, creates the Firebase Auth user, then creates `members/{uid}` atomically; rolls back the Auth user if the profile write fails.
+- `resetEmployeePassword`: general-manager only. Requires a password provider, updates the password, revokes refresh tokens, writes `member.password_reset` audit without the password value.
+- `saveMember` continues to handle role, permissions, active/disabled and supervisor changes; disabling updates Auth and revokes refresh tokens.
+
+The team UI now includes:
+
+- `إضافة موظف` with name, email, initial password, confirmation, role, active flag and permissions.
+- `تعيين كلمة مرور جديدة` for existing employees, with confirmation and a clear warning that previous sessions are revoked.
+- Existing status badges and edit controls.
+
+Security evidence:
+
+- Non-GM `createEmployee`/`resetEmployeePassword` rejected with `permission-denied` in Emulator.
+- Duplicate email rejected; malformed roles/permissions rejected.
+- Old password rejected and new password accepted after reset.
+- Disabled account rejected at login.
+- Passwords are never written to Firestore, logs or audit responses.
+- Firebase Auth and Firestore profiles are consistent: 7 Auth users / 7 member profiles, no orphans; existing `@velnix.test` accounts were not deleted or recreated.
+
+The production QA account `qa.final.20261020@velnix.test` was created, reset, logged in with the new password, then disabled and left disabled as evidence. No customer accounts were modified.
+
+## 5. Click Continuity
+
+- `click_delivery_1603` remains `enabled=true`, `clickSendEnabled=true`, `clickUserId=1603`.
+- Order `3sq4MGbCDyMqEqRKqSra` remains linked to `1320031` / `VNX-3sq4MGbCDyMqEqRKqSra`.
+- `syncClickStatuses` remains ACTIVE; scheduler still runs every 15 minutes.
+- Production scheduled runs at 18:34 and 18:49 UTC: `checked=1, updated=0, failed=0, skipped=0`.
+- Manual sync from the redesigned Click card succeeded and showed inline success.
+- No new Click shipment was created during this release; total remains 3.
+
+## 6. Verification
+
+| Gate | Result |
+|---|---|
+| Flutter Analyze | PASS |
+| Functions Unit | 193/193 PASS |
+| Emulator (Google join + workflow) | 47/47 PASS |
+| Flutter screen matrix 320–1920 / 1.0–2.0 | 100/100 PASS |
+| Flutter Click/action tests | PASS |
+| Production Chrome order detail / sync / team | PASS |
+| CI | **PASS** — `39487815022` |
+| Hosting + Functions deploy | PASS |
+
+## 7. Deployment
+
+- Functions deployed: `joinSession`, `createEmployee`, `resetEmployeePassword`.
+- Hosting deployed to `https://velnix-6c1a2.web.app`.
+- Production code commit: `13c1924`; latest HEAD (CI harness): `ef82474`.
+- CI run: `39487815022` — firebase, flutter, android, emulator-ui all PASS.
+- Custom IAM role `velnixInternalRuntime` updated with `firebaseauth.users.create` and `firebaseauth.users.delete`; existing Firestore/Auth read/update permissions retained.
+- No Firestore rules/indexes or destructive data changes were required.
+- Rollback path: redeploy the previous Hosting version and previous Functions revisions; no schema/data migration to reverse.
