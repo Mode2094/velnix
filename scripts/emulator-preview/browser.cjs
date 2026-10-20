@@ -43,8 +43,8 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  orders[role]={id:body.result.id,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
 }
 async function search(p,customer){
- const directory=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listOrderCreators')&&r.request().method()==='POST');await nav(p,'orders');await directory;await frame(p);await p.getByText('إدارة الطلبات',{exact:true}).waitFor();
- const field=p.locator('input[aria-label="بحث في كل الطلبات المسموح لك بها"]');await field.focus();await frame(p);await selectAll(p);await p.keyboard.insertText(customer);await frame(p);
+ const directory=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listOrderCreators')&&r.request().method()==='POST');await nav(p,'orders');await directory;await frame(p);await p.getByText('إدارة الطلبات',{exact:true}).waitFor();await p.waitForTimeout(250);
+ const field=p.getByRole('textbox',{name:'بحث في كل الطلبات المسموح لك بها',exact:true});await field.scrollIntoViewIfNeeded();const box=await field.boundingBox();for(let attempt=0;attempt<3;attempt++){await p.mouse.click(box.x+box.width/2,box.y+box.height/2);await frame(p);const focused=await p.evaluate(()=>document.activeElement?.getAttribute('aria-label')||'');if(focused==='بحث في كل الطلبات المسموح لك بها'){await p.waitForTimeout(200);break;}}await selectAll(p);await p.keyboard.insertText(customer);await p.waitForTimeout(200);await frame(p);
  const found=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/searchOrders')&&r.request().method()==='POST');await p.keyboard.press('Enter');const response=await found;assert.equal(response.request().postDataJSON().data.query,customer);assert.equal(response.status(),200);return (await response.json()).result.items;
 }
 async function openOrder(p,o){
