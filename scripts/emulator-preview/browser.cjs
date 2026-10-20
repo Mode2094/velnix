@@ -99,7 +99,7 @@ async function main(){
   for(const [label,status] of [['تحويل إلى قيد المراجعة','review'],['تحويل إلى قيد التجهيز','preparing'],['تحويل إلى جاهز للتسليم','ready'],['إكمال الطلب الداخلي','delivered']]){
    const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/changeOrderStatus')&&r.request().method()==='POST');
    await click(p,label);if(status==='delivered')await click(p,'تأكيد الإكمال');assert.equal((await response).status(),200);
-   await p.getByText('الحالة: '+({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).waitFor();
+   await p.getByText(({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).first().waitFor();
   }
   assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),0);
   const closed=await okay(p,'getOrder',{id:o.id});assert.equal(closed.order.completionSource,'internal');assert.deepEqual(closed.order.actions.statuses,[]);
