@@ -1472,32 +1472,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                     },
                   ),
                 ),
-                const SizedBox(height: 12),
-                VLivePanel(
-                  child: DropdownButtonFormField<String>(
-                    isExpanded: true,
-
-                    initialValue:
-                        ['عند الاستلام', 'مدفوع مسبقاً'].contains(paymentMethod)
-                        ? paymentMethod
-                        : 'عند الاستلام',
-                    decoration: const InputDecoration(labelText: 'طريقة الدفع'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'عند الاستلام',
-                        child: Text('عند الاستلام'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'مدفوع مسبقاً',
-                        child: Text('مدفوع مسبقاً'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      _dirty = true;
-                      setState(() => paymentMethod = value ?? 'عند الاستلام');
-                    },
-                  ),
-                ),
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: busy ? null : save,

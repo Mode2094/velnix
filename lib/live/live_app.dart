@@ -769,121 +769,134 @@ class _LiveShellState extends State<LiveShell> {
     });
   }
 
-  Widget _sheetHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-    child: Text(
-      title,
-      style: const TextStyle(
-        color: VColors.muted,
-        fontSize: 11,
-        fontWeight: FontWeight.w800,
-      ),
-    ),
-  );
+  List<int> get permittedEntries => [
+    0,
+    1,
+    2,
+    3,
+    6,
+    if (widget.policy.can('manageEmployees')) 4,
+    if (widget.policy.can('viewAudit')) 5,
+    if (widget.policy.can('viewReports')) 7,
+    if (widget.policy.can('viewSync')) 8,
+  ];
 
-  Future<void> _showMore(BuildContext context) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _sheetHeader('التشغيل'),
-            ListTile(
-              leading: const Icon(Icons.local_shipping_outlined),
-              title: const Text('شركات التوصيل'),
-              onTap: () {
-                Navigator.pop(ctx);
-                go(3);
-              },
-            ),
-            if (widget.policy.can('manageEmployees')) _sheetHeader('الإدارة'),
-            if (widget.policy.can('manageEmployees'))
-              ListTile(
-                leading: const Icon(Icons.groups_outlined),
-                title: const Text('الفريق والصلاحيات'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  go(4);
-                },
-              ),
-            if (widget.policy.can('viewAudit') ||
-                widget.policy.can('viewReports'))
-              _sheetHeader('التحليلات والتدقيق'),
-            if (widget.policy.can('viewAudit'))
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('سجل العمليات'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  go(5);
-                },
-              ),
-            if (widget.policy.can('viewReports'))
-              ListTile(
-                leading: const Icon(Icons.bar_chart_outlined),
-                title: const Text('التقارير'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  go(7);
-                },
-              ),
-            if (widget.policy.can('viewSync'))
-              ListTile(
-                leading: const Icon(Icons.sync_outlined),
-                title: const Text('مركز المزامنة'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  go(8);
-                },
-              ),
-            if (widget.policy.can('manageSettings'))
-              ListTile(
-                leading: const Icon(Icons.tune_outlined),
-                title: const Text('إعدادات المؤسسة'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LiveSettings(),
-                    ),
-                  );
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: const Text('تسجيل الخروج'),
-              onTap: () {
-                Navigator.pop(ctx);
-                NotificationsService.instance.signOut();
-              },
-            ),
-          ],
+  Widget _navEntry(int index, {required bool expanded, bool drawer = false}) {
+    final active = selected == index;
+    if (expanded) {
+      return ListTile(
+        selected: active,
+        selectedTileColor: VColors.softBlue,
+        selectedColor: VColors.brand,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(
+          icons[index],
+          color: active ? VColors.brand : VColors.muted,
+        ),
+        title: Text(
+          titles[index],
+          style: TextStyle(
+            fontWeight: active ? FontWeight.w900 : FontWeight.w600,
+          ),
+        ),
+        onTap: () {
+          if (drawer) Navigator.pop(context);
+          go(index);
+        },
+      );
+    }
+    return Tooltip(
+      message: titles[index],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => go(index),
+        child: Container(
+          height: 56,
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+          decoration: BoxDecoration(
+            color: active ? VColors.softBlue : null,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icons[index],
+            color: active ? VColors.brand : VColors.muted,
+          ),
         ),
       ),
     );
   }
+
+  Widget _drawer(BuildContext context) => Drawer(
+    child: SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.all_inbox_rounded,
+                  color: VColors.brand,
+                  size: 28,
+                ),
+                const SizedBox(width: 9),
+                const Text(
+                  'Velnix',
+                  style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+                ),
+                const Spacer(),
+                Text(
+                  widget.policy.roleLabel,
+                  style: const TextStyle(fontSize: 11, color: VColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(8),
+              children: [
+                for (final index in permittedEntries)
+                  _navEntry(index, expanded: true, drawer: true),
+              ],
+            ),
+          ),
+          if (widget.policy.can('manageSettings')) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.tune_outlined),
+              title: const Text('إعدادات المؤسسة'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (_) => const LiveSettings()),
+                );
+              },
+            ),
+          ],
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('تسجيل الخروج'),
+            onTap: () {
+              Navigator.pop(context);
+              NotificationsService.instance.signOut();
+            },
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width,
         wide = w >= 840,
         extended = w >= 1200;
-    final entries = <int>[
-      0,
-      1,
-      2,
-      3,
-      6,
-      if (widget.policy.can('manageEmployees')) 4,
-      if (widget.policy.can('viewAudit')) 5,
-      if (widget.policy.can('viewReports')) 7,
-      if (widget.policy.can('viewSync')) 8,
-    ];
+    final entries = permittedEntries;
     final mobileEntries = <int>[0, 1, 2, 6];
-    final railEntries = <int>[0, 1, 2, 3, 6];
     if (!entries.contains(selected)) selected = 0;
     Widget screen = switch (selected) {
       0 => LiveDashboard(
@@ -927,6 +940,8 @@ class _LiveShellState extends State<LiveShell> {
       _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
     };
     return Scaffold(
+      drawer: wide ? null : _drawer(context),
+      drawerEnableOpenDragGesture: !wide,
       appBar: AppBar(
         toolbarHeight: 70,
         backgroundColor: Colors.white,
@@ -1016,77 +1031,56 @@ class _LiveShellState extends State<LiveShell> {
                 color: Colors.white,
                 border: Border(left: BorderSide(color: VColors.line)),
               ),
-              child: NavigationRail(
-                leading: IconButton(
-                  tooltip: railCollapsed ? 'توسيع القائمة' : 'طي القائمة',
-                  onPressed: () =>
-                      setState(() => railCollapsed = !railCollapsed),
-                  icon: Icon(
-                    railCollapsed
-                        ? Icons.chevron_right_outlined
-                        : Icons.chevron_left_outlined,
-                  ),
-                ),
-                backgroundColor: Colors.white,
-                selectedIndex: railEntries.contains(selected)
-                    ? railEntries.indexOf(selected)
-                    : railEntries.length,
-                extended: extended && !railCollapsed,
-                labelType: extended
-                    ? NavigationRailLabelType.none
-                    : NavigationRailLabelType.all,
-                onDestinationSelected: (v) {
-                  if (v < railEntries.length) {
-                    go(railEntries[v]);
-                  } else {
-                    _showMore(context);
-                  }
-                },
-                destinations: [
-                  ...railEntries.map(
-                    (i) => NavigationRailDestination(
-                      icon: Icon(icons[i]),
-                      label: Text(titles[i]),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: IconButton(
+                        tooltip: railCollapsed ? 'توسيع القائمة' : 'طي القائمة',
+                        onPressed: () =>
+                            setState(() => railCollapsed = !railCollapsed),
+                        icon: Icon(
+                          railCollapsed
+                              ? Icons.chevron_right_outlined
+                              : Icons.chevron_left_outlined,
+                        ),
+                      ),
                     ),
-                  ),
-                  const NavigationRailDestination(
-                    icon: Icon(Icons.more_horiz),
-                    label: Text('المزيد'),
-                  ),
-                ],
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        children: [
+                          for (final index in entries)
+                            _navEntry(
+                              index,
+                              expanded: extended && !railCollapsed,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           Expanded(child: screen),
         ],
       ),
-      bottomNavigationBar: wide
+      bottomNavigationBar: wide || !mobileEntries.contains(selected)
           ? null
           : SafeArea(
               top: false,
               child: NavigationBar(
                 height: 76,
-                selectedIndex: mobileEntries.contains(selected)
-                    ? mobileEntries.indexOf(selected)
-                    : 4,
-                onDestinationSelected: (i) {
-                  if (i < mobileEntries.length) {
-                    go(mobileEntries[i]);
-                  } else {
-                    _showMore(context);
-                  }
-                },
+                selectedIndex: mobileEntries.indexOf(selected),
+                onDestinationSelected: (i) => go(mobileEntries[i]),
                 labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 destinations: [
-                  ...mobileEntries.map(
-                    (i) => NavigationDestination(
+                  for (final i in mobileEntries)
+                    NavigationDestination(
                       icon: Icon(icons[i]),
                       label: titles[i],
                     ),
-                  ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.more_horiz),
-                    label: 'المزيد',
-                  ),
                 ],
               ),
             ),

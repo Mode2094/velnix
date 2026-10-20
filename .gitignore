@@ -26,6 +26,7 @@ ios/Flutter/Firebase.local.xcconfig
 .env
 .env.*
 !.env.example
+.local/
 # Sensitive Firebase deployment data
 functions/.env
 functions/.env.*

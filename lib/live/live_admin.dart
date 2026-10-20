@@ -634,9 +634,9 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                 const SizedBox(height: 12),
                 if (provider == 'click_delivery_v1')
                   const VFeedbackPanel(
-                    title: 'تكامل Click Delivery غير مفعّل',
+                    title: 'تكامل Click Delivery',
                     message:
-                        'لا اتصال أو إنشاء شحنة في هذه المرحلة. نحتاج استجابات الشركة وأكواد الحالات وتفسير المبالغ قبل إدخال الاعتمادات وتفعيل التكامل.',
+                        'اختبار الاتصال يقرأ شحنة موجودة عبر getorder فقط ولا ينشئ شحنة. إنشاء الشحنات يبقى محكوماً بإعدادات الشركة وUser_ID والاعتمادات على الخادم.',
                   ),
                 if (provider == 'click_delivery_v1')
                   VLivePanel(

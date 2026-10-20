@@ -223,6 +223,22 @@ test('sync requires a linked reference, a Click company and sendToDelivery permi
   await assert.rejects(functions.syncClickOrder.run({auth:salesAuth,data:{id:click.id}}),{code:'permission-denied'});
   assert.equal(clickReadCalls,0);
 });
+test('the Click connection test reads through getorder and never sends a shipment',async()=>{
+  clickReadCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};clickSendCalls=0;
+  const ok=await functions.testCompanyConnection.run({auth,data:{id:'click_fixture'}});
+  assert.equal(ok.connected,true);
+  assert.equal(ok.verified,'getorder');
+  assert.equal(ok.httpStatus,200);
+  assert.equal(clickReadCalls,1,'one read-only Click request');
+  assert.equal(clickSendCalls,0,'the connection test must never call setorder');
+  assert.equal((await db.doc('companies/click_fixture').get()).data().lastHealthConnected,true);
+  clickReadResponse={status:401,json:{}};
+  const failed=await functions.testCompanyConnection.run({auth,data:{id:'click_fixture'}});
+  assert.equal(failed.connected,false);
+  assert.match(failed.error,/HTTP 401/);
+  assert.equal((await db.doc('companies/click_fixture').get()).data().lastHealthConnected,false);
+  assert.equal(clickSendCalls,0);
+});
 test('the scheduled Click sync processes a due order and schedules the next check',async()=>{
   clickReadCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};
   const ref=await clickOrder('click_scheduled_due',{status:'dispatched',dispatchState:'sent',providerOrderId:'1318368',clickOrderRef:'VNX-CLICK-TEST-20261019-d',shippingStatus:'awaitingPickup',shippingStatusSource:'manual',nextClickSyncAt:Timestamp.fromMillis(Date.now()-1000)});

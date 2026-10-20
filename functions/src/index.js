@@ -372,14 +372,43 @@ async function companyCredentials(companyId,{allowInactive=false,requireSecrets=
   if(!c.exists||(!allowInactive&&(!c.data().enabled||c.data().archived))||(requireSecrets&&!s.exists))fail('failed-precondition','شركة التوصيل غير مجهزة');
   return {company:c.data(),secrets:s.data()||{}};
 }
+function clickHealthMessage(e){
+  if(e?.message==='click_user_id_missing')return 'لم يُضبط User_ID لحساب Click؛ احفظ الإعداد أولاً';
+  if(e?.message==='click_health_no_linked_order')return 'لا توجد شحنة Click مرتبطة بهذه الشركة لاختبار القراءة؛ اربط شحنة موجودة من البوابة أولاً';
+  if(e?.message==='invalid_click_url')return 'رابط Click Delivery لا يطابق العنوان الموثق للشركة';
+  if(e?.httpStatus)return `تعذر قراءة شحنة Click (HTTP ${e.httpStatus})؛ لم يتم إنشاء أو تعديل أي شحنة`;
+  return 'تعذر الاتصال بـClick عبر getorder؛ تحقق من الشبكة وUser_ID';
+}
+async function testClickHealth(companyId,company){
+  const userId=Number(company.clickUserId);
+  if(!Number.isSafeInteger(userId)||userId<1)throw Error('click_user_id_missing');
+  const snap=await db.collection('orders').where('companyId','==',companyId).limit(50).get();
+  const linked=snap.docs.map(d=>d.data()).filter(o=>typeof o.clickOrderRef==='string'&&o.clickOrderRef.trim())
+    .sort((a,b)=>(b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0))[0];
+  if(!linked)throw Error('click_health_no_linked_order');
+  const {status}=await readClickOrder(company,linked.clickOrderRef.trim(),userId);
+  if(status!==200){const e=Error('click_health_http_error');e.httpStatus=status;throw e;}
+  return {httpStatus:status};
+}
 exports.testCompanyConnection=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
   const id=idValue(req.data?.id);const {company,secrets}=await companyCredentials(id,{allowInactive:true});
-  requireOperationalProvider(company);
-  try{const json=await providerFor(company).health(company,await decryptSecret(secrets.apiTokenCiphertext));
+  try{
+    if(company.provider===CLICK_PROVIDER){
+      const result=await testClickHealth(id,company);
+      await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:true,lastHealthError:null});
+      return {connected:true,provider:company.provider,serviceStatus:'ok',verified:'getorder',httpStatus:result.httpStatus};
+    }
+    requireOperationalProvider(company);
+    const json=await providerFor(company).health(company,await decryptSecret(secrets.apiTokenCiphertext));
     await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:true,lastHealthError:null});
     return {connected:true,provider:company.provider,serviceStatus:'ok'};
-  }catch(e){await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:false,lastHealthError:'تعذر الاتصال بالمزود؛ تحقق من إعداداته'});logger.warn('delivery health check failed',{companyId:id,code:e.code||'unknown'});return {connected:false,error:'فشل اختبار الاتصال بالمزود؛ تحقق من إعداداته'};}
+  }catch(e){
+    const error=company.provider===CLICK_PROVIDER?clickHealthMessage(e):'فشل اختبار الاتصال بالمزود؛ تحقق من إعداداته';
+    await db.doc(`companies/${id}`).update({lastHealthCheck:FieldValue.serverTimestamp(),lastHealthConnected:false,lastHealthError:error});
+    logger.warn('delivery health check failed',{companyId:id,code:e.code||e.message||'unknown',httpStatus:e.httpStatus||null});
+    return {connected:false,error};
+  }
 });
 async function deliverySendCredentials(companyId){
   const [c,s]=await Promise.all([db.doc('companies/'+companyId).get(),db.doc('companySecrets/'+companyId).get()]);
