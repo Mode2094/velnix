@@ -34,8 +34,8 @@ async function login(role,email,expect){
 }
 async function scenario(name,fn){const start=Date.now();try{await fn();evidence.scenarios.push({name,status:'passed',ms:Date.now()-start});console.log('PASS',name);}catch(e){evidence.scenarios.push({name,status:'failed',error:e.message,ms:Date.now()-start});console.error('FAIL',name,e.message);throw e;}}
 async function openJoinRequests(gm){
- await nav(gm,'team');await gm.getByText('الفريق والصلاحيات',{exact:true}).waitFor({timeout:30000});
- await activate(gm,gm.getByText('الفريق والصلاحيات',{exact:true}));await gm.getByText('طلبات الانضمام',{exact:true}).waitFor({timeout:30000});
+ await nav(gm,'team');await gm.getByText('فريق العمل والصلاحيات',{exact:true}).waitFor({timeout:30000});
+ await gm.getByText('طلبات الانضمام',{exact:true}).waitFor({timeout:30000});
  await activate(gm,gm.getByRole('button',{name:'طلبات الانضمام',exact:true}));await gm.getByText('طلبات الانضمام',{exact:true}).first().waitFor({timeout:30000});
 }
 async function main(){

@@ -71,7 +71,7 @@ async function main(){
  });
  await scenario('UI hides out-of-scope search results, other amounts and administration',async()=>{
   for(const role of ['sales','dataEntry']){const p=sessions[role].p;assert.deepEqual(await search(p,orders.generalManager.customer),[]);await p.getByText('لا توجد طلبات مطابقة',{exact:false}).first().waitFor();
-   await nav(p,'more');assert.equal(await p.getByText('الفريق والصلاحيات',{exact:true}).count(),0);assert.equal(await p.getByText('سجل العمليات',{exact:true}).count(),0);await p.mouse.click(600,200);}
+   await nav(p,'more');assert.equal(await p.getByText('فريق العمل والصلاحيات',{exact:true}).count(),0);assert.equal(await p.getByText('سجل العمليات',{exact:true}).count(),0);await p.mouse.click(600,200);}
   for(const [role,target] of [['warehouse','generalManager'],['sales','dataEntry']]){const p=sessions[role].p;await openOrder(p,orders[target]);assert.equal((await p.locator('body').innerText()).includes(orders[target].amount),false);assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),0);await p.screenshot({path:path.join(out,role+'-other-amount-hidden.png')});await back(p);}
   for(const role of ['sales','dataEntry']){const r=await callable(sessions[role].p,'changeOrderStatus',{id:orders[role].id,status:'review'});assert.equal(r.ok,false);assert.equal(r.code,'functions/failed-precondition');}
  });
