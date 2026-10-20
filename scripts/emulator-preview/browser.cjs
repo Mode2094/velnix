@@ -32,7 +32,7 @@ async function login(role){
  else await p.getByText(role==='pending'?/بانتظار موافقة/:/معطل|موقوف/).first().waitFor({timeout:30000});
  sessions[role]={ctx,p};return p;
 }
-async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}await activate(p,p.getByRole('button').filter({hasText:label}).first());}
+async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',audit:'العمليات'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}await activate(p,p.getByRole('button').filter({hasText:label}).first());}
 async function create(p,role){await nav(p,'create');await p.getByText('إضافة طلب جديد',{exact:true}).waitFor();
  const customer=`طلب اصطناعي ${role} ${stamp}`,amount={generalManager:'11.101',manager:'22.202',warehouse:'33.303',sales:'44.404',dataEntry:'55.505'}[role];
  const fields={'اسم المستلم':customer,'رقم الهاتف':'0790000000','المحافظة':'عمان','المنطقة':'اختبار محلي','العنوان التفصيلي':'عنوان اصطناعي فقط','وصف محتويات الطلب':'طرد اختبار دون شحن','الكمية':'2','المبلغ (دينار أردني)':amount,'ملاحظات':'محاكيات فقط'};
@@ -130,7 +130,7 @@ async function main(){
   const missing=await sessions.generalManager.p.evaluate(async()=>{const {getAuth}=await import('/firebase-sdk/12.19.0/firebase-auth.js');const response=await fetch('http://127.0.0.1:5001/demo-velnix-preview/europe-west1/me',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await getAuth().currentUser.getIdToken()},body:JSON.stringify({data:{}})});return response.status;});assert.equal(missing,401);
  });
  await scenario('UI audit log and locally generated notifications with read receipt',async()=>{
-  const gm=sessions.generalManager.p;await nav(gm,'more');const displayed=gm.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listAudit')&&r.request().method()==='POST');await activate(gm,gm.getByText('سجل العمليات',{exact:true}));assert.equal((await displayed).status(),200);await gm.getByText('سجل العمليات',{exact:true}).waitFor();
+  const gm=sessions.generalManager.p;const displayed=gm.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listAudit')&&r.request().method()==='POST');await nav(gm,'audit');assert.equal((await displayed).status(),200);await gm.getByText('سجل العمليات',{exact:true}).waitFor();
   const audit=await okay(gm,'listAudit',{});assert.ok(audit.items.some(a=>a.entityId===orders.generalManager.id&&a.action==='order.status_changed'));await gm.screenshot({path:path.join(out,'audit-ui.png')});
   const p=sessions.dataEntry.p;await nav(p,'notices');await p.getByRole('button',{name:'تحديث',exact:true}).waitFor();
   await p.waitForFunction(()=>document.body.innerText.includes('طلب جديد'),null,{timeout:20000});
