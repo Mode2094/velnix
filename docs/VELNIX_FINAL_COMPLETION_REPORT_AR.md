@@ -784,3 +784,57 @@ The production QA account `qa.final.20261020@velnix.test` was created, reset, lo
 - Custom IAM role `velnixInternalRuntime` updated with `firebaseauth.users.create` and `firebaseauth.users.delete`; existing Firestore/Auth read/update permissions retained.
 - No Firestore rules/indexes or destructive data changes were required.
 - Rollback path: redeploy the previous Hosting version and previous Functions revisions; no schema/data migration to reverse.
+
+---
+
+# FINAL SIDEBAR CONSOLIDATION & ORDER DETAILS POLISH — 2026-10-21
+
+## 1. Sidebar Consolidation
+
+The sidebar is now the only primary navigation source:
+
+`الرئيسية` → `الطلبات` → `طلب جديد` → `شركات التوصيل` → `الفريق والصلاحيات` → `التقارير` → `الإشعارات` → `إعدادات المؤسسة` → `تسجيل الخروج`
+
+- The account `PopupMenuButton` and all duplicate navigation links were removed.
+- User identity, role, settings and logout now sit at the bottom of the sidebar/drawer.
+- On phones the sidebar is a single Drawer; the bottom navigation bar was removed to avoid duplicate destinations.
+- `المزامنة` and `العمليات` remain absent from navigation; backend functions, scheduler and audit remain intact.
+- Entries are filtered by the same permission checks; unavailable pages are not shown.
+- The list scrolls on short screens, keeps RTL and the active state, and uses tooltips in collapsed mode.
+
+## 2. Order Details Simplification
+
+The page now follows five clear sections:
+
+1. **ملخص الطلب**: customer, order number + copy, status badge, amount, delivery company, policy number, creation date.
+2. **معلومات العميل**: name, phone + copy, address, contents, quantity, notes only when present.
+3. **تتبع الشحنة**: company, Click status, policy, Click reference, last confirmed update, last sync, source, Click note and sync action with inline feedback.
+4. **الإجراءات**: only actions allowed by the current status/permissions; unavailable actions carry a reason.
+5. **سجل الحركة**: latest four primary events, newest first, with actor/time and expandable details; `عرض السجل كاملًا` enables lazy loading of the rest.
+
+Additional changes:
+
+- A four-step visual tracker is used only for the confirmed linear states. `تسليم جزئي`, `مؤجل` and `ملغي` are shown as explicit special states instead of being forced onto a false linear path.
+- The duplicate internal status text was removed from the summary; the status badge is the primary indicator.
+- Technical fields moved to the collapsed `تفاصيل تقنية` section, visible only to GM/viewSync/viewAudit roles: internal IDs, raw Click status, raw amounts, sync diagnostics, revision, internal dispatch state and barcode.
+- Labels were rewritten in Arabic; no internal variable names are exposed.
+- Initial order load requests 8 events instead of 30; the full log loads older events on demand.
+- Mobile layout uses compact stacked cards; no horizontal scroll or overflow.
+
+## 3. Verification
+
+- Flutter Analyze: **PASS**
+- Click/action tests: **34/34 PASS** for the targeted suites
+- Screen matrix at 320px and 390px, scale 2.0: **PASS**
+- Production Chrome: sidebar, drawer, order details, tracking, sync, full/short history, desktop/mobile **PASS**
+- CI: **`39505524689` — PASS**
+- No new Click shipment was created; manual status sync succeeded.
+
+## 4. Deployment
+
+- Production code commit: **`152d899`**
+- Latest HEAD (test harness): **`d4bc621`**
+- Hosting: deployed successfully.
+- `click_delivery_1603` remains enabled with sending enabled.
+- Order `3sq4MGbCDyMqEqRKqSra` remains linked to `1320031`.
+- Scheduler remains `ENABLED` every 15 minutes; last sync advanced without failures.
