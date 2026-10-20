@@ -626,7 +626,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                                   ShippingStatus.parse(
                                     o['shippingStatus'],
                                   )?.label ??
-                                  'غير مؤكدة؛ لم يكتمل عقد Click Delivery',
+                                  'لم تُرسل بعد',
                             if (o['shippingStatusSource'] == 'manual')
                               'مصدر حالة الشحنة':
                                   'إدخال يدوي بعد التحقق من بوابة Click',
@@ -852,7 +852,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                             Icons.history,
                             color: VColors.brand,
                           ),
-                          title: Text(eventLabel(e['action'])),
+                          title: Text(eventLabel(e['action'], e['details'])),
                           subtitle: Text(
                             '${e['actorName'] ?? ''} • ${businessDate(e['createdAt'])}',
                           ),

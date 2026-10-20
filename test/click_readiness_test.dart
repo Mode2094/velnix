@@ -148,7 +148,7 @@ void main() {
   }
   for (final width in [320.0, 768.0]) {
     testWidgets(
-      'Click draft has no activation, generic credentials or fake status mapping at $width',
+      'Click integration shows activation without generic credentials or fake status mapping at $width',
       (tester) async {
         tester.view.devicePixelRatio = 1;
         tester.view.physicalSize = Size(width, 900);
@@ -176,19 +176,63 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('تكامل Click Delivery غير مفعّل'), findsOneWidget);
+        expect(find.text('تكامل Click Delivery'), findsOneWidget);
         expect(find.text('User_ID لحساب Click'), findsOneWidget);
         expect(find.text('بيانات الاتصال السرية'), findsNothing);
         expect(find.text('ربط حالات التوصيل'), findsNothing);
         final toggle = tester.widget<SwitchListTile>(
           find.byType(SwitchListTile),
         );
-        expect(toggle.value, false);
-        expect(toggle.onChanged, isNull);
+        expect(toggle.value, true);
+        expect(toggle.onChanged, isNotNull);
         expect(tester.takeException(), isNull);
       },
     );
   }
+  testWidgets(
+    'an authorized admin can activate Click and the saved flag is true',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        expect(name, 'saveCompany');
+        saved = data;
+        return {'id': 'click'};
+      });
+      await tester.pumpWidget(
+        app(
+          const LiveCompanyForm(
+            initial: {
+              'id': 'click',
+              'name': 'Click Delivery',
+              'apiUrl': 'https://admin.clickdelivery.org/Client',
+              'provider': 'click_delivery_v1',
+              'enabled': false,
+              'clickUserId': '1603',
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        false,
+      );
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        true,
+      );
+      await tester.ensureVisible(find.text('حفظ إعدادات الشركة'));
+      await tester.tap(find.text('حفظ إعدادات الشركة'));
+      await tester.pumpAndSettle();
+      expect(saved?['enabled'], true);
+      expect(saved?['provider'], 'click_delivery_v1');
+      expect(saved?['clickUserId'], '1603');
+      expect(saved?['statusMap'], <String, String>{});
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'an authorized Click order without a linked shipment offers the reconcile action',
     (tester) async {

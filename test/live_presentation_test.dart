@@ -115,6 +115,15 @@ void main() {
       }
       expect(syncSourceLabel('poll'), 'مزامنة آلية');
       expect(syncSourceLabel('webhook'), 'تحديث من شركة التوصيل');
+      expect(
+        eventLabel('company_assigned', {'companyId': null}),
+        'إزالة إسناد شركة التوصيل',
+      );
+      expect(
+        eventLabel('company_assigned', {'companyId': 'click_delivery_1603'}),
+        'إسناد شركة توصيل',
+      );
+      expect(eventLabel('company_unassigned'), 'إزالة إسناد شركة التوصيل');
     },
   );
 

@@ -38,6 +38,7 @@ const eventLabels = {
   'edited': 'تعديل بيانات الطلب',
   'status_changed': 'تغيير الحالة',
   'company_assigned': 'إسناد شركة توصيل',
+  'company_unassigned': 'إزالة إسناد شركة التوصيل',
   'sent_to_delivery': 'إرسال الشحنة',
   'remote_status': 'تحديث شركة التوصيل',
   'dispatch_exception_resolved': 'مراجعة نتيجة الإرسال',
@@ -49,16 +50,25 @@ const eventLabels = {
   'click_status_conflict': 'تعارض حالة Click',
   'click_sync_failed': 'فشل مزامنة Click',
 };
-String eventLabel(dynamic action) =>
-    eventLabels[action?.toString()] ?? 'تحديث الطلب';
+String eventLabel(dynamic action, [dynamic details]) {
+  if (action?.toString() == 'company_assigned' &&
+      details is Map &&
+      details['companyId'] == null) {
+    return 'إزالة إسناد شركة التوصيل';
+  }
+  return eventLabels[action?.toString()] ?? 'تحديث الطلب';
+}
+
 String syncSourceLabel(dynamic source) => switch (source) {
   'webhook' => 'تحديث من شركة التوصيل',
   'poll' => 'مزامنة آلية',
   _ => 'تحديث حالة الشحنة',
 };
-String auditActionLabel(dynamic action) {
+String auditActionLabel(dynamic action, [dynamic extra]) {
   final value = action?.toString() ?? '';
-  if (value.startsWith('order.')) return eventLabel(value.substring(6));
+  if (value.startsWith('order.')) {
+    return eventLabel(value.substring(6), extra);
+  }
   return const {
         'company.saved': 'حفظ بيانات شركة التوصيل',
         'company.archived': 'أرشفة شركة التوصيل',

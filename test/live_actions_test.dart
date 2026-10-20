@@ -628,4 +628,91 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('ترتيب الإنشاء'), findsNothing);
   });
+
+  testWidgets(
+    'active Click company appears in the order picker and assignment is saved',
+    (tester) async {
+      String? assigned;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        if (name == 'getOrder') {
+          return {
+            'events': <Map<String, dynamic>>[],
+            'eventsMore': false,
+            'eventsAfterId': null,
+            'order': {
+              'id': 'o1',
+              'customer': 'عميل اختبار',
+              'status': 'ready',
+              'companyId': null,
+              'companyName': null,
+              'companyProvider': null,
+              'phone': '0791234567',
+              'city': 'عمان',
+              'area': 'وسط',
+              'address': 'عنوان اختبار',
+              'description': 'طرد',
+              'quantity': 1,
+              'amount': 12.345,
+              'dispatchState': 'idle',
+              'createdBy': 'gm',
+              'actions': {
+                'edit': false,
+                'assign': true,
+                'dispatch': false,
+                'resolve': false,
+                'statuses': <String>[],
+              },
+            },
+          };
+        }
+        if (name == 'listCompanies') {
+          return {
+            'items': [
+              {
+                'id': 'click_delivery_1603',
+                'name': 'Click Delivery',
+                'enabled': true,
+                'archived': false,
+                'provider': 'click_delivery_v1',
+              },
+              {
+                'id': 'disabled_company',
+                'name': 'شركة معطلة',
+                'enabled': false,
+                'archived': false,
+                'provider': 'generic_v1',
+              },
+            ],
+          };
+        }
+        if (name == 'assignCompany') {
+          assigned = data['companyId'] as String?;
+          return {'ok': true};
+        }
+        throw StateError(name);
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrderDetail(
+            id: 'o1',
+            policy: SessionPolicy({
+              'id': 'gm',
+              'role': 'generalManager',
+              'active': true,
+            }),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('اختيار شركة توصيل'));
+      await tester.pumpAndSettle();
+      expect(find.text('اختيار شركة التوصيل'), findsOneWidget);
+      expect(find.text('Click Delivery'), findsOneWidget);
+      expect(find.text('شركة معطلة'), findsNothing);
+      await tester.tap(find.text('Click Delivery'));
+      await tester.pumpAndSettle();
+      expect(assigned, 'click_delivery_1603');
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

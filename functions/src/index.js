@@ -287,8 +287,9 @@ exports.assignCompany=callable(async req=>{
     if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
     if(!['created','review','preparing','ready'].includes(order.data().status) || dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
     tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
-    await addEvent(ref.id,'company_assigned',user,{companyId:id},tx);
-    await audit('order.company_assigned',user,ref.id,{companyId:id},tx);
+    const action=id?'company_assigned':'company_unassigned';
+    await addEvent(ref.id,action,user,{companyId:id},tx);
+    await audit('order.'+action,user,ref.id,{companyId:id},tx);
   });return {ok:true};
 });
 
@@ -303,8 +304,14 @@ exports.saveCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageCompanies');
   const id=req.data?.id?idValue(req.data.id):db.collection('companies').doc().id;
   const ref=db.collection('companies').doc(id);
-  const name=str(req.data?.name,140),apiUrl=allowedUrl(str(req.data?.apiUrl,300));
+  const name=str(req.data?.name,140);
   const provider=req.data?.provider;
+  const rawApiUrl=str(req.data?.apiUrl,300);
+  // Click has one exact pinned HTTPS base and is validated by assertClickUrl.
+  // The generic host allowlist is only for generic_v1; a missing deployment
+  // allowlist must not block saving or activating the already-verified Click
+  // company.
+  const apiUrl=provider===CLICK_PROVIDER?rawApiUrl:allowedUrl(rawApiUrl);
   if(typeof req.data?.enabled!=='boolean')fail('invalid-argument','حدد حالة تفعيل الشركة صراحةً');
   if(!req.data?.statusMap||typeof req.data.statusMap!=='object'||Array.isArray(req.data.statusMap))fail('invalid-argument','حدد خريطة حالات الشركة صراحةً');
   const patch={};
@@ -312,7 +319,6 @@ exports.saveCompany=callable(async req=>{
   providerFor({provider,apiUrl});
   let clickUserId=null,clickSendEnabled=null;
   if(provider===CLICK_PROVIDER){
-    if(req.data?.enabled===true)fail('failed-precondition','يمكن حفظ Click Delivery كمسودة معطلة فقط حتى استكمال عقد API');
     if(req.data?.apiToken||req.data?.webhookKey||Object.keys(req.data?.statusMap||{}).length)fail('invalid-argument','لا تستخدم token أو webhook أو أكواد حالات generic مع Click Delivery');
     if(req.data?.clickUserId!=null){
       clickUserId=Number(req.data.clickUserId);
@@ -332,9 +338,14 @@ exports.saveCompany=callable(async req=>{
   if(req.data?.apiToken)patch.apiTokenCiphertext=await encryptSecret(str(req.data.apiToken,2000));
   if(req.data?.webhookKey)patch.webhookKeyCiphertext=await encryptSecret(str(req.data.webhookKey,2000));
   if(req.data?.enabled===true){
-    if(Object.keys(statusMap).length===0)fail('failed-precondition','اربط حالات التوصيل قبل تفعيل الشركة');
-    const savedSecrets=await db.doc(`companySecrets/${id}`).get();
-    if(!patch.apiTokenCiphertext&&!savedSecrets.data()?.apiTokenCiphertext)fail('failed-precondition','أدخل مفتاح API قبل تفعيل الشركة');
+    if(provider===CLICK_PROVIDER){
+      const effectiveUserId=clickUserId??Number(existing.data()?.clickUserId);
+      if(!Number.isSafeInteger(effectiveUserId)||effectiveUserId<1)fail('failed-precondition','أدخل User_ID الخاص بـClick قبل تفعيل الشركة');
+    }else{
+      if(Object.keys(statusMap).length===0)fail('failed-precondition','اربط حالات التوصيل قبل تفعيل الشركة');
+      const savedSecrets=await db.doc(`companySecrets/${id}`).get();
+      if(!patch.apiTokenCiphertext&&!savedSecrets.data()?.apiTokenCiphertext)fail('failed-precondition','أدخل مفتاح API قبل تفعيل الشركة');
+    }
   }
   if(provider===CLICK_PROVIDER&&clickSendEnabled===true){
     const savedSecrets=await db.doc(`companySecrets/${id}`).get();
@@ -354,7 +365,7 @@ exports.saveCompany=callable(async req=>{
     if(latest.exists&&latest.data().archived)fail('failed-precondition','استعد الشركة المؤرشفة قبل تعديلها');
     tx.set(ref,newData,{merge:true});
     if(Object.keys(patch).length)tx.set(db.doc('companySecrets/'+id),patch,{merge:true});
-    await audit('company.saved',user,id,{name},tx);
+    await audit('company.saved',user,id,{name,enabled:req.data.enabled},tx);
   });return {id};
 });
 exports.archiveCompany=callable(async req=>{
@@ -808,7 +819,7 @@ exports.listAudit=callable(async req=>{
       const order=await db.doc('orders/'+idValue(event.entityId)).get();
       if(!order.exists||!canSeeOrder(user,order.data()))continue;
     }
-    items.push({id:d.id,action:event.action,actorName:event.actorName,entityId:event.entityId,createdAt:safeDate(event.createdAt)});
+    items.push({id:d.id,action:event.action,actorName:event.actorName,entityId:event.entityId,extra:event.extra||null,createdAt:safeDate(event.createdAt)});
   }
   return {items,more:snap.size>size,afterId:page.at(-1)?.id||null};
 });

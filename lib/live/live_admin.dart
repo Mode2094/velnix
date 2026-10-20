@@ -74,7 +74,7 @@ class _LiveCompaniesState extends State<LiveCompanies> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'إعداد أكثر من شركة ممكن، لكن التشغيل الفعلي يحتاج محوّلاً متوافقاً مع API كل شركة. المحوّل المضمّن Generic v1 فقط.',
+              'إعداد أكثر من شركة ممكن. المحوّلان المضمّنان: Generic v1 وClick Delivery.',
               style: TextStyle(color: VColors.muted, fontSize: 12),
             ),
             const SizedBox(height: 15),
@@ -489,7 +489,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
         'name': name.text.trim(),
         'apiUrl': url.text.trim(),
         'provider': provider,
-        'enabled': provider == 'click_delivery_v1' ? false : enabled,
+        'enabled': enabled,
         'statusMap': provider == 'click_delivery_v1'
             ? <String, String>{}
             : mappings,
@@ -564,7 +564,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                           DropdownMenuItem(
                             value: 'click_delivery_v1',
                             child: Text(
-                              'Click Delivery — مسودة معطلة',
+                              'Click Delivery',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -614,15 +614,11 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('الشركة مفعّلة'),
-                        value: provider == 'click_delivery_v1'
-                            ? false
-                            : enabled,
-                        onChanged: provider == 'click_delivery_v1'
-                            ? null
-                            : (v) => setState(() {
-                                _dirty = true;
-                                enabled = v;
-                              }),
+                        value: enabled,
+                        onChanged: (v) => setState(() {
+                          _dirty = true;
+                          enabled = v;
+                        }),
                       ),
                       const Text(
                         'لن يعمل الرابط إلا إذا كان مضيفه مسموحاً به في إعدادات الخادم.',
@@ -636,7 +632,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                   const VFeedbackPanel(
                     title: 'تكامل Click Delivery',
                     message:
-                        'اختبار الاتصال يقرأ شحنة موجودة عبر getorder فقط ولا ينشئ شحنة. إنشاء الشحنات يبقى محكوماً بإعدادات الشركة وUser_ID والاعتمادات على الخادم.',
+                        'اختبار الاتصال يقرأ شحنة موجودة عبر getorder فقط ولا ينشئ شحنة. تفعيل الشركة يسمح بإسنادها للطلبات، بينما يبقى إرسال الشحنات محكوماً بمفتاح الإرسال وUser_ID والاعتمادات على الخادم.',
                   ),
                 if (provider == 'click_delivery_v1')
                   VLivePanel(
@@ -1366,7 +1362,7 @@ class _LiveAuditState extends State<LiveAudit> {
                       Icons.verified_user_outlined,
                       color: VColors.brand,
                     ),
-                    title: Text(auditActionLabel(e['action'])),
+                    title: Text(auditActionLabel(e['action'], e['extra'])),
                     subtitle: Text(
                       '${e['actorName'] ?? ''} • ${e['entityId'] ?? ''}\n${businessDate(e['createdAt'])}',
                     ),

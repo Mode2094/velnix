@@ -23,6 +23,7 @@ function providerFor(company) {
 }
 function requireOperationalProvider(company){
   const adapter=providerFor(company);
+  // Click is dispatched by sendOrderToDelivery through its own gated send path.
   if(company.provider===CLICK_PROVIDER)throw Error('click_contract_incomplete');
   allowedUrl(company.apiUrl);
   return adapter;

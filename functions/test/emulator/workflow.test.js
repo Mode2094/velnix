@@ -29,21 +29,54 @@ test('missing credentials before a vendor attempt return to idle and retain an a
   assert.equal((await ref.collection('events').where('action','==','dispatch_preparation_failed').get()).size,1);
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_preparation_failed').get()).size,1);
 });
-test('Click company draft stays disabled and cannot accept generic secrets, mapping or activation',async()=>{
+test('Click company activates with User_ID, stays assignable, and sending remains separately gated',async()=>{
   process.env.ALLOWED_DELIVERY_HOSTS='admin.clickdelivery.org,local-contract.example';
-  const data={name:'Click fixture',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',enabled:false,statusMap:{}};
+  const data={name:'Click fixture',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',enabled:false,statusMap:{},clickUserId:'1603'};
   const saved=await invoke('saveCompany','gm',data);
-  assert.equal((await db.doc('companies/'+saved.id).get()).data().enabled,false);
-  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,enabled:true}),{code:'failed-precondition'});
+  const created=(await db.doc('companies/'+saved.id).get()).data();
+  assert.equal(created.enabled,false);
+  assert.equal(created.clickSendEnabled,false);
+  await assert.rejects(invoke('saveCompany','gm',{name:'Click without User_ID',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',enabled:true,statusMap:{}}),{code:'failed-precondition'});
+  await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,enabled:true,clickSendEnabled:true}),{code:'failed-precondition'});
   await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,apiToken:'not-a-click-token'}),{code:'invalid-argument'});
   await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,statusMap:{invented:'delivered'}}),{code:'invalid-argument'});
   await assert.rejects(invoke('saveCompany','entry',data),{code:'permission-denied'});
+  const {clickUserId:_savedUserId,...withoutUser}=data;
+  await invoke('saveCompany','gm',{...withoutUser,id:saved.id,enabled:true});
+  const enabled=(await db.doc('companies/'+saved.id).get()).data();
+  assert.equal(enabled.enabled,true);
+  assert.equal(enabled.clickSendEnabled,false);
+  assert.equal(enabled.clickUserId,1603);
   assert.equal((await db.doc('companySecrets/'+saved.id).get()).exists,false);
+  await db.doc('orders/click_assign').set({status:'ready',companyId:null,createdBy:'gm',visibleTo:['gm'],dispatchState:'idle',revision:0});
+  await invoke('assignCompany','gm',{id:'click_assign',companyId:saved.id});
+  assert.equal((await db.doc('orders/click_assign').get()).data().companyId,saved.id);
+  assert.equal((await db.doc('orders/click_assign').collection('events').where('action','==','company_assigned').get()).size,1);
+  assert.equal((await db.collection('auditEvents').where('entityId','==','click_assign').where('action','==','order.company_assigned').get()).size,1);
+  await invoke('assignCompany','gm',{id:'click_assign',companyId:null});
+  assert.equal((await db.doc('orders/click_assign').get()).data().companyId,null);
+  assert.equal((await db.doc('orders/click_assign').collection('events').where('action','==','company_unassigned').get()).size,1);
+  assert.equal((await db.collection('auditEvents').where('entityId','==','click_assign').where('action','==','order.company_unassigned').get()).size,1);
+  await db.doc('companies/'+saved.id).update({enabled:false});
+  await assert.rejects(invoke('assignCompany','gm',{id:'click_assign',companyId:saved.id}),{code:'failed-precondition'});
   let code,body;
   const response={status(value){code=value;return this;},send(value){body=value;return this;}};
   await functions.deliveryWebhook({method:'POST',query:{companyId:saved.id}},response);
   assert.equal(code,409);assert.equal(body,'provider_contract_unconfirmed');
   await assert.rejects(invoke('saveCompany','gm',{...data,id:saved.id,provider:'generic_v1',apiUrl:'https://local-contract.example'}),{code:'failed-precondition'});
+});
+test('Click activation uses its pinned URL and does not depend on the generic host allowlist',async()=>{
+  const previous=process.env.ALLOWED_DELIVERY_HOSTS;
+  delete process.env.ALLOWED_DELIVERY_HOSTS;
+  try{
+    const saved=await invoke('saveCompany','gm',{name:'Pinned Click',provider:'click_delivery_v1',apiUrl:'https://admin.clickdelivery.org/Client',enabled:true,statusMap:{},clickUserId:'1603'});
+    const company=(await db.doc('companies/'+saved.id).get()).data();
+    assert.equal(company.enabled,true);
+    assert.equal(company.clickSendEnabled,false);
+    assert.equal(company.clickUserId,1603);
+  }finally{
+    process.env.ALLOWED_DELIVERY_HOSTS=previous;
+  }
 });
 test('company and member updates require explicit state and cannot silently wipe, disable or reactivate',async()=>{
   await db.doc('companies/state_guard').set({name:'State guard',provider:'generic_v1',apiUrl:'https://local-contract.example',enabled:true,archived:false,statusMap:{delivered:'delivered'}});

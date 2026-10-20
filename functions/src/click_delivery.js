@@ -8,7 +8,8 @@ const CLICK_BASE='https://admin.clickdelivery.org/Client';
 // is not a documented field constraint.
 const CLICK_CLIENT_SERIAL_MAX=25;
 // The provider's setorder field list, exactly as supplied. No extra field is
-// added by the builder. The production route for Click remains blocked.
+// added by the builder. The confirmed production send path is sendClickOrder
+// below, gated by clickSendEnabled and the server-side company allowlist.
 const CLICK_SETORDER_FIELDS=Object.freeze(['User_Name','User_Pass','Client_Serial','Reciver_Name','Reciver_Phone','Reciver_Address','Ord_Content','Ord_Quantity','Ord_Amt','Ord_Note','Is_Ord_Exchange','Open_Shippment']);
 // Request-only evidence: collection /item/0/request. No response schema supplied.
 function getOrderBody(orderId,credentials) {
@@ -52,9 +53,9 @@ function clickAmount(amountMinor){
   // added or subtracted here.
   return Number((amountMinor/1000).toFixed(3));
 }
-// Local, test-covered model of a future setorder payload. It is NOT wired to
-// the live route: requireOperationalProvider still blocks Click creation until
-// the financial and idempotency contract is confirmed.
+// Builder for the confirmed production setorder payload. The caller still
+// treats every 2xx and the observed Int64 HTTP 400 as an ambiguous creation:
+// the order must be reconciled against the Click portal, never resent blindly.
 function setOrderBody(order,credentials) {
   if(!order||typeof order!=='object'||Array.isArray(order))throw Error('invalid_click_order');
   if(!credentials||typeof credentials!=='object'||Array.isArray(credentials)||typeof credentials.User_Name!=='string'||typeof credentials.User_Pass!=='string'||!credentials.User_Name||!credentials.User_Pass)throw Error('invalid_click_credentials');
@@ -110,8 +111,8 @@ function assertClickUrl(company){
   if(url.href.replace(/\/$/,'')!==CLICK_BASE)throw Error('invalid_click_url');
 }
 const blocked=()=>{throw Error('click_contract_incomplete');};
-// Quarantined adapter: there is no production path for shipment creation,
-// polling, removal or an invented /health endpoint while responses are unknown.
+// Direct adapter methods stay quarantined so no caller can create, poll or
+// invent a /health endpoint outside the gated send/reconcile paths below.
 const clickDelivery=Object.freeze({health:blocked,create:blocked,status:blocked});
 async function exerciseGetOrderRequest(company,credentials,orderId,transport){
   if(typeof transport!=='function')throw Error('click_live_calls_disabled');
@@ -121,8 +122,8 @@ async function exerciseGetOrderRequest(company,credentials,orderId,transport){
   // unverified response: no IDs/statuses/amounts are guessed or persisted.
   throw Error('click_response_contract_incomplete');
 }
-// The one verified read-only Click contract. This function never creates,
-// removes or modifies a shipment; production creation remains blocked.
+// The verified read-only Click contract. This function never creates, removes
+// or modifies a shipment.
 async function readClickOrder(company,orderRef,userId,transport=fetch){
   assertClickUrl(company);
   const body=getOrderBodyByUserId(orderRef,userId);
