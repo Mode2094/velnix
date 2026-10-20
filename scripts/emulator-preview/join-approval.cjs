@@ -14,7 +14,7 @@ let browser;
 const frame=p=>p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
 const selectAll=p=>p.keyboard.press(process.platform==='darwin'?'Meta+A':'Control+A');
 async function activate(p,locator){await p.bringToFront();await p.waitForTimeout(60);await locator.evaluate(el=>(el.closest('[flt-tappable]')||el).click());await frame(p);}
-async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',more:'المزيد'}[kind];await activate(p,p.getByRole('button').filter({hasText:label}).filter({hasText:'علامة التبويب'}));}
+async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',team:'الفريق'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}await activate(p,p.getByRole('button').filter({hasText:label}).first());}
 async function callable(p,name,data={}){return p.evaluate(async({name,data})=>{const {getApp}=await import('/firebase-sdk/12.19.0/firebase-app.js');const {getFunctions,httpsCallable}=await import('/firebase-sdk/12.19.0/firebase-functions.js');try{return {ok:true,data:(await httpsCallable(getFunctions(getApp(),'europe-west1'),name)(data)).data};}catch(e){return{ok:false,code:e.code};}},{name,data});}
 async function denied(p,name,data,expected='functions/permission-denied'){const r=await callable(p,name,data);assert.equal(r.ok,false,`${name} unexpectedly authorized`);assert.equal(r.code,expected,`${name} wrong rejection: ${r.code}`);}
 async function login(role,email,expect){
@@ -34,7 +34,7 @@ async function login(role,email,expect){
 }
 async function scenario(name,fn){const start=Date.now();try{await fn();evidence.scenarios.push({name,status:'passed',ms:Date.now()-start});console.log('PASS',name);}catch(e){evidence.scenarios.push({name,status:'failed',error:e.message,ms:Date.now()-start});console.error('FAIL',name,e.message);throw e;}}
 async function openJoinRequests(gm){
- await nav(gm,'more');await gm.getByText('الفريق والصلاحيات',{exact:true}).waitFor({timeout:30000});
+ await nav(gm,'team');await gm.getByText('الفريق والصلاحيات',{exact:true}).waitFor({timeout:30000});
  await activate(gm,gm.getByText('الفريق والصلاحيات',{exact:true}));await gm.getByText('طلبات الانضمام',{exact:true}).waitFor({timeout:30000});
  await activate(gm,gm.getByRole('button',{name:'طلبات الانضمام',exact:true}));await gm.getByText('طلبات الانضمام',{exact:true}).first().waitFor({timeout:30000});
 }
