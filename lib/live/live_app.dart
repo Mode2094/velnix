@@ -761,7 +761,7 @@ class _LiveShellState extends State<LiveShell> {
     'الطلبات',
     'طلب جديد',
     'شركات التوصيل',
-    'الفريق',
+    'الفريق والصلاحيات',
     'العمليات',
     'الإشعارات',
     'التقارير',
@@ -807,9 +807,9 @@ class _LiveShellState extends State<LiveShell> {
     1,
     2,
     3,
-    6,
     if (widget.policy.can('manageEmployees')) 4,
     if (widget.policy.can('viewReports')) 7,
+    6,
   ];
 
   Widget _navEntry(int index, {required bool expanded, bool drawer = false}) {
@@ -857,6 +857,119 @@ class _LiveShellState extends State<LiveShell> {
     );
   }
 
+  void _openSettings({bool fromDrawer = false}) {
+    if (fromDrawer) Navigator.pop(context);
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => const LiveSettings()),
+    );
+  }
+
+  Widget _accountPanel({required bool expanded, bool drawer = false}) {
+    final canSettings = widget.policy.can('manageSettings');
+    if (!expanded) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(
+          children: [
+            Tooltip(
+              message: '${widget.policy.name} • ${widget.policy.roleLabel}',
+              child: const CircleAvatar(
+                radius: 15,
+                backgroundColor: VColors.softBlue,
+                child: Icon(
+                  Icons.person_outline,
+                  color: VColors.brand,
+                  size: 18,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            if (canSettings)
+              IconButton(
+                tooltip: 'إعدادات المؤسسة',
+                onPressed: () => _openSettings(fromDrawer: drawer),
+                icon: const Icon(Icons.tune_outlined),
+              ),
+            IconButton(
+              tooltip: 'تسجيل الخروج',
+              onPressed: () {
+                if (drawer) Navigator.pop(context);
+                NotificationsService.instance.signOut();
+              },
+              icon: const Icon(Icons.logout),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const CircleAvatar(
+                radius: 17,
+                backgroundColor: VColors.softBlue,
+                child: Icon(Icons.person_outline, color: VColors.brand),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.policy.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                    Text(
+                      widget.policy.roleLabel,
+                      style: const TextStyle(
+                        color: VColors.muted,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          if (canSettings)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.tune_outlined, size: 20),
+              title: const Text(
+                'إعدادات المؤسسة',
+                style: TextStyle(fontSize: 12.5),
+              ),
+              onTap: () => _openSettings(fromDrawer: drawer),
+            ),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.logout, size: 20),
+            title: const Text('تسجيل الخروج', style: TextStyle(fontSize: 12.5)),
+            onTap: () {
+              if (drawer) Navigator.pop(context);
+              NotificationsService.instance.signOut();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _drawer(BuildContext context) => Drawer(
     child: SafeArea(
       child: Column(
@@ -876,11 +989,6 @@ class _LiveShellState extends State<LiveShell> {
                   'Velnix',
                   style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
                 ),
-                const Spacer(),
-                Text(
-                  widget.policy.roleLabel,
-                  style: const TextStyle(fontSize: 11, color: VColors.muted),
-                ),
               ],
             ),
           ),
@@ -894,28 +1002,7 @@ class _LiveShellState extends State<LiveShell> {
               ],
             ),
           ),
-          if (widget.policy.can('manageSettings')) ...[
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.tune_outlined),
-              title: const Text('إعدادات المؤسسة'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(builder: (_) => const LiveSettings()),
-                );
-              },
-            ),
-          ],
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('تسجيل الخروج'),
-            onTap: () {
-              Navigator.pop(context);
-              NotificationsService.instance.signOut();
-            },
-          ),
+          _accountPanel(expanded: true, drawer: true),
         ],
       ),
     ),
@@ -927,7 +1014,6 @@ class _LiveShellState extends State<LiveShell> {
         wide = w >= 840,
         extended = w >= 1200;
     final entries = permittedEntries;
-    final mobileEntries = <int>[0, 1, 2, 6];
     if (!entries.contains(selected)) selected = 0;
     Widget screen = switch (selected) {
       0 => LiveDashboard(
@@ -990,54 +1076,6 @@ class _LiveShellState extends State<LiveShell> {
                 widget.policy.roleLabel,
                 style: const TextStyle(fontSize: 12, color: VColors.muted),
               ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              tooltip: 'الحساب والإدارة',
-              onSelected: (v) {
-                if (v == 'settings') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => const LiveSettings(),
-                    ),
-                  );
-                }
-                if (v == 'logout') NotificationsService.instance.signOut();
-                if (v == 'delivery') go(3);
-                if (v == 'team') go(4);
-                if (v == 'reports') go(7);
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(enabled: false, child: Text(widget.policy.name)),
-                const PopupMenuItem(
-                  value: 'delivery',
-                  child: Text('شركات التوصيل'),
-                ),
-                if (widget.policy.can('manageEmployees'))
-                  const PopupMenuItem(
-                    value: 'team',
-                    child: Text('الفريق والصلاحيات'),
-                  ),
-                if (widget.policy.can('viewReports'))
-                  const PopupMenuItem(
-                    value: 'reports',
-                    child: Text('التقارير'),
-                  ),
-                if (widget.policy.can('manageSettings'))
-                  const PopupMenuItem(
-                    value: 'settings',
-                    child: Text('إعدادات المؤسسة'),
-                  ),
-                const PopupMenuItem(
-                  value: 'logout',
-                  child: Text('تسجيل الخروج'),
-                ),
-              ],
-              child: const CircleAvatar(
-                backgroundColor: VColors.softBlue,
-                child: Icon(Icons.person_outline, color: VColors.brand),
-              ),
-            ),
           ],
         ),
       ),
@@ -1078,6 +1116,7 @@ class _LiveShellState extends State<LiveShell> {
                         ],
                       ),
                     ),
+                    _accountPanel(expanded: extended && !railCollapsed),
                   ],
                 ),
               ),
@@ -1085,24 +1124,6 @@ class _LiveShellState extends State<LiveShell> {
           Expanded(child: screen),
         ],
       ),
-      bottomNavigationBar: wide || !mobileEntries.contains(selected)
-          ? null
-          : SafeArea(
-              top: false,
-              child: NavigationBar(
-                height: 76,
-                selectedIndex: mobileEntries.indexOf(selected),
-                onDestinationSelected: (i) => go(mobileEntries[i]),
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                destinations: [
-                  for (final i in mobileEntries)
-                    NavigationDestination(
-                      icon: Icon(icons[i]),
-                      label: titles[i],
-                    ),
-                ],
-              ),
-            ),
     );
   }
 }

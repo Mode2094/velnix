@@ -113,7 +113,7 @@ void main() {
             find.text('مصدر حالة الشحنة: إدخال يدوي بعد التحقق من بوابة Click'),
             findsOneWidget,
           );
-          expect(find.text('رقم شحنة Click: 1318368'), findsOneWidget);
+          expect(find.text('رقم البوليصة: 1318368'), findsAtLeastNWidgets(1));
           expect(
             find.text('مرجع Click (Order_ID): VNX-CLICK-TEST-20261019-d'),
             findsOneWidget,
@@ -123,21 +123,24 @@ void main() {
             await tester.tap(find.text('تفاصيل تقنية'));
             await tester.pumpAndSettle();
             expect(
-              find.text('كود التاجر الأصلي: VNX-CLICK-TEST-20261019-d4a0f8fb'),
+              find.text(
+                'المرجع الأصلي لكود التاجر: VNX-CLICK-TEST-20261019-d4a0f8fb',
+              ),
+              findsOneWidget,
+            );
+            expect(
+              find.text('تاريخ حالة Click: 2026-10-19T00:00:00'),
               findsOneWidget,
             );
           } else {
             expect(find.text('تفاصيل تقنية'), findsNothing);
           }
+
           expect(
-            find.text('تاريخ حالة Click: 2026-10-19T00:00:00'),
+            find.text('ملاحظة شركة التوصيل: شحنة قيد انتظار الموافقة'),
             findsOneWidget,
           );
-          expect(
-            find.text('ملاحظة حالة Click: شحنة قيد انتظار الموافقة'),
-            findsOneWidget,
-          );
-          expect(find.text('الحالة: تم الإرسال'), findsOneWidget);
+          expect(find.text('تم الإرسال'), findsAtLeastNWidgets(1));
           expect(find.textContaining('987.654'), findsNothing);
           expect(find.textContaining('543.210'), findsNothing);
           expect(find.textContaining('876.543'), findsNothing);

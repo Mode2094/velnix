@@ -131,7 +131,7 @@ class VelnixGateway {
   Future<Map<String, dynamic>> order(
     String id, {
     String? eventsAfterId,
-    int eventsPageSize = 30,
+    int eventsPageSize = 8,
   }) => call('getOrder', {
     'id': id,
     'eventsPageSize': eventsPageSize,

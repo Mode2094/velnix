@@ -455,8 +455,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('إنشاء الطلب'), findsOneWidget);
-    await tester.ensureVisible(find.text('عرض أحداث أقدم'));
-    await tester.tap(find.text('عرض أحداث أقدم'));
+    await tester.ensureVisible(find.text('عرض السجل كاملًا'));
+    await tester.tap(find.text('عرض السجل كاملًا'));
     await tester.pumpAndSettle();
     expect(find.text('تحديث شركة التوصيل'), findsOneWidget);
   });
