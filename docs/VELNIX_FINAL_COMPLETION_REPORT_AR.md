@@ -454,7 +454,7 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 # FINAL SEND PATH, AUTO SYNC & ACCOUNT LOADING FIX
 
 **الكود المنشور:** `d953dbb`  
-**CI:** `39320802815` — ناجح  
+**CI:** `39445675185` — ناجح  
 **Hosting:** https://velnix-6c1a2.web.app
 
 ## 1. إصلاح تحميل الحساب
@@ -502,7 +502,7 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 **الشحنة الجديدة:** `1319492`  
 **Client_Serial:** `VNX-click_send_test_ready`  
 **الطلب:** `click_send_test_ready`  
-**الإجمالي الحقيقي:** شحنتان (`1318368`, `1319492`)
+**الإجمالي الحقيقي حينها:** شحنتان (`1318368`, `1319492`)
 
 ## 1. رحلة الإرسال من Chrome
 
@@ -547,3 +547,128 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 **`CLIENT DELIVERY READY`** للنطاق التشغيلي المتفق عليه: Login، الأدوار، الطلبات، إرسال Click من الواجهة، حفظ البوليصة، المزامنة اليدوية والتلقائية، Audit، Deploy، Hosting، CI.
 
 **استثناء وثائقي:** المطابقة الحرفية مع عقد/فيديو العميل غير مثبتة لغياب الملفات.
+
+---
+
+# FINAL ACTIVATION & ASSIGNMENT FIX — 2026-10-20
+
+## 1. Root Cause
+
+Click Delivery was operationally ready, but the admin path still forced it into draft mode at three layers:
+
+1. `saveCompany` rejected `enabled:true` for `click_delivery_v1`.
+2. The company form hard-coded `enabled:false` and disabled the activation switch, and labeled the adapter `Click Delivery — مسودة معطلة`.
+3. The production `saveCompany` called the generic `ALLOWED_DELIVERY_HOSTS` check before the Click-specific pinned URL check. That allowlist was not present in the deployed function environment, so even a draft save failed with a generic setup error.
+
+Because the stored company remained `enabled:false`:
+
+- The companies list showed «معطلة».
+- `assignCompany` rejected the company server-side.
+- The order picker filtered it out (`enabled == true`), so only «بدون شركة» appeared.
+- The order audit history also displayed a null assignment as «إسناد شركة توصيل».
+
+Health success was intentionally separate from activation and did not change `enabled`.
+
+## 2. Files Changed
+
+- `functions/src/index.js`
+  - Click URL is validated by its pinned exact HTTPS base, not the generic host allowlist.
+  - Click activation is allowed only with a valid `User_ID`; `enabled` does not change `clickSendEnabled`.
+  - Adding `enabled` to `company.saved` audit.
+  - Clearing a company now emits `company_unassigned` / `order.company_unassigned`.
+  - `listAudit` now returns `extra` so historical null assignments display correctly.
+- `lib/live/live_admin.dart`
+  - Activation switch is enabled for Click and saves the real value.
+  - Removed the hard-coded draft state and stale label.
+  - Updated integration copy and the adapter note.
+- `lib/live/live_orders.dart`
+  - Replaced the stale «لم يكتمل عقد Click Delivery» message with «لم تُرسل بعد».
+  - Order history passes event details to the label mapping.
+- `lib/live/live_app.dart`
+  - Added accurate unassign labels and null-company handling.
+- Tests:
+  - `functions/test/company_activation_regression.test.js`
+  - `functions/test/emulator/workflow.test.js`
+  - `test/click_readiness_test.dart`
+  - `test/live_actions_test.dart`
+  - `test/live_presentation_test.dart`
+- CI harness:
+  - `scripts/emulator-preview/browser.cjs`
+  - `scripts/emulator-preview/join-approval.cjs`
+
+## 3. Firestore Evidence
+
+Company `click_delivery_1603`:
+
+- `enabled = true`
+- `clickSendEnabled = true`
+- `clickUserId = "1603"`
+- `archived = false`
+- `lastHealthConnected = true`
+- `lastHealthError = null`
+
+Order `3sq4MGbCDyMqEqRKqSra`:
+
+- `status = dispatched`
+- `companyId = click_delivery_1603`
+- `providerOrderId = 1320031`
+- `clickOrderRef = VNX-3sq4MGbCDyMqEqRKqSra`
+- `dispatchState = sent`
+- `shippingStatus = awaitingPickup`
+- `shippingStatusSource = click_api`
+- `lastSyncAt = 2026-10-20T14:34:04.574Z`
+- `nextClickSyncAt = 2026-10-20T14:49:03.982Z`
+- `clickSyncFailures = 0`
+
+Audit:
+
+- `company.saved` with `enabled:true`.
+- `order.company_assigned` with `companyId=click_delivery_1603`.
+- `order.click_reconciled` with `clickOrderId=1320031`.
+- `order.click_status_synced` with `source=manual`.
+- Historical null assignment now displays «إزالة إسناد شركة التوصيل».
+
+## 4. Production Chrome Evidence
+
+- Click company shows «مفعّلة» and the edit switch is ON after a fresh login.
+- Connection test returned `{connected:true, verified:"getorder", httpStatus:200}`.
+- Order picker shows «Click Delivery» and assignment persisted after refresh.
+- Order was transitioned created → review → preparing → ready.
+- «إرسال إلى Click» triggered a real `setorder`; Click created policy `1320031`.
+- Velnix entered `needs_review` with the exact `clickOrderRef`; the shipment was verified in the Click portal and linked from the UI.
+- Manual `syncClickOrder` returned HTTP 200 and set `shippingStatusSource=click_api`.
+- The scheduler ran at 14:34 UTC: `checked=1, updated=0, failed=0, skipped=0`; `lastSyncAt` and `nextClickSyncAt` advanced.
+- Manager role can see Click in the order picker but has no company edit/test/archive buttons.
+- No new shipment was created on retry; total Click policies remain 3.
+
+## 5. Real Click Shipments
+
+| Policy | Client_Serial | Source | Status |
+|---|---|---|---|
+| `1318368` | `VNX-CLICK-TEST-20261019-d` | Previous test | Awaiting approval |
+| `1319492` | `VNX-click_send_test_ready` | Previous UI send | Awaiting approval |
+| `1320031` | `VNX-3sq4MGbCDyMqEqRKqSra` | **This final activation test** | Awaiting approval |
+
+- New real shipments in this task: **1** (`1320031`).
+- No `removeorder`.
+- Existing shipments were not modified or resent.
+
+## 6. Tests
+
+| Suite | Result |
+|---|---|
+| Functions Unit | **193/193 PASS** |
+| Emulator workflow | **31/31 PASS** |
+| Flutter Analyze | **PASS** |
+| Flutter targeted (Click/assignment/presentation) | **PASS** |
+| Flutter golden (macOS) | 16 pre-existing font/rendering mismatches; CI Linux golden job PASS |
+| Emulator UI / roles | **PASS** — CI `39445675185` |
+| Production Chrome E2E | **PASS** |
+
+## 7. Delivery
+
+- Production code commit: `ca95c86`; latest HEAD: `0fa06d3`.
+- CI harness commits: `f99647f`, `a9fd4ac`, `55b0f23`, `0fa06d3`.
+- CI run: `39445675185` — **PASS** (firebase, flutter, android, emulator-ui).
+- Production deploy: `saveCompany`, `assignCompany`, `listAudit`, Hosting.
+- Scheduler: `firebase-schedule-syncClickStatuses-europe-west1` **ENABLED** every 15 minutes.
