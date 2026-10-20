@@ -590,6 +590,58 @@ void main() {
     expect(find.text('تغييرات غير محفوظة'), findsOneWidget);
   });
 
+  testWidgets('general manager creates an employee from the team form', (
+    tester,
+  ) async {
+    Map<String, dynamic>? payload;
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      expect(name, 'createEmployee');
+      payload = data;
+      return {'id': 'new-employee'};
+    });
+    await tester.pumpWidget(
+      app(
+        LiveMemberForm(
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+          members: const [],
+          creating: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم الموظف'),
+      'موظف جديد',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'البريد الإلكتروني'),
+      'new.employee@velnix.test',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'كلمة المرور الابتدائية'),
+      'InitialPass123!',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'تأكيد كلمة المرور'),
+      'InitialPass123!',
+    );
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('حفظ الموظف'));
+    await tester.tap(find.text('حفظ الموظف'));
+    await tester.pumpAndSettle();
+    expect(payload?['name'], 'موظف جديد');
+    expect(payload?['email'], 'new.employee@velnix.test');
+    expect(payload?['role'], 'dataEntry');
+    expect(payload?['active'], true);
+    expect(payload?['password'], 'InitialPass123!');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('order filters open in a sheet on phones and close on back', (
     tester,
   ) async {
@@ -704,6 +756,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('اختيار شركة توصيل'));
       await tester.tap(find.text('اختيار شركة توصيل'));
       await tester.pumpAndSettle();
       expect(find.text('اختيار شركة التوصيل'), findsOneWidget);

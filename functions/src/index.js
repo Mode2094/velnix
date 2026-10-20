@@ -747,6 +747,65 @@ exports.saveMember=callable(async req=>{
   fail('failed-precondition','إضافة الموظف تتطلب طلب انضمام Google وموافقة المدير العام');
 });
 
+function employeePassword(value){
+  if(typeof value!=='string'||value.length<8||value.length>128)fail('invalid-argument','كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+  return value;
+}
+exports.createEmployee=callable(async req=>{
+  const user=await requireAuth(req);
+  if(user.role!=='generalManager')fail('permission-denied','إضافة الموظفين متاحة للمدير العام فقط');
+  const name=str(req.data?.name,120);
+  const email=str(req.data?.email,254).toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail('invalid-argument','أدخل بريداً إلكترونياً صالحاً');
+  const password=employeePassword(req.data?.password);
+  const role=str(req.data?.role,30);
+  if(!validRole(role))fail('invalid-argument','دور غير صالح');
+  const permissions=req.data?.permissions;
+  if(!Array.isArray(permissions)||!validPermissions(permissions))fail('invalid-argument','صلاحيات غير صالحة');
+  if(typeof req.data?.active!=='boolean')fail('invalid-argument','حدد حالة تفعيل الحساب صراحةً');
+  const active=req.data.active;
+  const supervisor=req.data?.salesSupervisorId==null?null:idValue(req.data.salesSupervisorId);
+  if(supervisor&&role!=='dataEntry')fail('invalid-argument','مشرف المبيعات خاص بمدخل البيانات');
+  let existingAuth=null;
+  try{existingAuth=await getAuth().getUserByEmail(email);}catch(e){if(e.code!=='auth/user-not-found')throw e;}
+  if(existingAuth)fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
+  const existingMember=await db.collection('members').where('email','==',email).limit(1).get();
+  if(!existingMember.empty)fail('already-exists','يوجد ملف موظف بهذا البريد؛ راجع البيانات قبل الإنشاء');
+  const created=await getAuth().createUser({email,password,emailVerified:true,displayName:name,disabled:!active});
+  try{
+    await db.runTransaction(async tx=>{
+      await currentActor(tx,user);
+      if(supervisor){
+        const sup=await tx.get(db.doc('members/'+supervisor));
+        if(!sup.exists||sup.data().role!=='sales'||sup.data().active!==true)fail('failed-precondition','مشرف المبيعات غير متاح');
+        tx.update(sup.ref,{authorizationVersion:FieldValue.increment(1)});
+      }
+      tx.create(db.doc('members/'+created.uid),{name,email,role,permissions:[...new Set(permissions)],active,
+        salesSupervisorId:supervisor,approvalStatus:'approved',createdBy:user.id,
+        createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),authorizationVersion:1});
+      await audit('member.created',user,created.uid,{role,active},tx);
+    });
+  }catch(e){
+    await getAuth().deleteUser(created.uid).catch(()=>{});
+    throw e;
+  }
+  return {id:created.uid};
+});
+exports.resetEmployeePassword=callable(async req=>{
+  const user=await requireAuth(req);
+  if(user.role!=='generalManager')fail('permission-denied','إعادة تعيين كلمة المرور متاحة للمدير العام فقط');
+  const id=idValue(req.data?.id);
+  const password=employeePassword(req.data?.password);
+  const member=await db.doc('members/'+id).get();
+  if(!member.exists)fail('not-found','الموظف غير موجود');
+  const record=await getAuth().getUser(id).catch(e=>{if(e.code==='auth/user-not-found')fail('not-found','حساب الدخول غير موجود');throw e;});
+  if(!record.providerData.some(p=>p.providerId==='password'))fail('failed-precondition','هذا الحساب لا يستخدم الدخول بالبريد وكلمة المرور');
+  await getAuth().updateUser(id,{password});
+  await getAuth().revokeRefreshTokens(id);
+  await audit('member.password_reset',user,id,{},null);
+  return {ok:true};
+});
+
 // Notices are ordered by createdAt desc, so the cursor is a document position
 // rather than a name. The cursor must belong to the caller, otherwise one
 // employee could probe another employee's notice ids.

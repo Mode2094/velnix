@@ -32,7 +32,7 @@ test('verified local Google login creates one pending UID-bound request and no a
   assert.equal((await db.collection('auditEvents').where('entityId','==',newcomer.uid).where('action','==','join.requested').get()).size,1);
 });
 test('pending users cannot access any privileged callable; provider and identity spoofing are refused',async()=>{
-  const endpoints=['searchOrders','listOrderCreators','registerDevice','unregisterDevice','getSettings','saveSettings','me','listOrders','getOrder','createOrder','updateOrder','changeOrderStatus','assignCompany','sendOrderToDelivery','resolveDispatchException','dashboardStats','companyStats','listMembers','saveMember','listCompanies','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','listNotices','markNoticeRead','listSyncEvents','listAudit','listJoinRequests','decideJoinRequest'];
+  const endpoints=['searchOrders','listOrderCreators','registerDevice','unregisterDevice','getSettings','saveSettings','me','listOrders','getOrder','createOrder','updateOrder','changeOrderStatus','assignCompany','sendOrderToDelivery','resolveDispatchException','dashboardStats','companyStats','listMembers','saveMember','createEmployee','resetEmployeePassword','listCompanies','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','listNotices','markNoticeRead','listSyncEvents','listAudit','listJoinRequests','decideJoinRequest'];
   for(const name of endpoints)await assert.rejects(invoke(name,newcomer,{id:gm.uid,decision:'approved',role:'generalManager'}),{code:'permission-denied'},name);
   await assert.rejects(invoke('joinSession',null),{code:'unauthenticated'});
   for(const token of [{...newcomer,firebase:{sign_in_provider:'custom'}},{...newcomer,email_verified:false}])await assert.rejects(invoke('joinSession',token),{code:'permission-denied'});
@@ -56,7 +56,7 @@ test('concurrent approvals create exactly one membership and one audited decisio
   const member=(await db.doc('members/'+newcomer.uid).get()).data();assert.equal(member.active,true);assert.equal(member.role,'sales');assert.deepEqual(member.permissions,['viewReports']);
   assert.equal((await db.doc('joinRequests/'+newcomer.uid).get()).data().status,'approved');
   assert.equal((await db.collection('auditEvents').where('entityId','==',newcomer.uid).where('action','==','join.approved').get()).size,1);
-  const relogin=await google('new');assert.equal(relogin.uid,newcomer.uid);assert.deepEqual(await invoke('joinSession',relogin),{status:'approved'});assert.equal((await invoke('me',relogin)).role,'sales');
+  const relogin=await google('new');assert.equal(relogin.uid,newcomer.uid);const reloginSession=await invoke('joinSession',relogin);assert.equal(reloginSession.status,'approved');assert.equal(reloginSession.member.role,'sales');assert.equal((await invoke('me',relogin)).role,'sales');
 });
 test('rejection persists across login and cannot be overridden or self-approved',async()=>{
   await invoke('joinSession',rejected);
@@ -74,6 +74,30 @@ test('role and disable decisions take effect for the same already issued Google 
   await invoke('saveMember',gm,{id:newcomer.uid,name:'Changed',role:'dataEntry',active:false,permissions:[],salesSupervisorId:null});
   for(const endpoint of ['me','listOrders','listNotices','createOrder'])await assert.rejects(invoke(endpoint,newcomer),{code:'permission-denied'});
   await assert.rejects(invoke('joinSession',newcomer),{code:'failed-precondition'});
+});
+test('general manager creates an email/password employee, resets the password and disables the account',async()=>{
+  const email='created.employee@velnix.test',password='InitialPass123!';
+  const created=await invoke('createEmployee',gm,{name:'Created Employee',email,password,role:'sales',permissions:['viewReports'],active:true});
+  const rec=await auth.getUser(created.id);
+  assert.equal(rec.email,email);assert.equal(rec.emailVerified,true);assert.equal(rec.disabled,false);
+  const member=(await db.doc('members/'+created.id).get()).data();
+  assert.equal(member.role,'sales');assert.deepEqual(member.permissions,['viewReports']);assert.equal(member.approvalStatus,'approved');assert.equal(member.password,undefined);
+  await assert.rejects(invoke('createEmployee',gm,{name:'Duplicate',email,password,role:'sales',permissions:[],active:true}),{code:'already-exists'});
+  await assert.rejects(invoke('createEmployee',manager,{name:'Forbidden',email:'forbidden@velnix.test',password,role:'sales',permissions:[],active:true}),{code:'permission-denied'});
+  await assert.rejects(invoke('resetEmployeePassword',manager,{id:created.id,password:'NewPass123!'}),{code:'permission-denied'});
+  await assert.rejects(invoke('resetEmployeePassword',gm,{id:newcomer.uid,password:'NewPass123!'}),{code:'failed-precondition'});
+  await invoke('resetEmployeePassword',gm,{id:created.id,password:'NewPass123!'});
+  const signIn=async pass=>{
+    const response=await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=local-test-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password:pass,returnSecureToken:true})});
+    return response.ok;
+  };
+  assert.equal(await signIn(password),false);
+  assert.equal(await signIn('NewPass123!'),true);
+  const resetAudit=await db.collection('auditEvents').where('entityId','==',created.id).where('action','==','member.password_reset').get();
+  assert.equal(resetAudit.size,1);
+  assert.equal(JSON.stringify(resetAudit.docs.map(d=>d.data())).includes('NewPass123!'),false);
+  await invoke('saveMember',gm,{id:created.id,name:'Created Employee',role:'sales',permissions:['viewReports'],active:false,salesSupervisorId:null});
+  assert.equal((await auth.getUser(created.id)).disabled,true);
 });
 test('legacy Google membership keeps its UID and role; a different UID with matching email is never merged',async()=>{
   assert.equal((await invoke('joinSession',manager)).status,'approved');

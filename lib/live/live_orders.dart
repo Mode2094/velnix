@@ -558,6 +558,247 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     'preparing' => ['ready', 'cancelled'],
     _ => [],
   };
+  String? _syncFeedback;
+  bool _syncFeedbackOk = false;
+
+  IconData _eventIcon(dynamic action) => switch (action?.toString()) {
+    'created' => Icons.add_circle_outline,
+    'edited' => Icons.edit_outlined,
+    'status_changed' => Icons.swap_horiz,
+    'company_assigned' => Icons.local_shipping_outlined,
+    'company_unassigned' => Icons.link_off,
+    'sent_to_delivery' => Icons.send_outlined,
+    'remote_status' => Icons.cloud_done_outlined,
+    'dispatch_exception_resolved' => Icons.fact_check_outlined,
+    'dispatch_preparation_failed' => Icons.error_outline,
+    'dispatch_attempt_failed' => Icons.warning_amber_outlined,
+    'click_reconciled' => Icons.link,
+    'click_status_synced' => Icons.sync,
+    'click_status_stale' => Icons.history_toggle_off,
+    'click_status_conflict' => Icons.warning_amber_outlined,
+    'click_sync_failed' => Icons.cloud_off_outlined,
+    _ => Icons.circle_outlined,
+  };
+
+  String _sourceLabel(dynamic source) => switch (source?.toString()) {
+    'manual' => 'إدخال يدوي بعد التحقق من بوابة Click',
+    'click_api' => 'تحديث تلقائي مؤكد من Click API',
+    'webhook' => 'تحديث من شركة التوصيل',
+    'poll' => 'مزامنة آلية',
+    _ => 'غير متوفر',
+  };
+
+  Widget _sectionTitle(String title, IconData icon) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Row(
+      children: [
+        Icon(icon, size: 20, color: VColors.brand),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _statusChip(String state) {
+    final color = statusColors[state] ?? VColors.brand;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        statusLabels[state] ?? state,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w900,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _softChip(IconData icon, String text) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: VColors.softBlue,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: VColors.brand),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _copy(String value, String message) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (mounted) showSuccess(context, message);
+  }
+
+  Widget _infoLine(
+    String label,
+    dynamic value, {
+    bool copy = false,
+    String? copyMessage,
+  }) {
+    if (value == null || value.toString().trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final text = '$label: $value';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 13.5, height: 1.45),
+            ),
+          ),
+          if (copy)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'نسخ',
+              onPressed: () => _copy('$value', copyMessage ?? 'تم النسخ'),
+              icon: const Icon(Icons.copy_outlined, size: 17),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String? _actionHint(Map<String, dynamic> o, Map<String, dynamic> actions) {
+    final state = o['status']?.toString() ?? '';
+    final dispatchState = o['dispatchState']?.toString() ?? 'idle';
+    if (dispatchState == 'needs_review') {
+      return 'نتيجة الإرسال السابقة تحتاج مراجعة قبل أي إعادة إرسال.';
+    }
+    if (dispatchState == 'sent' || state == 'dispatched') {
+      return 'تم إرسال الشحنة؛ لا يمكن تغيير شركة التوصيل أو إعادة الإرسال.';
+    }
+    if (['delivered', 'returned', 'cancelled'].contains(state)) {
+      return 'الطلب مغلق؛ لا توجد إجراءات تغيير متاحة.';
+    }
+    if (!widget.policy.can('sendToDelivery')) {
+      return 'إسناد الشركة والإرسال يحتاجان صلاحية إرسال لشركة التوصيل.';
+    }
+    if (state == 'ready' && o['companyId'] == null) {
+      return 'اختر شركة توصيل قبل إرسال الطلب.';
+    }
+    return null;
+  }
+
+  Widget _timelineEvent(Map<String, dynamic> e, {required bool last}) {
+    final details = e['details'];
+    final hasDetails = details is Map && details.isNotEmpty;
+    return Padding(
+      padding: EdgeInsets.only(bottom: last ? 0 : 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundColor: VColors.softBlue,
+                child: Icon(
+                  _eventIcon(e['action']),
+                  size: 16,
+                  color: VColors.brand,
+                ),
+              ),
+              if (!last)
+                Container(
+                  width: 2,
+                  height: 30,
+                  margin: const EdgeInsets.only(top: 4),
+                  color: VColors.line,
+                ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        eventLabel(e['action'], details),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      businessDate(e['createdAt']),
+                      style: const TextStyle(
+                        color: VColors.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  e['actorName']?.toString() ?? '',
+                  style: const TextStyle(color: VColors.muted, fontSize: 11),
+                ),
+                if (hasDetails)
+                  Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(bottom: 6),
+                      dense: true,
+                      title: const Text(
+                        'تفاصيل إضافية',
+                        style: TextStyle(fontSize: 11.5, color: VColors.muted),
+                      ),
+                      children: [
+                        for (final entry in details.entries)
+                          Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: Text(
+                              '${entry.key}: ${entry.value}',
+                              style: const TextStyle(fontSize: 11.5),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -573,321 +814,515 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     body: AsyncPanel<Map<String, dynamic>>(
       future: request,
       onRetry: refresh,
+      loading: const _OrderDetailSkeleton(),
       builder: (data) {
-        final o = Map<String, dynamic>.from(data['order'] as Map),
-            state = o['status'].toString();
+        final o = Map<String, dynamic>.from(data['order'] as Map);
+        final state = o['status'].toString();
         final actions = Map<String, dynamic>.from(o['actions'] as Map? ?? {});
         final events =
             _events ??
             (data['events'] as List? ?? [])
                 .map((v) => Map<String, dynamic>.from(v as Map))
                 .toList();
-        return SingleChildScrollView(
-          child: LiveContent(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                VLivePanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        o['customer']?.toString() ?? '',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
+        final seen = <String>{};
+        final timeline = [
+          for (final e in events)
+            if (seen.add('${e['action']}|${e['actorId']}|${e['createdAt']}')) e,
+        ];
+        final isClick = o['companyProvider'] == 'click_delivery_v1';
+        final shippingState = ShippingStatus.parse(o['shippingStatus']);
+        final shippingLabel = shippingState?.label ?? 'لم تُرسل بعد';
+        final canSync =
+            widget.policy.can('sendToDelivery') &&
+            o['clickOrderRef'] != null &&
+            o['clickOrderRef'].toString().isNotEmpty;
+        final canTechnical =
+            widget.policy.role == 'generalManager' ||
+            widget.policy.can('viewSync') ||
+            widget.policy.can('viewAudit');
+        final created = o['createdAt'] != null
+            ? businessDate(o['createdAt'])
+            : 'غير متوفر';
+        final createdBy = o['createdByName'] ?? o['createdBy'] ?? 'غير متوفر';
+        final company = o['companyName']?.toString();
+        final policyNumber = o['providerOrderId']?.toString();
+        final clickRef = o['clickOrderRef']?.toString();
+        final hint = _actionHint(o, actions);
+
+        final left = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            VLivePanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('معلومات العميل', Icons.person_outline),
+                  _infoLine('الاسم', o['customer']),
+                  _infoLine(
+                    'الهاتف',
+                    o['phone'],
+                    copy: true,
+                    copyMessage: 'تم نسخ رقم الهاتف',
+                  ),
+                  _infoLine('هاتف إضافي', o['extraPhone']),
+                  _infoLine(
+                    'العنوان',
+                    '${o['city'] ?? ''}، ${o['area'] ?? ''}، ${o['address'] ?? ''}',
+                  ),
+                  _infoLine('المحتويات', o['description']),
+                  _infoLine('الكمية', o['quantity']),
+                  _infoLine('الملاحظات', o['note']),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            VLivePanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('بيانات الطلب', Icons.receipt_long_outlined),
+                  _infoLine('الحالة', statusLabels[state] ?? state),
+                  _infoLine(
+                    'المبلغ',
+                    o['amount'] != null
+                        ? displayAmount(o['amount'])
+                        : 'غير متاح',
+                  ),
+                  _infoLine('تاريخ الإنشاء', created),
+                  _infoLine('الموظف المسؤول', createdBy),
+                  _infoLine(
+                    'شركة التوصيل',
+                    company?.isNotEmpty == true ? company : 'بدون شركة',
+                  ),
+                  _infoLine('طريقة الدفع', o['paymentMethod']),
+                  _infoLine('رقم التتبع', o['trackingNumber']),
+                  _infoLine(
+                    'مصدر الإكمال',
+                    o['completionSource'] == 'internal'
+                        ? 'إكمال داخلي بواسطة موظف مخوّل'
+                        : o['completionSource'] == null
+                        ? null
+                        : 'تأكيد شركة التوصيل',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            VLivePanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('سجل الحركة', Icons.history),
+                  if (timeline.isEmpty)
+                    const Text(
+                      'لا توجد أحداث مسجلة لهذا الطلب بعد.',
+                      style: TextStyle(color: VColors.muted),
+                    ),
+                  for (var i = 0; i < timeline.length; i++)
+                    _timelineEvent(timeline[i], last: i == timeline.length - 1),
+                  if (_eventsMore)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: OutlinedButton.icon(
+                        onPressed: _loadingEvents ? null : loadMoreEvents,
+                        icon: _loadingEvents
+                            ? const SizedBox.square(
+                                dimension: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.expand_more),
+                        label: const Text('عرض أحداث أقدم'),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+
+        final right = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (isClick)
+              VLivePanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle(
+                      'شحنة Click Delivery',
+                      Icons.local_shipping_outlined,
+                    ),
+                    _infoLine('حالة الشحنة', shippingLabel),
+                    _infoLine(
+                      'رقم شحنة Click',
+                      policyNumber,
+                      copy: policyNumber != null,
+                      copyMessage: 'تم نسخ رقم البوليصة',
+                    ),
+                    _infoLine(
+                      'مرجع Click (Order_ID)',
+                      clickRef,
+                      copy: clickRef != null,
+                      copyMessage: 'تم نسخ مرجع Click',
+                    ),
+                    _infoLine('آخر مزامنة', businessDate(o['lastSyncAt'])),
+                    _infoLine(
+                      'آخر تحديث لحالة الشحنة',
+                      businessDate(o['shippingStatusUpdatedAt']),
+                    ),
+                    _infoLine(
+                      'مصدر حالة الشحنة',
+                      _sourceLabel(o['shippingStatusSource']),
+                    ),
+                    _infoLine('تاريخ حالة Click', o['clickStatusDate']),
+                    _infoLine('ملاحظة حالة Click', o['clickStatusNote']),
+                    _infoLine(
+                      'التحصيل ورسوم التوصيل',
+                      o['amount'] != null
+                          ? 'غير مؤكدة؛ قيمة الطلب المسجلة ليست مبلغ التحصيل أو صافي التسوية'
+                          : null,
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.tonalIcon(
+                      onPressed: canSync && !actionBusy ? _syncClick : null,
+                      icon: const Icon(Icons.sync),
+                      label: const Text('مزامنة الحالة'),
+                    ),
+                    if (!canSync)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 6),
+                        child: Text(
+                          'المزامنة متاحة بعد ربط الشحنة وامتلاك صلاحية الإرسال.',
+                          style: TextStyle(color: VColors.muted, fontSize: 11),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'رقم الطلب: ${o['id']}',
-                        style: const TextStyle(color: VColors.muted),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'الحالة: ${statusLabels[state] ?? state}',
-                        style: TextStyle(
-                          color: statusColors[state],
-                          fontWeight: FontWeight.w800,
+                    if (_syncFeedback != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _syncFeedback!,
+                          style: TextStyle(
+                            color: _syncFeedbackOk
+                                ? VColors.aqua
+                                : VColors.danger,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                      const Divider(height: 25),
-                      ...{
-                            'الهاتف': o['phone'],
-                            'رقم إضافي': o['extraPhone'],
-                            'العنوان':
-                                '${o['city']}، ${o['area']}، ${o['address']}',
-                            'المحتويات': o['description'],
-                            'الكمية': o['quantity'],
-                            'طريقة الدفع': o['paymentMethod'],
-                            'شركة التوصيل': o['companyName'],
-                            if (o['companyProvider'] == 'click_delivery_v1')
-                              'حالة الشحنة':
-                                  ShippingStatus.parse(
-                                    o['shippingStatus'],
-                                  )?.label ??
-                                  'لم تُرسل بعد',
-                            if (o['shippingStatusSource'] == 'manual')
-                              'مصدر حالة الشحنة':
-                                  'إدخال يدوي بعد التحقق من بوابة Click',
-                            if (o['shippingStatusSource'] == 'click_api')
-                              'مصدر حالة الشحنة':
-                                  'تحديث تلقائي مؤكد من Click API',
-                            if (o['companyProvider'] == 'click_delivery_v1' &&
-                                o['amount'] != null)
-                              'التحصيل ورسوم التوصيل':
-                                  'غير مؤكدة؛ قيمة الطلب المسجلة ليست مبلغ التحصيل أو صافي التسوية',
-                            'رقم التتبع': o['trackingNumber'],
-                            if (o['providerOrderId'] != null)
-                              'رقم شحنة Click': o['providerOrderId'],
-                            if (o['clickOrderRef'] != null)
-                              'مرجع Click (Order_ID)': o['clickOrderRef'],
-                            if (o['clickClientSerial'] != null)
-                              'كود التاجر الأصلي': o['clickClientSerial'],
-                            if (o['clickStatusDate'] != null)
-                              'تاريخ حالة Click': o['clickStatusDate'],
-                            if (o['clickStatusNote'] != null)
-                              'ملاحظة حالة Click': o['clickStatusNote'],
-                            if (o['clickAmounts'] is Map)
-                              'مبالغ Click الخام (غير معتمدة للتسوية)':
-                                  (o['clickAmounts'] as Map).entries
-                                      .map((e) => '${e.key}=${e.value}')
-                                      .join(' • '),
-                            if (o['shippingStatusUpdatedAt'] != null)
-                              'آخر تحديث لحالة الشحنة': businessDate(
-                                o['shippingStatusUpdatedAt'],
-                              ),
-                            if (o['lastSyncAt'] != null)
-                              'آخر مزامنة': businessDate(o['lastSyncAt']),
-                            if (o['lastSyncAttemptAt'] != null)
-                              'آخر محاولة مزامنة': businessDate(
-                                o['lastSyncAttemptAt'],
-                              ),
-                            if (o['completionSource'] != null)
-                              'مصدر الإكمال':
-                                  o['completionSource'] == 'internal'
-                                  ? 'إكمال داخلي بواسطة موظف مخوّل'
-                                  : 'تأكيد شركة التوصيل',
-                            if (o['amount'] != null)
-                              'المبلغ': displayAmount(o['amount']),
-                            'ملاحظات': o['note'],
-                          }.entries
-                          .where(
-                            (e) =>
-                                e.value != null &&
-                                e.value.toString().isNotEmpty,
-                          )
-                          .map(
-                            (e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 9),
+                  ],
+                ),
+              ),
+            if (isClick) const SizedBox(height: 12),
+            VLivePanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('الإجراءات', Icons.bolt_outlined),
+                  AbsorbPointer(
+                    absorbing: actionBusy,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            try {
+                              final latest = await VelnixGateway.instance.order(
+                                widget.id,
+                              );
+                              final branding = await VelnixGateway.instance
+                                  .call('getSettings');
+                              if (!context.mounted) return;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute<void>(
+                                  builder: (_) => OrderPrintScreen(
+                                    order: Map<String, dynamic>.from(
+                                      latest['order'] as Map,
+                                    )..addAll(branding),
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              if (context.mounted) showError(context, e);
+                            }
+                          },
+                          icon: const Icon(Icons.print_outlined),
+                          label: const Text('طباعة / PDF / باركود'),
+                        ),
+                        if (actions['statuses'] is List)
+                          for (final t
+                              in (actions['statuses'] as List).cast<String>())
+                            OutlinedButton(
+                              onPressed: () => _changeStatus(t),
                               child: Text(
-                                '${e.key}: ${e.value}',
-                                style: const TextStyle(fontSize: 13),
+                                t == 'delivered'
+                                    ? 'إكمال الطلب الداخلي'
+                                    : 'تحويل إلى ${statusLabels[t]}',
                               ),
                             ),
+                        if (actions['edit'] == true)
+                          OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => LiveOrderForm(
+                                  policy: widget.policy,
+                                  initial: o,
+                                  onSaved: () {
+                                    Navigator.pop(context);
+                                    refresh();
+                                  },
+                                ),
+                              ),
+                            ),
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('تعديل'),
                           ),
+                        if (actions['assign'] == true)
+                          OutlinedButton.icon(
+                            onPressed: () => _chooseCompany(o),
+                            icon: const Icon(Icons.local_shipping_outlined),
+                            label: const Text('اختيار شركة توصيل'),
+                          ),
+                        if (actions['dispatch'] == true)
+                          FilledButton.icon(
+                            onPressed: _confirmDispatch,
+                            icon: const Icon(Icons.send),
+                            label: Text(
+                              isClick
+                                  ? 'إرسال إلى Click'
+                                  : 'إرسال لشركة التوصيل',
+                            ),
+                          ),
+                        if (actions['resolve'] == true)
+                          OutlinedButton.icon(
+                            onPressed: _resolveDispatch,
+                            icon: const Icon(Icons.fact_check_outlined),
+                            label: const Text('مراجعة إرسال غير مؤكد'),
+                          ),
+                        if (isClick &&
+                            o['providerOrderId'] == null &&
+                            widget.policy.can('sendToDelivery'))
+                          OutlinedButton.icon(
+                            onPressed: _reconcileClick,
+                            icon: const Icon(Icons.link),
+                            label: const Text('ربط شحنة Click موجودة'),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (actionBusy) const LinearProgressIndicator(),
+                  if (hint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        hint,
+                        style: const TextStyle(
+                          color: VColors.muted,
+                          fontSize: 11.5,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  if (o['dispatchState'] == 'needs_review')
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'تحذير: يجب التحقق من شركة التوصيل قبل إعادة إرسال الشحنة لمنع الازدواج.',
+                        style: TextStyle(
+                          color: VColors.danger,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  if (o['syncError'] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        o['syncError'].toString(),
+                        style: const TextStyle(
+                          color: VColors.danger,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'الحالات القادمة من شركة التوصيل تُحدّث في الخادم، ولا يُسمح بتزويرها يدوياً.',
+                    style: TextStyle(color: VColors.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            if (canTechnical) const SizedBox(height: 12),
+            if (canTechnical)
+              VLivePanel(
+                child: Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(bottom: 8),
+                    title: _sectionTitle('تفاصيل تقنية', Icons.code_outlined),
+                    children: [
+                      _infoLine('معرف الشركة', o['companyId']),
+                      _infoLine('حالة الإرسال', o['dispatchState']),
+                      _infoLine('كود التاجر الأصلي', o['clickClientSerial']),
+                      _infoLine('حالة Click الخام', o['clickStatusRaw']),
+                      if (o['clickAmounts'] is Map)
+                        _infoLine(
+                          'مبالغ Click الخام',
+                          (o['clickAmounts'] as Map).entries
+                              .map((e) => '${e.key}=${e.value}')
+                              .join(' • '),
+                        ),
+                      _infoLine(
+                        'آخر محاولة مزامنة',
+                        businessDate(o['lastSyncAttemptAt']),
+                      ),
+                      _infoLine('خطأ المزامنة', o['syncError']),
+                      _infoLine('الإصدار', o['revision']),
+                      _infoLine('آخر تحديث', businessDate(o['updatedAt'])),
+                      _infoLine('باركود الطلب', o['barcodeValue']),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-                VLivePanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'إجراءات الطلب',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
+              ),
+          ],
+        );
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            refresh();
+            await request;
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: LiveContent(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  VLivePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const CircleAvatar(
+                              radius: 24,
+                              backgroundColor: VColors.softBlue,
+                              child: Icon(
+                                Icons.person_outline,
+                                color: VColors.brand,
+                                size: 27,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    o['customer']?.toString() ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          'رقم الطلب: ${o['id']}',
+                                          style: const TextStyle(
+                                            color: VColors.muted,
+                                            fontSize: 12.5,
+                                          ),
+                                        ),
+                                      ),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        tooltip: 'نسخ رقم الطلب',
+                                        onPressed: () => _copy(
+                                          '${o['id']}',
+                                          'تم نسخ رقم الطلب',
+                                        ),
+                                        icon: const Icon(
+                                          Icons.copy_outlined,
+                                          size: 17,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Flexible(child: _statusChip(state)),
+                            IconButton(
+                              tooltip: 'تحديث',
+                              onPressed: refresh,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      AbsorbPointer(
-                        absorbing: actionBusy,
-                        child: Wrap(
+                        const SizedBox(height: 8),
+                        Wrap(
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            OutlinedButton.icon(
-                              onPressed: () async {
-                                try {
-                                  final latest = await VelnixGateway.instance
-                                      .order(widget.id);
-                                  final branding = await VelnixGateway.instance
-                                      .call('getSettings');
-                                  if (!context.mounted) return;
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => OrderPrintScreen(
-                                        order: Map<String, dynamic>.from(
-                                          latest['order'] as Map,
-                                        )..addAll(branding),
-                                      ),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  if (context.mounted) showError(context, e);
-                                }
-                              },
-                              icon: const Icon(Icons.print_outlined),
-                              label: const Text('طباعة / PDF / باركود'),
+                            _softChip(
+                              Icons.local_shipping_outlined,
+                              company?.isNotEmpty == true
+                                  ? company!
+                                  : 'بدون شركة',
                             ),
-                            if (actions['statuses'] is List)
-                              for (final t
-                                  in (actions['statuses'] as List)
-                                      .cast<String>())
-                                OutlinedButton(
-                                  onPressed: () => _changeStatus(t),
-                                  child: Text(
-                                    t == 'delivered'
-                                        ? 'إكمال الطلب الداخلي'
-                                        : 'تحويل إلى ${statusLabels[t]}',
-                                  ),
-                                ),
-                            if (actions['edit'] == true)
-                              OutlinedButton.icon(
-                                onPressed: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => LiveOrderForm(
-                                      policy: widget.policy,
-                                      initial: o,
-                                      onSaved: () {
-                                        Navigator.pop(context);
-                                        refresh();
-                                      },
-                                    ),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.edit_outlined),
-                                label: const Text('تعديل'),
+                            if (isClick && policyNumber != null)
+                              _softChip(
+                                Icons.confirmation_number_outlined,
+                                'بوليصة $policyNumber',
                               ),
-                            if (actions['assign'] == true)
-                              OutlinedButton.icon(
-                                onPressed: () => _chooseCompany(o),
-                                icon: const Icon(Icons.local_shipping_outlined),
-                                label: const Text('اختيار شركة توصيل'),
-                              ),
-                            if (actions['dispatch'] == true)
-                              FilledButton.icon(
-                                onPressed: () => _confirmDispatch(),
-                                icon: const Icon(Icons.send),
-                                label: Text(
-                                  o['companyProvider'] == 'click_delivery_v1'
-                                      ? 'إرسال إلى Click'
-                                      : 'إرسال لشركة التوصيل',
-                                ),
-                              ),
-                            if (actions['resolve'] == true)
-                              OutlinedButton.icon(
-                                onPressed: () => _resolveDispatch(),
-                                icon: const Icon(Icons.fact_check_outlined),
-                                label: const Text('مراجعة إرسال غير مؤكد'),
-                              ),
-                            if (o['companyProvider'] == 'click_delivery_v1' &&
-                                o['providerOrderId'] == null &&
-                                widget.policy.can('sendToDelivery'))
-                              OutlinedButton.icon(
-                                onPressed: () => _reconcileClick(),
-                                icon: const Icon(Icons.link),
-                                label: const Text('ربط شحنة Click موجودة'),
-                              ),
-                            if (o['companyProvider'] == 'click_delivery_v1' &&
-                                o['clickOrderRef'] != null &&
-                                widget.policy.can('sendToDelivery'))
-                              OutlinedButton.icon(
-                                onPressed: _syncClick,
-                                icon: const Icon(Icons.sync),
-                                label: const Text('مزامنة حالة Click'),
-                              ),
+                            _softChip(Icons.calendar_today_outlined, created),
                           ],
                         ),
-                      ),
-                      if (actionBusy) const LinearProgressIndicator(),
-                      if (o['dispatchState'] == 'needs_review')
-                        const Padding(
-                          padding: EdgeInsets.only(top: 9),
-                          child: Text(
-                            'تحذير: يجب التحقق من شركة التوصيل قبل إعادة إرسال الشحنة لمنع الازدواج.',
-                            style: TextStyle(
-                              color: VColors.danger,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      if (o['syncError'] != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 9),
-                          child: Text(
-                            o['syncError'].toString(),
-                            style: const TextStyle(color: VColors.danger),
-                          ),
-                        ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'الحالات القادمة من شركة التوصيل تُحدّث في الخادم، ولا يُسمح بتزويرها يدوياً.',
-                        style: TextStyle(color: VColors.muted, fontSize: 11),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                VLivePanel(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        'سجل الحركة',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final e in events)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(
-                            Icons.history,
-                            color: VColors.brand,
-                          ),
-                          title: Text(eventLabel(e['action'], e['details'])),
-                          subtitle: Text(
-                            '${e['actorName'] ?? ''} • ${businessDate(e['createdAt'])}',
-                          ),
-                        ),
-                      if (events.isEmpty)
-                        const Text(
-                          'لا توجد أحداث',
-                          style: TextStyle(color: VColors.muted),
-                        ),
-                      if (_eventsMore)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: OutlinedButton.icon(
-                            onPressed: _loadingEvents ? null : loadMoreEvents,
-                            icon: _loadingEvents
-                                ? const SizedBox.square(
-                                    dimension: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.expand_more),
-                            label: const Text('عرض أحداث أقدم'),
-                          ),
-                        ),
-                    ],
+                  const SizedBox(height: 12),
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      if (box.maxWidth < 980) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [left, const SizedBox(height: 12), right],
+                        );
+                      }
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 3, child: left),
+                          const SizedBox(width: 12),
+                          Expanded(flex: 2, child: right),
+                        ],
+                      );
+                    },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       },
     ),
   );
+
   Future<void> _resolveDispatch() async {
     final reason = TextEditingController(), tracking = TextEditingController();
     String outcome = 'not_created';
@@ -992,7 +1427,30 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
   }
 
   Future<void> _syncClick() async {
-    await action(() => VelnixGateway.instance.syncClickOrder(widget.id));
+    if (actionBusy) return;
+    setState(() {
+      actionBusy = true;
+      _syncFeedback = null;
+    });
+    try {
+      await VelnixGateway.instance.syncClickOrder(widget.id);
+      if (mounted) {
+        setState(() {
+          _syncFeedback = 'تمت مزامنة حالة Click بنجاح.';
+          _syncFeedbackOk = true;
+        });
+        refresh();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _syncFeedback = 'تعذر تحديث حالة Click: $e';
+          _syncFeedbackOk = false;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => actionBusy = false);
+    }
   }
 
   Future<void> _reconcileClick() async {
@@ -1221,6 +1679,62 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
       if (mounted) showError(context, e);
     }
   }
+}
+
+class _OrderDetailSkeleton extends StatelessWidget {
+  const _OrderDetailSkeleton();
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.all(16),
+    child: LiveContent(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SkeletonCard(height: 150),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, box) => box.maxWidth < 980
+                ? Column(
+                    children: [
+                      const _SkeletonCard(height: 330),
+                      const SizedBox(height: 12),
+                      const _SkeletonCard(height: 300),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: const _SkeletonCard(height: 500),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: const _SkeletonCard(height: 400),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _SkeletonCard extends StatelessWidget {
+  const _SkeletonCard({required this.height});
+  final double height;
+  @override
+  Widget build(BuildContext context) => VLivePanel(
+    child: Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: VColors.softBlue,
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+  );
 }
 
 class LiveOrderForm extends StatefulWidget {

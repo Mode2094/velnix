@@ -870,21 +870,34 @@ class _LiveMembersState extends State<LiveMembers> {
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 if (widget.policy.role == 'generalManager')
-                  FilledButton.icon(
-                    onPressed: operating
-                        ? null
-                        : () async {
-                            await Navigator.push<void>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    LiveJoinRequests(policy: widget.policy),
-                              ),
-                            );
-                            if (mounted) refresh();
-                          },
-                    icon: const Icon(Icons.person_add_alt),
-                    label: const Text('طلبات الانضمام'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: operating
+                            ? null
+                            : () => _edit(null, items, creating: true),
+                        icon: const Icon(Icons.person_add_alt_1_outlined),
+                        label: const Text('إضافة موظف'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: operating
+                            ? null
+                            : () async {
+                                await Navigator.push<void>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        LiveJoinRequests(policy: widget.policy),
+                                  ),
+                                );
+                                if (mounted) refresh();
+                              },
+                        icon: const Icon(Icons.person_add_alt),
+                        label: const Text('طلبات الانضمام'),
+                      ),
+                    ],
                   ),
               ],
             ),
@@ -966,20 +979,19 @@ class _LiveMembersState extends State<LiveMembers> {
       id;
   Future<void> _edit(
     Map<String, dynamic>? m,
-    List<Map<String, dynamic>> members,
-  ) async {
-    try {
-      members = await VelnixGateway.instance.members();
-    } catch (e) {
-      if (mounted) showError(context, e);
-      return;
-    }
+    List<Map<String, dynamic>> members, {
+    bool creating = false,
+  }) async {
     if (!mounted) return;
     final done = await Navigator.push<bool>(
       context,
       MaterialPageRoute<bool>(
-        builder: (_) =>
-            LiveMemberForm(policy: widget.policy, initial: m, members: members),
+        builder: (_) => LiveMemberForm(
+          policy: widget.policy,
+          initial: m,
+          members: members,
+          creating: creating,
+        ),
       ),
     );
     if (done == true) refresh();
@@ -993,8 +1005,10 @@ class LiveMemberForm extends StatefulWidget {
     required this.members,
     this.initial,
     this.joinRequest = false,
+    this.creating = false,
   });
   final bool joinRequest;
+  final bool creating;
   final SessionPolicy policy;
   final List<Map<String, dynamic>> members;
   final Map<String, dynamic>? initial;
@@ -1006,6 +1020,9 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   final form = GlobalKey<FormState>();
   late final TextEditingController name;
   late final TextEditingController email;
+  final password = TextEditingController();
+  final confirmPassword = TextEditingController();
+  bool get creating => widget.creating;
   late String role = widget.initial?['role']?.toString() ?? 'dataEntry';
   late bool active = widget.initial?['active'] != false;
   late String? salesSupervisor = widget.initial?['salesSupervisorId']
@@ -1046,30 +1063,121 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   void dispose() {
     name.dispose();
     email.dispose();
+    password.dispose();
+    confirmPassword.dispose();
     super.dispose();
   }
 
   Future<void> save() async {
     if (!form.currentState!.validate() || busy) return;
+    if (creating && password.text != confirmPassword.text) {
+      showError(context, 'كلمتا المرور غير متطابقتين');
+      return;
+    }
     setState(() => busy = true);
     try {
-      await VelnixGateway.instance
-          .call(widget.joinRequest ? 'decideJoinRequest' : 'saveMember', {
-            if (widget.joinRequest) 'decision': 'approved',
-            if (widget.initial != null) 'id': widget.initial!['id'],
-            'name': name.text.trim(),
-            'email': email.text.trim(),
-            'role': role,
-            'permissions': permissions.toList(),
-            'active': active,
-            'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
-          });
+      final payload = {
+        if (widget.joinRequest) 'decision': 'approved',
+        if (widget.initial != null) 'id': widget.initial!['id'],
+        'name': name.text.trim(),
+        'email': email.text.trim(),
+        'role': role,
+        'permissions': permissions.toList(),
+        'active': active,
+        'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
+      };
+      if (creating) {
+        await VelnixGateway.instance.createEmployee({
+          ...payload,
+          'password': password.text,
+        });
+      } else {
+        await VelnixGateway.instance.call(
+          widget.joinRequest ? 'decideJoinRequest' : 'saveMember',
+          payload,
+        );
+        if (widget.joinRequest) {
+          VelnixGateway.instance.invalidate('listMembers');
+          VelnixGateway.instance.invalidate('listOrderCreators');
+        }
+      }
       _dirty = false;
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final next = TextEditingController(), confirm = TextEditingController();
+    try {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('تعيين كلمة مرور جديدة'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'لن تُعرض كلمة المرور الحالية. سيتم إبطال الجلسات السابقة للحساب.',
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: next,
+                obscureText: true,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور الجديدة',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: confirm,
+                obscureText: true,
+                textDirection: TextDirection.ltr,
+                decoration: const InputDecoration(
+                  labelText: 'تأكيد كلمة المرور',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('رجوع'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('تعيين'),
+            ),
+          ],
+        ),
+      );
+      if (go != true) return;
+      if (next.text.length < 8) {
+        if (mounted) showError(context, 'كلمة المرور 8 أحرف على الأقل');
+        return;
+      }
+      if (next.text != confirm.text) {
+        if (mounted) showError(context, 'كلمتا المرور غير متطابقتين');
+        return;
+      }
+      setState(() => busy = true);
+      await VelnixGateway.instance.resetEmployeePassword(
+        widget.initial!['id'].toString(),
+        next.text,
+      );
+      if (mounted) {
+        showSuccess(context, 'تم تعيين كلمة مرور جديدة وإبطال الجلسات');
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+      next.dispose();
+      confirm.dispose();
     }
   }
 
@@ -1085,7 +1193,11 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
     child: Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.joinRequest ? 'اعتماد طلب الانضمام' : 'تعديل صلاحيات الموظف',
+          widget.joinRequest
+              ? 'اعتماد طلب الانضمام'
+              : creating
+              ? 'إضافة موظف'
+              : 'تعديل صلاحيات الموظف',
         ),
       ),
       body: SingleChildScrollView(
@@ -1114,7 +1226,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                       const SizedBox(height: 11),
                       TextFormField(
                         controller: email,
-                        readOnly: widget.initial != null,
+                        readOnly: widget.initial != null && !creating,
                         textDirection: TextDirection.rtl,
                         keyboardType: TextInputType.emailAddress,
                         onChanged: (_) => setState(() => _dirty = true),
@@ -1125,6 +1237,36 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                             ? 'بريد غير صحيح'
                             : null,
                       ),
+                      if (creating) ...[
+                        const SizedBox(height: 11),
+                        TextFormField(
+                          controller: password,
+                          obscureText: true,
+                          textDirection: TextDirection.ltr,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          decoration: const InputDecoration(
+                            labelText: 'كلمة المرور الابتدائية',
+                            helperText:
+                                '8 أحرف على الأقل؛ لا تُخزّن في Firestore',
+                          ),
+                          validator: (v) => v == null || v.length < 8
+                              ? 'كلمة المرور 8 أحرف على الأقل'
+                              : null,
+                        ),
+                        const SizedBox(height: 11),
+                        TextFormField(
+                          controller: confirmPassword,
+                          obscureText: true,
+                          textDirection: TextDirection.ltr,
+                          onChanged: (_) => setState(() => _dirty = true),
+                          decoration: const InputDecoration(
+                            labelText: 'تأكيد كلمة المرور',
+                          ),
+                          validator: (v) => v != password.text
+                              ? 'كلمتا المرور غير متطابقتين'
+                              : null,
+                        ),
+                      ],
                       const SizedBox(height: 11),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
@@ -1260,6 +1402,17 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                     ],
                   ),
                 ),
+                if (!creating &&
+                    !widget.joinRequest &&
+                    widget.initial != null &&
+                    widget.policy.role == 'generalManager') ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _resetPassword,
+                    icon: const Icon(Icons.password_outlined),
+                    label: const Text('تعيين كلمة مرور جديدة'),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 FilledButton.icon(
                   onPressed: busy ? null : save,

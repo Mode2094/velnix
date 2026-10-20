@@ -118,10 +118,17 @@ void main() {
             find.text('مرجع Click (Order_ID): VNX-CLICK-TEST-20261019-d'),
             findsOneWidget,
           );
-          expect(
-            find.text('كود التاجر الأصلي: VNX-CLICK-TEST-20261019-d4a0f8fb'),
-            findsOneWidget,
-          );
+          if (role == 'generalManager') {
+            await tester.ensureVisible(find.text('تفاصيل تقنية'));
+            await tester.tap(find.text('تفاصيل تقنية'));
+            await tester.pumpAndSettle();
+            expect(
+              find.text('كود التاجر الأصلي: VNX-CLICK-TEST-20261019-d4a0f8fb'),
+              findsOneWidget,
+            );
+          } else {
+            expect(find.text('تفاصيل تقنية'), findsNothing);
+          }
           expect(
             find.text('تاريخ حالة Click: 2026-10-19T00:00:00'),
             findsOneWidget,
@@ -335,7 +342,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('مزامنة حالة Click'), findsOneWidget);
+      expect(find.text('مزامنة الحالة'), findsOneWidget);
       expect(
         find.text('مصدر حالة الشحنة: تحديث تلقائي مؤكد من Click API'),
         findsOneWidget,

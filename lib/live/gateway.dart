@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -11,12 +12,63 @@ class VelnixGateway {
   FirebaseFunctions get functions =>
       FirebaseFunctions.instanceFor(region: 'europe-west1');
   FirebaseAuth get auth => FirebaseAuth.instance;
+  final Map<String, _GatewayCacheEntry> _cache = {};
+  final Map<String, Future<dynamic>> _inflight = {};
+  Duration cacheTtl = const Duration(seconds: 15);
+  String get _scope =>
+      testCall != null ? 'test' : (auth.currentUser?.uid ?? 'anon');
+  Future<T> _cached<T>(String key, Future<T> Function() load, {Duration? ttl}) {
+    if (testCall != null) return load();
+    final full = '$_scope:$key';
+    final hit = _cache[full];
+    final now = DateTime.now();
+    if (hit != null && now.difference(hit.createdAt) < (ttl ?? cacheTtl)) {
+      return Future.value(hit.value as T);
+    }
+    final pending = _inflight[full];
+    if (pending != null) return pending.then((value) => value as T);
+    final future = load();
+    _inflight[full] = future;
+    return future
+        .then((value) {
+          _cache[full] = _GatewayCacheEntry(now, value);
+          return value;
+        })
+        .whenComplete(() => _inflight.remove(full));
+  }
+
+  /// Drops cached directory/dashboard values after a mutation or permission
+  /// change. Authentication and policy data are never cached.
+  void invalidate(String key) {
+    _cache.removeWhere((k, _) => k.contains(':$key'));
+  }
+
+  void clearCache() {
+    _cache.clear();
+    _inflight.clear();
+  }
 
   Future<Map<String, dynamic>> call(
     String name, [
     Map<String, dynamic> data = const {},
   ]) async {
     if (testCall != null) return testCall!(name, data);
+    const pageCacheable = {'listCompanies', 'listMembers', 'listOrderCreators'};
+    final firstPage = (data['query'] ?? '') == '' && data['afterId'] == null;
+    if (pageCacheable.contains(name) && firstPage) {
+      return _cached(
+        'page:$name:${data['pageSize'] ?? ''}',
+        () => _callRaw(name, data),
+        ttl: const Duration(seconds: 30),
+      );
+    }
+    return _callRaw(name, data);
+  }
+
+  Future<Map<String, dynamic>> _callRaw(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final result = await functions.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);
@@ -63,32 +115,57 @@ class VelnixGateway {
   });
   Future<Map<String, dynamic>> dashboard([
     Map<String, dynamic> filters = const {},
-  ]) => call('dashboardStats', filters);
+  ]) {
+    final keys =
+        filters.entries
+            .where((e) => e.value != null && e.value.toString().isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
+    return _cached(
+      'dashboard:${jsonEncode({for (final e in keys) e.key: e.value})}',
+      () => call('dashboardStats', filters),
+      ttl: const Duration(seconds: 30),
+    );
+  }
+
   Future<Map<String, dynamic>> order(
     String id, {
     String? eventsAfterId,
-    int eventsPageSize = 80,
+    int eventsPageSize = 30,
   }) => call('getOrder', {
     'id': id,
     'eventsPageSize': eventsPageSize,
     'eventsAfterId': ?eventsAfterId,
   });
-  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> order) =>
-      call('createOrder', order);
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> order) async {
+    final result = await call('createOrder', order);
+    _invalidateOrderData();
+    return result;
+  }
+
   Future<void> updateOrder(String id, Map<String, dynamic> fields) async {
     await call('updateOrder', {'id': id, ...fields});
+    _invalidateOrderData();
   }
 
   Future<void> updateStatus(String id, String status) async {
     await call('changeOrderStatus', {'id': id, 'status': status});
+    _invalidateOrderData();
   }
 
   Future<void> assignCompany(String id, String? companyId) async {
     await call('assignCompany', {'id': id, 'companyId': companyId});
+    _invalidateOrderData();
   }
 
   Future<void> dispatch(String id) async {
     await call('sendOrderToDelivery', {'id': id});
+    _invalidateOrderData();
+  }
+
+  void _invalidateOrderData() {
+    invalidate('dashboard');
+    invalidate('companyStats');
   }
 
   Future<void> resolveDispatchException(
@@ -103,6 +180,7 @@ class VelnixGateway {
       'reason': reason,
       'trackingNumber': ?trackingNumber,
     });
+    _invalidateOrderData();
   }
 
   Future<void> reconcileClickShipment(
@@ -121,33 +199,64 @@ class VelnixGateway {
       'shippingStatus': shippingStatus,
       'reason': reason,
     });
+    _invalidateOrderData();
   }
 
-  Future<Map<String, dynamic>> syncClickOrder(String id) =>
-      call('syncClickOrder', {'id': id});
+  Future<Map<String, dynamic>> syncClickOrder(String id) async {
+    final result = await call('syncClickOrder', {'id': id});
+    _invalidateOrderData();
+    return result;
+  }
 
   Future<Map<String, dynamic>> companyStats(String id) =>
-      call('companyStats', {'id': id});
+      _cached('companyStats:$id', () => call('companyStats', {'id': id}));
   Future<List<Map<String, dynamic>>> companies() async =>
       directoryItems('listCompanies');
   Future<void> saveCompany(Map<String, dynamic> company) async {
     await call('saveCompany', company);
+    invalidate('listCompanies');
+    invalidate('companyStats');
   }
 
   Future<void> archiveCompany(String id) async {
     await call('archiveCompany', {'id': id});
+    invalidate('listCompanies');
+    invalidate('companyStats');
   }
 
   Future<void> restoreCompany(String id) async {
     await call('restoreCompany', {'id': id});
+    invalidate('listCompanies');
+    invalidate('companyStats');
   }
 
-  Future<Map<String, dynamic>> testCompany(String id) =>
-      call('testCompanyConnection', {'id': id});
+  Future<Map<String, dynamic>> testCompany(String id) async {
+    final result = await call('testCompanyConnection', {'id': id});
+    invalidate('listCompanies');
+    return result;
+  }
+
   Future<List<Map<String, dynamic>>> members() async =>
       directoryItems('listMembers');
   Future<void> saveMember(Map<String, dynamic> member) async {
     await call('saveMember', member);
+    invalidate('listMembers');
+    invalidate('listOrderCreators');
+    invalidate('dashboard');
+  }
+
+  Future<Map<String, dynamic>> createEmployee(
+    Map<String, dynamic> member,
+  ) async {
+    final result = await call('createEmployee', member);
+    invalidate('listMembers');
+    invalidate('listOrderCreators');
+    invalidate('dashboard');
+    return result;
+  }
+
+  Future<void> resetEmployeePassword(String id, String password) async {
+    await call('resetEmployeePassword', {'id': id, 'password': password});
   }
 
   Future<List<Map<String, dynamic>>> notices() async =>
@@ -196,6 +305,16 @@ class VelnixGateway {
   }
 
   Future<List<Map<String, dynamic>>> directoryItems(String endpoint) async {
+    const cacheable = {'listCompanies', 'listMembers', 'listOrderCreators'};
+    if (!cacheable.contains(endpoint)) return _loadDirectory(endpoint);
+    return _cached(
+      'dir:$endpoint',
+      () => _loadDirectory(endpoint),
+      ttl: const Duration(seconds: 30),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDirectory(String endpoint) async {
     final items = <Map<String, dynamic>>[];
     final seen = <String>{};
     String? cursor;
@@ -227,6 +346,12 @@ class VelnixException implements Exception {
 
 /// Transport failures can surface as SDK `internal [0]`, not `unavailable`.
 /// Keep raw transport diagnostics out of UI while retaining business denials.
+class _GatewayCacheEntry {
+  const _GatewayCacheEntry(this.createdAt, this.value);
+  final DateTime createdAt;
+  final Object? value;
+}
+
 String callableErrorMessage(
   String code,
   String? serverMessage,

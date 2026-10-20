@@ -16,7 +16,11 @@ module.exports=({db,auth,FieldValue,FieldPath,requireAuth,currentActor,audit,fai
     return db.runTransaction(async tx=>{
       const member=await tx.get(db.doc('members/'+uid));
       const ref=db.doc('joinRequests/'+uid),join=await tx.get(ref);
-      if(member.exists)return {status:member.data().active===true&&validRole(member.data().role)?'approved':'disabled'};
+      if(member.exists){
+        const m=member.data();
+        return {status:m.active===true&&validRole(m.role)?'approved':'disabled',
+          member:{id:uid,name:m.name||'',email:m.email||'',role:m.role,active:m.active===true,permissions:m.permissions||[],salesSupervisorId:m.salesSupervisorId||null}};
+      }
       if(join.exists)return {status:join.data().status};
       tx.create(ref,{...profile,status:'pending',createdAt:FieldValue.serverTimestamp()});
       await audit('join.requested',{id:uid,name:profile.name},uid,{},tx);

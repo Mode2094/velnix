@@ -64,6 +64,7 @@ class NotificationsService {
       /* Both cleanup paths are attempted. Offline token revocation still
          needs real-device verification; always close the local Auth session. */
     }
+    VelnixGateway.instance.clearCache();
     await VelnixGateway.instance.auth.signOut();
   }
 }

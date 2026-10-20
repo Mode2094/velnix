@@ -129,9 +129,11 @@ async function main(){
   const p=sessions.pending.p,forged=await okay(p,'joinSession',{uid:'qa-generalManager',email:'fake@velnix.test',role:'generalManager',active:true});assert.equal(forged.status,'pending');
   const missing=await sessions.generalManager.p.evaluate(async()=>{const {getAuth}=await import('/firebase-sdk/12.19.0/firebase-auth.js');const response=await fetch('http://127.0.0.1:5001/demo-velnix-preview/europe-west1/me',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await getAuth().currentUser.getIdToken()},body:JSON.stringify({data:{}})});return response.status;});assert.equal(missing,401);
  });
- await scenario('UI audit log and locally generated notifications with read receipt',async()=>{
-  const gm=sessions.generalManager.p;const displayed=gm.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listAudit')&&r.request().method()==='POST');await nav(gm,'audit');assert.equal((await displayed).status(),200);await gm.getByText('سجل العمليات',{exact:true}).waitFor();
-  const audit=await okay(gm,'listAudit',{});assert.ok(audit.items.some(a=>a.entityId===orders.generalManager.id&&a.action==='order.status_changed'));await gm.screenshot({path:path.join(out,'audit-ui.png')});
+ await scenario('operations and sync tabs stay hidden while backend audit and notifications work',async()=>{
+  const gm=sessions.generalManager.p;
+  assert.equal(await gm.getByRole('button',{name:'العمليات',exact:true}).count(),0);
+  assert.equal(await gm.getByRole('button',{name:'المزامنة',exact:true}).count(),0);
+  const audit=await okay(gm,'listAudit',{});assert.ok(audit.items.some(a=>a.entityId===orders.generalManager.id&&a.action==='order.status_changed'));await gm.screenshot({path:path.join(out,'audit-hidden.png')});
   const p=sessions.dataEntry.p;await nav(p,'notices');await p.getByRole('button',{name:'تحديث',exact:true}).waitFor();
   await p.waitForFunction(()=>document.body.innerText.includes('طلب جديد'),null,{timeout:20000});
   const notices=await okay(p,'listNotices',{}),notice=notices.items.find(n=>n.orderId===orders.dataEntry.id);assert.ok(notice);assert.equal(notice.read,false);

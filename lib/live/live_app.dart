@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -183,6 +184,7 @@ class _LiveLoginState extends State<LiveLogin> {
           );
       final user = credential.user;
       if (user == null || !user.emailVerified) {
+        VelnixGateway.instance.clearCache();
         await VelnixGateway.instance.auth.signOut();
         throw FirebaseAuthException(
           code: 'email-not-verified',
@@ -512,12 +514,20 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
     try {
       final status = await VelnixGateway.instance.call('joinSession');
       if (status['status'] != 'approved') return status;
+      final member = status['member'];
+      if (member is Map) {
+        return {
+          'status': 'approved',
+          'member': Map<String, dynamic>.from(member),
+        };
+      }
       return {
         'status': 'approved',
         'member': await VelnixGateway.instance.me(),
       };
     } on VelnixException catch (e) {
       if (e.code == 'unauthenticated') {
+        VelnixGateway.instance.clearCache();
         await VelnixGateway.instance.auth.signOut();
         return {'status': 'signed_out'};
       }
@@ -527,6 +537,7 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? membership;
   String? lastPolicy;
+  bool _joinDecisionInitial = true;
   @override
   void initState() {
     super.initState();
@@ -537,7 +548,14 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
         .snapshots()
         .listen(
           (snapshot) {
-            if (mounted) setState(() => session = loadSession());
+            if (_joinDecisionInitial) {
+              _joinDecisionInitial = false;
+              return;
+            }
+            if (mounted) {
+              VelnixGateway.instance.clearCache();
+              setState(() => session = loadSession());
+            }
           },
           onError: (Object error) {
             if (mounted) {
@@ -558,6 +576,7 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
             final policy =
                 '${d?["active"]}:${d?["role"]}:${d?["permissions"]}:${d?["salesSupervisorId"]}:${d?["authorizationVersion"]}';
             if (lastPolicy != null && lastPolicy != policy && mounted) {
+              VelnixGateway.instance.clearCache();
               liveNavigatorKey.currentState?.popUntil((route) => route.isFirst);
               setState(() => session = loadSession());
             }
@@ -769,6 +788,7 @@ class _LiveShellState extends State<LiveShell> {
   }
 
   void go(int index) {
+    if (!permittedEntries.contains(index)) return;
     setState(() {
       if (index == 1) {
         selectedBucket = 'all';
@@ -779,6 +799,9 @@ class _LiveShellState extends State<LiveShell> {
     });
   }
 
+  // Operations and audit pages stay implemented for backend/admin use but
+  // are intentionally hidden from normal navigation. The order timeline and
+  // its sync action remain the employee-facing surfaces.
   List<int> get permittedEntries => [
     0,
     1,
@@ -786,9 +809,7 @@ class _LiveShellState extends State<LiveShell> {
     3,
     6,
     if (widget.policy.can('manageEmployees')) 4,
-    if (widget.policy.can('viewAudit')) 5,
     if (widget.policy.can('viewReports')) 7,
-    if (widget.policy.can('viewSync')) 8,
   ];
 
   Widget _navEntry(int index, {required bool expanded, bool drawer = false}) {
@@ -984,9 +1005,7 @@ class _LiveShellState extends State<LiveShell> {
                 if (v == 'logout') NotificationsService.instance.signOut();
                 if (v == 'delivery') go(3);
                 if (v == 'team') go(4);
-                if (v == 'audit') go(5);
                 if (v == 'reports') go(7);
-                if (v == 'sync') go(8);
               },
               itemBuilder: (_) => [
                 PopupMenuItem(enabled: false, child: Text(widget.policy.name)),
@@ -999,20 +1018,10 @@ class _LiveShellState extends State<LiveShell> {
                     value: 'team',
                     child: Text('الفريق والصلاحيات'),
                   ),
-                if (widget.policy.can('viewAudit'))
-                  const PopupMenuItem(
-                    value: 'audit',
-                    child: Text('سجل العمليات'),
-                  ),
                 if (widget.policy.can('viewReports'))
                   const PopupMenuItem(
                     value: 'reports',
                     child: Text('التقارير'),
-                  ),
-                if (widget.policy.can('viewSync'))
-                  const PopupMenuItem(
-                    value: 'sync',
-                    child: Text('مركز المزامنة'),
                   ),
                 if (widget.policy.can('manageSettings'))
                   const PopupMenuItem(
@@ -1149,10 +1158,12 @@ class AsyncPanel<T> extends StatelessWidget {
     required this.future,
     required this.builder,
     required this.onRetry,
+    this.loading,
   });
   final Future<T> future;
   final Widget Function(T) builder;
   final VoidCallback onRetry;
+  final Widget? loading;
   @override
   Widget build(BuildContext context) => FutureBuilder<T>(
     future: future,
@@ -1171,12 +1182,16 @@ class AsyncPanel<T> extends StatelessWidget {
             ),
           );
         }
-        return const Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(16),
-            child: VFeedbackPanel(title: 'جارٍ تحميل البيانات', loading: true),
-          ),
-        );
+        return loading ??
+            const Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(16),
+                child: VFeedbackPanel(
+                  title: 'جارٍ تحميل البيانات',
+                  loading: true,
+                ),
+              ),
+            );
       }
       return Stack(
         fit: StackFit.expand,
