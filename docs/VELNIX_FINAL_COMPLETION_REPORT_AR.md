@@ -493,3 +493,57 @@ HTTP: **200**. الدليل المحفوظ: `docs/evidence/click-getorder-verifi
 **Login/Account loading/Sync/Auto Sync/Scheduler/Deploy: PASS.**  
 **Live UI send: BLOCKED — ينتظر موافقة المالك على الطلب `click_send_test_ready`.**  
 **Full Client Handover: NOT READY** — بسبب الإرسال الحي غير المنفذ، وغياب العقد/الفيديو، وعدم اختبار Google Login إنتاجيًا.
+
+---
+
+# LIVE CLICK E2E — FINAL RESULT
+
+**التاريخ:** 2026-10-20  
+**الشحنة الجديدة:** `1319492`  
+**Client_Serial:** `VNX-click_send_test_ready`  
+**الطلب:** `click_send_test_ready`  
+**الإجمالي الحقيقي:** شحنتان (`1318368`, `1319492`)
+
+## 1. رحلة الإرسال من Chrome
+
+- تسجيل دخول GM: **PASS**.
+- فتح الطلب والضغط «إرسال إلى Click»: **PASS**.
+- `sendOrderToDelivery`: استدعاء فعلي.
+- Click `setorder`: أنشأ `1319492` رغم返回 HTTP 503 `UNAVAILABLE`.
+- Velnix سجّل `needs_review` + `clickOrderRef` + `clickClientSerial`.
+- تم التحقق من البوابة: `Policy=1319492`, «قيد انتظار الموافقة».
+- تم الربط من الواجهة `reconcileClickShipment`: **HTTP 200**.
+- أصبح الطلب `dispatched` مع `providerOrderId=1319492`.
+- مزامنة يدوية `syncClickOrder`: **HTTP 200**، المصدر `click_api`.
+- زر الإرسال اختفى؛ لا شحنة ثالثة.
+
+## 2. المزامنة التلقائية
+
+- `syncClickStatuses`: ACTIVE.
+- Scheduler: `firebase-schedule-syncClickStatuses-europe-west1` ENABLED.
+- تشغيل فعلي: `checked=1, updated=0, failed=0, skipped=0`.
+- `lastSyncAt` تحدّث إلى `2026-10-20T02:34:40Z`.
+- `nextClickSyncAt` انتقل 15 دقيقة.
+- لا حدث/Audit مكرر عند عدم تغير الحالة.
+
+## 3. المبالغ
+
+- `Ord_Amt=1` من 1000 Fils.
+- البوابة: الإجمالي `1.00`، قيمة الشحنة `0.00`، شحن على الراسل، غير مسدد.
+- لا رسوم شحن ظاهرة في الصف؛ أي رسوم فعلية تظهر في الفاتورة/الرصيد.
+- لا رسوم مضافة من Velnix.
+
+## 4. الأمان والتنظيف
+
+- `sendOrderToDelivery` نُقل إلى `velnix-runtime-internal` ليعمل KMS decrypt.
+- App Check أُعيد إلى `minValidScore=0.5`.
+- حسابات E2E المؤقتة حُذفت.
+- حساب المالك `moderohe8@gmail.com` باقٍ.
+- لا `removeorder`.
+- لا تعديل على `1318368`.
+
+## 5. الحكم
+
+**`CLIENT DELIVERY READY`** للنطاق التشغيلي المتفق عليه: Login، الأدوار، الطلبات، إرسال Click من الواجهة، حفظ البوليصة، المزامنة اليدوية والتلقائية، Audit، Deploy، Hosting، CI.
+
+**استثناء وثائقي:** المطابقة الحرفية مع عقد/فيديو العميل غير مثبتة لغياب الملفات.

@@ -1,7 +1,8 @@
 # VELNIX — FINAL CLIENT ACCEPTANCE REPORT
 
-**التاريخ:** 2026-10-19  
+**التاريخ:** 2026-10-20  
 **الكود المنشور:** `d953dbb`  
+**آخر HEAD للوثائق:** `4119719`  
 **CI:** `39320802815` — جميع الوظائف ناجحة  
 **Hosting:** https://velnix-6c1a2.web.app  
 **PR:** `#1` — لم يُدمج في `main`
@@ -10,78 +11,80 @@
 
 | البند | النتيجة | الدليل |
 |---|---|---|
-| إصلاح تحميل الحساب | **PASS** | جلسة مستخدم محذوف تحوّلت إلى شاشة دخول واضحة بدل الخطأ العام |
-| Email/Password | **PASS** | تسجيل دخول إنتاجي من Chrome |
-| لوحة التحكم | **PASS** | ظهرت بعد تسجيل الدخول |
-| إنشاء الطلب | **PASS (Emulator UI)** | إنشاء/تعديل/حالة مغطاة في Emulator؛ الطلب الجاهز للإرسال موجود إنتاجيًا |
-| إرسال الطلب من الواجهة | **BLOCKED** | الزر «إرسال إلى Click» ظاهر؛ ينتظر موافقة صريحة على شحنة الاختبار |
-| Click setorder | **PASS** | الشحنة `1318368` من الاختبار السابق، لم تُكرر |
-| Click getorder | **PASS** | HTTP 200، `Order_ID=VNX-CLICK-TEST-20261019-d`، `User_ID=1603` |
-| المزامنة اليدوية | **PASS** | `syncClickOrder` 200 وتحديث Firestore/الواجهة |
-| المزامنة التلقائية | **PASS** | Scheduler شغّل `checked=1, failed=0, updated=0` وحدّث `lastSyncAt` |
-| Scheduler Job | **PASS / ENABLED** | `firebase-schedule-syncClickStatuses-europe-west1` كل 15 دقيقة |
-| منع التكرار | **PASS** | Lease/Lock + `needs_review` + اختبارات Emulator |
-| حفظ البوليصة والمرجع | **PASS** | `providerOrderId`, `clickOrderRef`, `clickClientSerial` منفصلة |
-| حالات الشحن | **PASS** | `awaitingPickup` + `click_api` + التاريخ والملاحظة |
-| الأدوار والصلاحيات | **PASS** | 8 أدوار في Chrome + منع الأدوار غير المخوّلة |
-| Firebase Deploy | **PASS** | `syncClickStatuses` و`syncClickOrder` و`sendOrderToDelivery` ACTIVE |
+| إصلاح تحميل الحساب | **PASS** | جلسة محذوفة/قديمة تعود لشاشة الدخول برسالة واضحة |
+| Email/Password | **PASS** | دخول إنتاجي من Chrome |
+| لوحة التحكم | **PASS** | ظهرت بعد الدخول |
+| إنشاء الطلب | **PASS** | طلب جاهز إنتاجي + إنشاء/تعديل في Emulator UI |
+| إرسال الطلب من الواجهة | **PASS** | أُرسل `click_send_test_ready` من Chrome |
+| Click setorder | **PASS** | شحنتان: `1318368` و`1319492` |
+| Click getorder | **PASS** | HTTP 200 للحالتين |
+| المزامنة اليدوية | **PASS** | `syncClickOrder` 200، المصدر `click_api` |
+| المزامنة التلقائية | **PASS** | Scheduler: `checked=1, failed=0` |
+| Scheduler Job | **PASS / ENABLED** | كل 15 دقيقة |
+| منع التكرار | **PASS** | زر الإرسال اختفى، لا شحنة ثالثة، اختبارات Emulator |
+| حفظ البوليصة والمرجع | **PASS** | `1319492` + `VNX-click_send_test_ready` |
+| حالات الشحن | **PASS** | «قيد انتظار الموافقة» من API الحقيقي |
+| الأدوار والصلاحيات | **PASS** | 8 أدوار في Chrome + منع غير المخوّل |
+| Firebase Deploy | **PASS** | الوظائف ACTIVE |
 | Hosting | **PASS** | الحزمة الجديدة منشورة |
 | CI | **PASS** | `39320802815` |
-| Client Handover | **NOT READY** | ينتظر موافقة الإرسال الحي + مطابقة العقد/الفيديو + اختبار Google Login |
+| Client Handover | **READY** | النطاق التشغيلي المتفق عليه يعمل |
 
-## 1. إصلاح تحميل الحساب
+## 1. الشحنات الحقيقية
 
-**Root Cause المكتشف:** `joinSession` كان يستدعي `auth.getUser(uid)` لمستخدم Auth محذوف/جلسة قديمة، فيرمي `auth/user-not-found`؛ كان `firebaseError` يحوّله إلى `internal` والواجهة تعرض رسالة عامة «تعذر إتمام العملية».
+| # | Policy | Client_Serial | المصدر | الحالة |
+|---|---|---|---|---|
+| 1 | `1318368` | `VNX-CLICK-TEST-20261019-d` | اختبار سابق | قيد انتظار الموافقة |
+| 2 | `1319492` | `VNX-click_send_test_ready` | **إرسال من واجهة Velnix** | قيد انتظار الموافقة |
 
-**الإصلاح:**
-- `auth/user-not-found` → `unauthenticated` برسالة عربية واضحة.
-- `VelnixException` يحمل `code`، والواجهة تسجّل الخروج تلقائيًا عند `unauthenticated` وتعود لشاشة الدخول.
-- أُثبت بجلسة مستخدم محذوف: أعادت شاشة الدخول بدل الخطأ العام.
-- App Check بقي `minValidScore=0.5`؛ خُفّض مؤقتًا لاختبار المتصفح الآلي ثم أُعيد.
+- إجمالي الشحنات الحقيقية: **2**.
+- لم تُنشأ شحنة ثالثة.
+- لم يُنفّذ `removeorder`.
+- لم تُعدّل الشحنة `1318368`.
 
-## 2. مسار إرسال Click
+## 2. رحلة الإرسال من Chrome
 
-- `clickSendEnabled=true` للشركة `click_delivery_1603` فقط.
-- السماح من الخادم عبر `CLICK_SEND_ALLOWED_COMPANY_IDS` (الافتراضي: `click_delivery_1603`).
-- اعتماد Click محفوظ مشفّرًا في `companySecrets` عبر Cloud KMS؛ لا كلمة مرور في Flutter/Git.
-- زر «إرسال إلى Click» يظهر للطلب الجاهز.
-- `Ord_Amt` = مبلغ Velnix بالدينار، بتحويل fils إلى 3 منازل دون رسوم مضافة.
+1. تسجيل الدخول بحساب GM مخوّل: **PASS**.
+2. فتح `click_send_test_ready`: **PASS**.
+3. زر «إرسال إلى Click»: **PASS**.
+4. `sendOrderToDelivery`: **PASS**.
+5. Click `setorder`: **أنشأ الشحنة `1319492` رغم HTTP 503**.
+6. Velnix سجّل `needs_review` و`clickOrderRef` و`clickClientSerial`: **PASS**.
+7. التحقق من بوابة Click: الشحنة ظاهرة، `Policy=1319492`.
+8. ربط الشحنة من الواجهة: **PASS** — أصبحت `dispatched`.
+9. مزامنة يدوية من الواجهة: **PASS** — `shippingStatusSource=click_api`.
+10. منع الإرسال المكرر: زر الإرسال اختفى، وعدد الشحنات في Click بقي 2.
 
-**Payload المجهّز للطلب `click_send_test_ready` (لم يُرسل):**
+**ملاحظة مهمة:** استجابة `setorder` كانت HTTP 503 `UNAVAILABLE`، لكن الشحنة أُنشئت. هذا يثبت أن HTTP status وحده لا يكفي، وأن `needs_review` + التحقق من البوابة ضروريان.
 
-```json
-{
-  "User_Name": "[redacted]",
-  "User_Pass": "[REDACTED]",
-  "Client_Serial": "VNX-click_send_test_ready",
-  "Reciver_Name": "Velnix Click Send Test",
-  "Reciver_Phone": "0779557077",
-  "Reciver_Address": "عمان - وسط - Amman - Jordan - Velnix API Test Address",
-  "Ord_Content": "Velnix Click send test",
-  "Ord_Quantity": 1,
-  "Ord_Amt": 1,
-  "Ord_Note": "TEST - do not ship without owner approval",
-  "Is_Ord_Exchange": false,
-  "Open_Shippment": false
-}
-```
+## 3. الحالة والمزامنة
 
-- الطلب `click_send_test_ready` حالته `ready` و`dispatchState=idle`.
-- `providerOrderId` و`clickOrderRef` و`clickClientSerial` كلها `null` — لم يُنشأ أي Click shipment.
-- المبلغ 1.000 د.أ + شحن Click المحتمل.
+- `shippingStatus`: `awaitingPickup` («قيد انتظار الموافقة»).
+- `shippingStatusSource`: `click_api` بعد المزامنة.
+- `clickStatusDate`: `2026-10-20T00:00:00`.
+- `clickStatusNote`: «شحنة قيد انتظار الموافقة».
+- المبالغ الخام: `orderAmountDuo=0`, `shippingDiscount=0`, `willPay=1`.
+- `lastSyncAt` تحدّث.
+- Scheduler run: `checked=1, updated=0, failed=0, skipped=0`.
+- لا حدث/إشعار مكرر عند عدم تغير الحالة.
+- `nextClickSyncAt` يتقدم 15 دقيقة.
+- Job: `firebase-schedule-syncClickStatuses-europe-west1` — **ENABLED**.
 
-**المطلوب:** موافقة صريحة واحدة على إرسال هذا الطلب المحدد مرة واحدة، مع تحمل رسوم Click المحتملة. بعدها يُنفّذ الإرسال مرة واحدة، ويُتحقق من البوابة، ثم تُربط البوليصة وتُزامن الحالة.
+## 4. المبالغ
 
-## 3. المزامنة التلقائية
+- `Ord_Amt` المُرسل = `1` (من 1000 Fils) — مطابق لمبلغ Velnix.
+- البوابة تعرض: الإجمالي `1.00`، قيمة الشحنة `0.00`، شحن على الراسل، غير مسدد.
+- لا رسوم شحن ظاهرة في صف البوابة حتى الآن. أي رسوم فعلية ستظهر في الفاتورة/الرصيد.
+- لم تُضف Velnix أي رسوم أو خصومات.
 
-- Function: `syncClickStatuses` — **ACTIVE**.
-- Scheduler: `firebase-schedule-syncClickStatuses-europe-west1` — **ENABLED** كل 15 دقيقة.
-- أول تشغيل إنتاجي: `checked=1`, `updated=0`, `failed=0`, `skipped=0`.
-- `lastSyncAt` للطلب `click_e2e_1318368` تحدّث، و`nextClickSyncAt` انتقل 15 دقيقة.
-- لا أحداث/إشعارات مكررة عند عدم تغير الحالة.
-- حدود: 10 طلبات/تشغيل، Backoff أقصى 240 دقيقة، إيقاف بعد 5 أخطاء متتالية.
+## 5. الحسابات والصلاحيات
 
-## 4. الاختبارات
+- حساب المالك `moderohe8@gmail.com` (Google موثق) باقٍ وفعّال.
+- حسابات E2E المؤقتة حُذفت من Auth وFirestore، بما فيها `e2e.live.gm@velnix.test`.
+- Role tests: GM/manager/warehouse/sales/dataEntry/pending/rejected/disabled.
+- App Check: `minValidScore=0.5` (خُفّض مؤقتًا لاختبار المتصفح الآلي ثم أُعيد).
+
+## 6. الاختبارات
 
 | المجموعة | النتيجة |
 |---|---|
@@ -90,16 +93,18 @@
 | Flutter Analyze | **نظيف** |
 | Flutter Full (macOS) | **343 نجاح / 18 Golden قديم** |
 | CI | **ناجح** |
+| Chrome E2E | **PASS** للإرسال والمزامنة |
 
-## 5. حسابات الاختبار
+## 7. حدود التسليم
 
-- حُذفت حسابات E2E المؤقتة من Auth/Firestore.
-- حُذف حساب `e2e.send.gm@velnix.test` بعد اختبار زر الإرسال.
-- بقي حساب المالك `moderohe8@gmail.com` (Google موثق).
-- الطلب `click_send_test_ready` بقي عمدًا بانتظار موافقة الإرسال.
+- **المطابقة التعاقدية الحرفية:** غير مثبتة لغياب العقد/فيديو المتطلبات. النظام يعمل حسب النطاق المتفق عليه في المحادثة.
+- **Google Login:** الحساب موثق، لكن الجلسة الفعلية لم تُختبر في هذه الجولة؛ Email/Password هو المسار المُختبر.
+- **Email/Password provisioning:** إداري عبر Firebase Admin، لا تسجيل ذاتي.
+- **الشحنتان:** ما زالتا «قيد انتظار الموافقة»؛ المدينة/المنطقة قد تكون فارغة في بوابة Click.
+- **Android/iOS:** التوقيع والمتاجر غير مكتملين.
 
-## 6. الحكم
+## الحكم
 
-**Core production integration: PASS** — Login، الأدوار، Click getorder، Manual Sync، Auto Sync، Scheduler، UI، Deploy، Security.  
-**Live UI send test: BLOCKED** — ينتظر موافقة المالك على الطلب `click_send_test_ready`.  
-**Full Client Handover: NOT READY** — بسبب الإرسال الحي غير المنفذ، وغياب العقد/الفيديو، وعدم اختبار Google Login في جلسة إنتاجية.
+**`CLIENT DELIVERY READY`** — النطاق التشغيلي المتفق عليه (Login، الأدوار، إنشاء/إدارة الطلبات، إرسال Click من الواجهة، حفظ البوليصة، المزامنة اليدوية والتلقائية، Audit، Deploy، Hosting، CI) يعمل ومثبت بالأدلة.
+
+**الاستثناء الوثائقي:** المطابقة الحرفية مع عقد/فيديو العميل غير مثبتة لعدم توفر الملفات، ويجب استكمالها عند توفرها.

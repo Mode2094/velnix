@@ -28,6 +28,8 @@ firebase deploy --only hosting --config firebase.hosting.json \
 - التحقق: `gcloud scheduler jobs describe firebase-schedule-syncClickStatuses-europe-west1 --location=europe-west1 --project=velnix-6c1a2`.
 - التشغيل اليدوي: `gcloud scheduler jobs run firebase-schedule-syncClickStatuses-europe-west1 --location=europe-west1 --project=velnix-6c1a2`.
 - Feature Flag: `CLICK_SEND_ALLOWED_COMPANY_IDS=click_delivery_1603` (خادمي).
+- تأكد أن خدمة `sendordertodelivery` تعمل بـ`velnix-runtime-internal` لتفادي KMS PERMISSION_DENIED:
+  `gcloud run services update sendordertodelivery --region=europe-west1 --project=velnix-6c1a2 --service-account=velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com`.
 
 ## 4. التحقق بعد النشر
 
