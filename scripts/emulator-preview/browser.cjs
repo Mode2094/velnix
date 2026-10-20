@@ -36,7 +36,8 @@ async function nav(p,kind){const label={home:'الرئيسية',orders:'الطل
 async function create(p,role){await nav(p,'create');await p.getByText('إضافة طلب جديد',{exact:true}).waitFor();
  const customer=`طلب اصطناعي ${role} ${stamp}`,amount={generalManager:'11.101',manager:'22.202',warehouse:'33.303',sales:'44.404',dataEntry:'55.505'}[role];
  const fields={'اسم المستلم':customer,'رقم الهاتف':'0790000000','المحافظة':'عمان','المنطقة':'اختبار محلي','العنوان التفصيلي':'عنوان اصطناعي فقط','وصف محتويات الطلب':'طرد اختبار دون شحن','الكمية':'2','المبلغ (دينار أردني)':amount,'ملاحظات':'محاكيات فقط'};
- for(const [label,value] of Object.entries(fields)){const field=p.getByRole('textbox',{name:label,exact:true}).first();await field.scrollIntoViewIfNeeded();const box=await field.boundingBox();assert.ok(box,label);await p.mouse.click(box.x+box.width/2,box.y+box.height/2);await frame(p);await selectAll(p);await p.keyboard.insertText(value);await frame(p);}
+ const points={'اسم المستلم':[890,185],'رقم الهاتف':[300,185],'المحافظة':[300,276],'المنطقة':[890,367],'العنوان التفصيلي':[300,367],'وصف محتويات الطلب':[890,470],'الكمية':[300,458],'المبلغ (دينار أردني)':[890,574],'ملاحظات':[300,585]};
+ for(const [label,value] of Object.entries(fields)){await p.mouse.click(...points[label]);await frame(p);await selectAll(p);await p.keyboard.insertText(value);await frame(p);}
  const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/createOrder')&&r.request().method()==='POST',{timeout:60000});await click(p,'حفظ الطلب');const res=await response,body=await res.json();assert.equal(res.status(),200);assert.ok(body.result?.id);
  await p.getByText(customer,{exact:false}).first().waitFor({timeout:30000});
  orders[role]={id:body.result.id,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
