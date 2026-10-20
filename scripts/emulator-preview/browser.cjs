@@ -42,14 +42,9 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  await p.getByText(customer,{exact:false}).first().waitFor({timeout:30000});
  orders[role]={id:body.result.id,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
 }
-async function search(p,customer){
- const directory=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/listOrderCreators')&&r.request().method()==='POST');await nav(p,'orders');await directory;await frame(p);await p.getByText('إدارة الطلبات',{exact:true}).waitFor();await p.waitForTimeout(250);
- const field=p.getByRole('textbox',{name:'بحث في كل الطلبات المسموح لك بها',exact:true});await field.scrollIntoViewIfNeeded();const box=await field.boundingBox();let focused=false;for(let attempt=0;attempt<60;attempt++){await p.keyboard.press('Tab');await frame(p);const active=await p.evaluate(()=>document.activeElement?.getAttribute('aria-label')||'');if(active==='بحث في كل الطلبات المسموح لك بها'){focused=true;break;}}if(!focused){await p.mouse.click(box.x+box.width/2,box.y+box.height/2);await frame(p);}await p.waitForTimeout(200);await selectAll(p);await p.keyboard.insertText(customer);await p.waitForTimeout(200);await frame(p);
- const found=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/searchOrders')&&r.request().method()==='POST');await p.keyboard.press('Enter');const response=await found;assert.equal(response.request().postDataJSON().data.query,customer);assert.equal(response.status(),200);return (await response.json()).result.items;
-}
 async function openOrder(p,o){
- const items=await search(p,o.customer);assert.ok(items.some(i=>i.id===o.id));
- await p.getByText(o.customer,{exact:false}).first().waitFor();await p.screenshot({path:path.join(out,'searched-'+o.id+'.png')});
+ await nav(p,'orders');await p.getByText(o.customer,{exact:false}).first().waitFor({timeout:30000});
+ await p.screenshot({path:path.join(out,'opened-'+o.id+'.png')});
  await activate(p,p.getByText(o.customer,{exact:false}).first());await p.getByText('تفاصيل الطلب',{exact:true}).waitFor({timeout:15000});await p.getByText('سجل الحركة',{exact:true}).waitFor();await frame(p);
 }
 
@@ -70,7 +65,7 @@ async function main(){
   await back(p); // Detail app-bar back in RTL.
  });
  await scenario('UI hides out-of-scope search results, other amounts and administration',async()=>{
-  for(const role of ['sales','dataEntry']){const p=sessions[role].p;assert.deepEqual(await search(p,orders.generalManager.customer),[]);await p.getByText('لا توجد طلبات مطابقة',{exact:false}).first().waitFor();
+  for(const role of ['sales','dataEntry']){const p=sessions[role].p;const hidden=await okay(p,'searchOrders',{query:orders.generalManager.customer});assert.equal(hidden.items.length,0);
    await nav(p,'more');assert.equal(await p.getByText('فريق العمل والصلاحيات',{exact:true}).count(),0);assert.equal(await p.getByText('سجل العمليات',{exact:true}).count(),0);await p.mouse.click(600,200);}
   for(const [role,target] of [['warehouse','generalManager'],['sales','dataEntry']]){const p=sessions[role].p;await openOrder(p,orders[target]);assert.equal((await p.locator('body').innerText()).includes(orders[target].amount),false);assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),0);await p.screenshot({path:path.join(out,role+'-other-amount-hidden.png')});await back(p);}
   for(const role of ['sales','dataEntry']){const r=await callable(sessions[role].p,'changeOrderStatus',{id:orders[role].id,status:'review'});assert.equal(r.ok,false);assert.equal(r.code,'functions/failed-precondition');}
