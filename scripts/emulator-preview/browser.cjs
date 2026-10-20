@@ -139,8 +139,8 @@ async function main(){
   await nav(p,'notices');await click(p,'تفعيل إشعارات الجهاز');await p.getByText(/إشعارات الجهاز تحتاج تهيئة المؤسسة/).last().waitFor();
  });
  await scenario('UI network error and retry recover without fabricated success',async()=>{
-  const p=sessions.sales.p;await p.route('**/europe-west1/dashboardStats',route=>route.abort());await nav(p,'home');await p.getByText(/تعذر الاتصال|تعذر إتمام العملية/).first().waitFor({timeout:20000});
-  await p.screenshot({path:path.join(out,'offline-ui.png')});await p.unroute('**/europe-west1/dashboardStats');await click(p,'إعادة المحاولة');await p.getByText('كل الطلبات',{exact:true}).waitFor();
+  const p=sessions.sales.p;await p.route('**/europe-west1/listOrders',route=>route.abort());await nav(p,'orders');await p.getByText('تعذر تحميل الطلبات',{exact:true}).waitFor({timeout:20000});
+  await p.screenshot({path:path.join(out,'offline-ui.png')});await p.unroute('**/europe-west1/listOrders');await click(p,'إعادة المحاولة');await p.getByText(orders.sales.customer,{exact:false}).first().waitFor();
  });
  await scenario('authorization changes immediately block an existing data-entry UI session',async()=>{
   const p=sessions.dataEntry.p;await nav(p,'orders');
