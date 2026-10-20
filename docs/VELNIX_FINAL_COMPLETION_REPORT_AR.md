@@ -616,8 +616,8 @@ Order `3sq4MGbCDyMqEqRKqSra`:
 - `dispatchState = sent`
 - `shippingStatus = awaitingPickup`
 - `shippingStatusSource = click_api`
-- `lastSyncAt = 2026-10-20T14:34:04.574Z`
-- `nextClickSyncAt = 2026-10-20T14:49:03.982Z`
+- `lastSyncAt = 2026-10-20T15:04:03.857Z`
+- `nextClickSyncAt = 2026-10-20T15:19:03.419Z`
 - `clickSyncFailures = 0`
 
 Audit:
@@ -637,7 +637,7 @@ Audit:
 - «إرسال إلى Click» triggered a real `setorder`; Click created policy `1320031`.
 - Velnix entered `needs_review` with the exact `clickOrderRef`; the shipment was verified in the Click portal and linked from the UI.
 - Manual `syncClickOrder` returned HTTP 200 and set `shippingStatusSource=click_api`.
-- The scheduler ran at 14:34 UTC: `checked=1, updated=0, failed=0, skipped=0`; `lastSyncAt` and `nextClickSyncAt` advanced.
+- The scheduler ran at 14:34 and 15:04 UTC: `checked=1, updated=0, failed=0, skipped=0`; `lastSyncAt` and `nextClickSyncAt` advanced.
 - Manager role can see Click in the order picker but has no company edit/test/archive buttons.
 - No new shipment was created on retry; total Click policies remain 3.
 

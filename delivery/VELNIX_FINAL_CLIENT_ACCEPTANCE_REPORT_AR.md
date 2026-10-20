@@ -17,7 +17,7 @@
 6. الإرسال من الواجهة: **PASS** — `setorder` أنشأ `1320031`.
 7. التحقق من البوابة وربط البوليصة: **PASS** — `providerOrderId=1320031`, `clickOrderRef=VNX-3sq4MGbCDyMqEqRKqSra`.
 8. المزامنة اليدوية: **PASS** — المصدر `click_api`.
-9. المزامنة التلقائية: **PASS** — Scheduler 14:34 UTC: `checked=1, updated=0, failed=0, skipped=0`.
+9. المزامنة التلقائية: **PASS** — Scheduler 14:34 و15:04 UTC: `checked=1, updated=0, failed=0, skipped=0`.
 10. Manager role يرى Click في الاختيار، ولا يرى أزرار إدارة الشركة: **PASS**.
 
 **الشحنة الجديدة الوحيدة:** `1320031`. لم يُعد إرسال أي شحنة سابقة ولم يُنفّذ `removeorder`.
