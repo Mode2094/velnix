@@ -1121,6 +1121,9 @@ class _LiveShellState extends State<LiveShell> {
       appBar: AppBar(
         toolbarHeight: 70,
         backgroundColor: Colors.white,
+        // The phone bar owns the menu action; the automatic drawer button
+        // would duplicate it. Tablets/desktops still get it.
+        automaticallyImplyLeading: !isPhoneShellWidth(w),
         title: Row(
           children: [
             const Icon(Icons.all_inbox_rounded, color: VColors.brand, size: 30),
