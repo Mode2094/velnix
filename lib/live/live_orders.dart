@@ -322,7 +322,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                   title: 'تعذر تحميل الطلبات',
                   message: error,
                   icon: Icons.error_outline,
-                  onRetry: () => load(reset: true),
+                  onRetry: () => load(reset: true, fresh: true),
                 ),
               if (!busy && error == null && rows.isEmpty)
                 const VFeedbackPanel(
