@@ -279,4 +279,50 @@ void main() {
     expect(find.textContaining('الفلتر المطبق'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the applied filter survives refresh, paging and search', (
+    tester,
+  ) async {
+    final calls = <Map<String, dynamic>>[];
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      calls.add({...data, 'op': name});
+      if (name == 'listOrders') {
+        return {
+          'items': <Map<String, dynamic>>[],
+          'nextAfterId': 'next_${calls.length}',
+        };
+      }
+      if (name == 'searchOrders') return {'items': <Map<String, dynamic>>[]};
+      if (name == 'listCompanies' || name == 'listOrderCreators') {
+        return {'items': <Map<String, dynamic>>[]};
+      }
+      throw StateError(name);
+    });
+    await viewport(tester, 390);
+    await tester.pumpWidget(
+      app(LiveOrders(policy: policy(), bucket: 'delivery')),
+    );
+    await tester.pumpAndSettle();
+    expect(calls.first['op'], 'listOrders');
+    expect(calls.first['bucket'], 'delivery');
+
+    await tester.tap(find.byTooltip('تحديث القائمة'));
+    await tester.pumpAndSettle();
+    expect(calls.last['bucket'], 'delivery');
+
+    final more = find.text('تحميل المزيد');
+    await tester.ensureVisible(more);
+    await tester.pumpAndSettle();
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+    expect(calls.last['bucket'], 'delivery');
+    expect(calls.last['afterId'], isNotNull);
+
+    await tester.enterText(find.byType(TextField).first, 'عميل');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(calls.last['op'], 'searchOrders');
+    expect(calls.last['bucket'], 'delivery');
+    expect(tester.takeException(), isNull);
+  });
 }
