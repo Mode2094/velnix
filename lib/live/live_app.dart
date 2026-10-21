@@ -1070,7 +1070,17 @@ class _LiveShellState extends State<LiveShell> {
       2 => LiveOrderForm(
         key: ValueKey('form$refreshVersion'),
         policy: widget.policy,
-        onSaved: () => go(1),
+        onSaved: (id) {
+          go(1);
+          if (id != null && id.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+              ),
+            );
+          }
+        },
         onBack: () => go(1),
       ),
       3 => LiveCompanies(
@@ -1111,6 +1121,9 @@ class _LiveShellState extends State<LiveShell> {
       appBar: AppBar(
         toolbarHeight: 70,
         backgroundColor: Colors.white,
+        // The phone bar owns the menu action; the automatic drawer button
+        // would duplicate it. Tablets/desktops still get it.
+        automaticallyImplyLeading: !isPhoneShellWidth(w),
         title: Row(
           children: [
             const Icon(Icons.all_inbox_rounded, color: VColors.brand, size: 30),
