@@ -113,6 +113,54 @@ class _LiveOrdersState extends State<LiveOrders> {
       (filters.isNotEmpty ? 1 : 0) +
       (sort != 'desc' ? 1 : 0);
 
+  void _clearScopeFilter() {
+    setState(() {
+      bucket = 'all';
+      status = null;
+    });
+    load(reset: true);
+  }
+
+  Widget _appliedFilterBanner() {
+    if (bucket == 'all' && status == null) return const SizedBox.shrink();
+    final parts = <String>[
+      if (bucket != 'all')
+        bucket == 'delivery' ? 'شركات التوصيل' : 'غير المسندة لشركة',
+      if (status != null) statusLabels[status] ?? status!,
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: Material(
+        color: VColors.softBlue,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.filter_alt_outlined,
+                size: 18,
+                color: VColors.brand,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'الفلتر المطبق: ${parts.join(' • ')}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _clearScopeFilter,
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text('مسح الفلتر'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _searchField() => TextField(
     controller: search,
     textInputAction: TextInputAction.search,
@@ -254,9 +302,20 @@ class _LiveOrdersState extends State<LiveOrders> {
                           MaterialPageRoute<void>(
                             builder: (_) => LiveOrderForm(
                               policy: widget.policy,
-                              onSaved: () {
+                              onSaved: (id) {
                                 Navigator.pop(context);
                                 load(reset: true);
+                                if (id != null && id.isNotEmpty) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => LiveOrderDetail(
+                                        id: id,
+                                        policy: widget.policy,
+                                      ),
+                                    ),
+                                  );
+                                }
                               },
                             ),
                           ),
@@ -269,6 +328,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                 ],
               ),
               const SizedBox(height: 15),
+              _appliedFilterBanner(),
               VLivePanel(
                 padding: const EdgeInsets.all(12),
                 child: Column(
@@ -1238,7 +1298,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 builder: (_) => LiveOrderForm(
                   policy: widget.policy,
                   initial: o,
-                  onSaved: () {
+                  onSaved: (_) {
                     Navigator.pop(context);
                     refresh();
                   },
@@ -1943,7 +2003,7 @@ class LiveOrderForm extends StatefulWidget {
     this.initial,
   });
   final SessionPolicy policy;
-  final VoidCallback onSaved;
+  final ValueChanged<String?> onSaved;
   final VoidCallback? onBack;
   final Map<String, dynamic>? initial;
   @override
@@ -2043,11 +2103,13 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       map['quantity'] = int.parse(
         normalizedNumber(inputs['quantity']!.text.trim()),
       );
+      String? savedId = widget.initial?['id']?.toString();
       if (widget.initial == null) {
-        await VelnixGateway.instance.createOrder({
+        final created = await VelnixGateway.instance.createOrder({
           ...map,
           'requestKey': _requestKey,
         });
+        savedId = created['id']?.toString() ?? savedId;
       } else {
         await VelnixGateway.instance.updateOrder(
           widget.initial!['id'].toString(),
@@ -2057,7 +2119,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       if (mounted) {
         _dirty = false;
         showSuccess(context, 'تم حفظ الطلب');
-        widget.onSaved();
+        widget.onSaved(savedId);
       }
     } catch (e) {
       if (mounted) showError(context, e);

@@ -165,7 +165,7 @@ void main() {
               'login': const LiveLogin(),
               'dashboard': LiveDashboard(policy: policy, onNavigate: (_, _) {}),
               'orders': LiveOrders(policy: policy),
-              'create': LiveOrderForm(policy: policy, onSaved: () {}),
+              'create': LiveOrderForm(policy: policy, onSaved: (_) {}),
               'details': LiveOrderDetail(
                 id: order['id'] as String,
                 policy: policy,

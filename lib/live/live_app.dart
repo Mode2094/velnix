@@ -1070,7 +1070,17 @@ class _LiveShellState extends State<LiveShell> {
       2 => LiveOrderForm(
         key: ValueKey('form$refreshVersion'),
         policy: widget.policy,
-        onSaved: () => go(1),
+        onSaved: (id) {
+          go(1);
+          if (id != null && id.isNotEmpty) {
+            Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+              ),
+            );
+          }
+        },
         onBack: () => go(1),
       ),
       3 => LiveCompanies(

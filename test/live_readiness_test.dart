@@ -91,7 +91,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        final created = find.text('جديد').first;
+        final created = find.textContaining('جديد').first;
         await tester.ensureVisible(created);
         await tester.tap(created);
         await tester.pumpAndSettle();

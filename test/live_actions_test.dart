@@ -100,7 +100,7 @@ void main() {
       tester,
     ) async {
       Map<String, dynamic>? payload;
-      bool saved = false;
+      String? savedId;
       VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
         expect(name, 'createOrder');
         payload = data;
@@ -110,7 +110,7 @@ void main() {
         app(
           LiveOrderForm(
             policy: SessionPolicy({'id': role, 'role': role, 'active': true}),
-            onSaved: () => saved = true,
+            onSaved: (id) => savedId = id,
           ),
         ),
       );
@@ -121,7 +121,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('حفظ الطلب'));
       await tester.pumpAndSettle();
-      expect(saved, true);
+      expect(savedId, 'saved-order');
       expect(payload?['quantity'], 2);
       expect(payload?['amount'], 12.345);
       expect(payload?['phone'], '0791234567');
@@ -152,7 +152,7 @@ void main() {
             'role': 'dataEntry',
             'active': true,
           }),
-          onSaved: () => saved = true,
+          onSaved: (_) => saved = true,
         ),
       ),
     );
@@ -185,7 +185,7 @@ void main() {
               'role': 'dataEntry',
               'active': true,
             }),
-            onSaved: () {},
+            onSaved: (_) {},
           ),
         ),
       );
@@ -564,7 +564,7 @@ void main() {
             'active': true,
           }),
           onBack: () => backed = true,
-          onSaved: () {},
+          onSaved: (_) {},
         ),
       ),
     );
@@ -584,7 +584,7 @@ void main() {
             'active': true,
           }),
           onBack: () => backed = true,
-          onSaved: () {},
+          onSaved: (_) {},
         ),
       ),
     );
@@ -622,7 +622,7 @@ void main() {
                   context,
                   MaterialPageRoute<void>(
                     builder: (_) =>
-                        LiveOrderForm(policy: policy, onSaved: () {}),
+                        LiveOrderForm(policy: policy, onSaved: (_) {}),
                   ),
                 ),
                 child: const Text('فتح النموذج'),
@@ -682,7 +682,7 @@ void main() {
               'role': 'generalManager',
               'active': true,
             }),
-            onSaved: () {},
+            onSaved: (_) {},
           ),
         ),
       );
