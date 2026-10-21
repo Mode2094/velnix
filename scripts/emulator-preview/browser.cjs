@@ -32,7 +32,7 @@ async function login(role){
  else await p.getByText(role==='pending'?/بانتظار موافقة/:/معطل|موقوف/).first().waitFor({timeout:30000});
  sessions[role]={ctx,p};return p;
 }
-async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',audit:'العمليات'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}await activate(p,p.getByRole('button').filter({hasText:label}).first());}
+async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',audit:'العمليات'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}const exact=p.getByRole('button',{name:label,exact:true});if(await exact.count())return activate(p,exact.first());await activate(p,p.getByRole('button').filter({hasText:label}).first());}
 async function create(p,role){await nav(p,'create');await p.getByText('إضافة طلب جديد',{exact:true}).waitFor();
  const customer=`طلب اصطناعي ${role} ${stamp}`,amount={generalManager:'11.101',manager:'22.202',warehouse:'33.303',sales:'44.404',dataEntry:'55.505'}[role];
  const fields={'اسم المستلم *':customer,'رقم الهاتف *':'0790000000','المنطقة *':'اختبار محلي','العنوان التفصيلي *':'عنوان اصطناعي فقط','وصف محتويات الطلب *':'طرد اختبار دون شحن','الكمية *':'2','المبلغ (دينار أردني) *':amount,'ملاحظات (اختياري)':'محاكيات فقط'};
@@ -42,6 +42,8 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  const saved=await okay(p,'getOrder',{id:body.result.id});assert.match(saved.order.orderNumber,/^VNX-\d{6}$/);
  await p.getByText(customer,{exact:false}).first().waitFor({timeout:30000});
  orders[role]={id:body.result.id,orderNumber:saved.order.orderNumber,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
+ // Saving now lands on the order details; return to the shell for the next scenario.
+ await back(p);
 }
 async function openOrder(p,o){
  await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());
