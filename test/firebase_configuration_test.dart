@@ -46,9 +46,7 @@ void main() {
     expect(find.byType(LiveLogin), findsNothing);
     expect(find.text('المتابعة باستخدام Google'), findsNothing);
   });
-  testWidgets('Google button is controlled by the runtime flag only', (
-    tester,
-  ) async {
+  testWidgets('production login never exposes the Google path', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         locale: const Locale('ar'),
@@ -61,13 +59,7 @@ void main() {
         home: const LiveLogin(),
       ),
     );
-    final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'المتابعة باستخدام Google'),
-    );
-    expect(
-      button.onPressed != null,
-      const bool.fromEnvironment('VELNIX_GOOGLE_ENABLED'),
-    );
+    expect(find.text('المتابعة باستخدام Google'), findsNothing);
     expect(find.text('البريد الإلكتروني'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
   });

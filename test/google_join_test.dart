@@ -23,13 +23,15 @@ void main() {
     'active': true,
   });
 
-  testWidgets('Live login offers password, reset and Google', (tester) async {
+  testWidgets('Live login offers email password and reset only', (
+    tester,
+  ) async {
     await tester.pumpWidget(app(const LiveLogin()));
     expect(find.text('البريد الإلكتروني'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);
     expect(find.text('تسجيل الدخول بالبريد'), findsOneWidget);
     expect(find.text('نسيت كلمة المرور؟'), findsOneWidget);
-    expect(find.text('المتابعة باستخدام Google'), findsOneWidget);
+    expect(find.text('المتابعة باستخدام Google'), findsNothing);
     expect(find.text('دخول إلى مساحة العمل'), findsNothing);
   });
 
