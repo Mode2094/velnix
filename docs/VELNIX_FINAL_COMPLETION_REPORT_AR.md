@@ -838,3 +838,46 @@ Additional changes:
 - `click_delivery_1603` remains enabled with sending enabled.
 - Order `3sq4MGbCDyMqEqRKqSra` remains linked to `1320031`.
 - Scheduler remains `ENABLED` every 15 minutes; last sync advanced without failures.
+
+---
+
+# JORDAN GOVERNORATES & SEQUENTIAL ORDER NUMBERS (2026-10-21)
+
+## ما نُفّذ
+- أُضيف نموذج طلب موحّد لإنشاء/تعديل الطلب مع قائمة محافظات أردنية (12 محافظة + الأغوار الشمالية والجنوبية)، قابلة للبحث والفلترة، وتُظهر القيم القديمة كقيمة قديمة محفوظة بدل كسر السجل.
+- أُضيف تمييز إجباري/اختياري لكل الحقول (`*` و«اختياري»)، ولوحات أرقام للأرقام فقط مع تطبيع الأرقام العربية/الهندية و`LTR` للهاتف/الكمية/المبلغ. الهاتف الإضافي اختياري فعلاً ولا يُرسل إلى Click.
+- أُضيف زر رجوع واضح لنموذج الإنشاء، وزر رجوع القياسي للتعديل، مع تأكيد التغييرات غير المحفوظة. رجوع المتصفح/الهاتف من نموذج الإنشاء يعيد إلى قائمة الطلبات.
+- أُصلح Overflow رأسي/أفقي ظهر على عرض 390/430 عند تكبير الخط: عنوان نموذج الإنشاء أصبح داخل `Expanded` مع قصّ آمن، وأُعيد تشغيل مصفوفة المقاسات كاملة.
+
+## أرقام الطلبات
+- العداد الذري: `settings/orderCounter`، الصيغة `VNX-%06d`، والحد الأقصى `999999`، داخل معاملة إنشاء الطلب نفسها.
+- Document ID لم يتغير، والباركود الداخلي بقي `VNX-<documentId>` للتوافق مع الملصقات القديمة. `orderNumber` حقل منفصل يظهر في القائمة/التفاصيل/PDF/نسخ الرقم، ولا يُستخدم كمرجع Click.
+- البحث يقبل `VNX-000006` وأيضًا معرّف Firestore القديم. البحث بالرقم يحترم `canSeeOrder` ولا يوسّع النطاق.
+- الترحيل الآمن: `functions/scripts/backfill_order_numbers.js` (Dry-run افتراضيًا، `--apply` فقط، نسخ احتياطي قبل الكتابة، بدون لمس `barcodeValue` أو `providerOrderId` أو `clickOrderRef`).
+- النسخة الاحتياطية: `.local/evidence/orders-backup-order-numbers-2026-10-20T23-02-22-048Z.json`.
+- الترحيل الإنتاجي: 5 طلبات قديمة → `VNX-000001` … `VNX-000005`، العداد أصبح 5، ثم أنشأ الاختبار الإنتاجي `VNX-000006`.
+
+## الاختبارات النهائية
+| المجموعة | النتيجة |
+|---|---|
+| Functions Unit (`npm test`) | **193/193 PASS** |
+| Functions Emulator (`npm run test:emulator`) | **153/153 PASS** |
+| Stage 3 Frontend Acceptance | **11/11 PASS** |
+| Emulator UI five-role journeys | **26/26 PASS** |
+| Flutter `live_screen_matrix_test` | **100/100 PASS** (320–1920px, scale 1.0/2.0) |
+| Flutter `live_actions_test` | **23/23 PASS** |
+| `flutter analyze` / `dart format --set-exit-if-changed lib test` | **PASS** |
+| Production form E2E | **PASS** — `VNX-000006`، الأغوار الشمالية، هاتف `0791234567`، هاتف إضافي فارغ، مبلغ `12.345` |
+
+- اختبار الإنتاج الإضافي للبحث: إدخال `VNX-000006` أعاد الطلب الوحيد الصحيح، دون تغيير عدد الطلبات.
+- لم تُنشأ أو تُعدّل أي شحنة Click. الطلب `VNX-000006` غير مسند لشركة، والشحنة `1320031` ما زالت `awaitingPickup`.
+
+## النشر
+- Functions: `createOrder`, `updateOrder`, `searchOrders`, `listOrders`, `getOrder` على `europe-west1` ثم Hosting.
+- Hosting النهائي: `https://velnix-6c1a2.web.app` بعد آخر إصلاح Responsive.
+- Commit النهائي: `9cc169a` على `audit/production-readiness` (بعد `6b96b17`).
+- CI النهائي: `39522071007` و`39522065459` — **SUCCESS** (Flutter / Firebase / Emulator UI / Android).
+
+## الحكم
+- **PASS** لجولة المحافظات والأرقام والرجوع والاختبارات والنشر.
+- Click يبقى دون شحنة جديدة، وApp Check Enforcement وAPNs والتوقيع وقبول المالك على الأجهزة تبقى ضمن الحدود السابقة غير المتغيرة.
