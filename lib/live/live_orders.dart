@@ -2124,9 +2124,13 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                       children: [
                         BackButton(onPressed: _leave),
                         const SizedBox(width: 4),
-                        Text(
-                          'إضافة طلب جديد',
-                          style: Theme.of(context).textTheme.headlineSmall,
+                        Expanded(
+                          child: Text(
+                            'إضافة طلب جديد',
+                            style: Theme.of(context).textTheme.headlineSmall,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
