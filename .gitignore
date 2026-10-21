@@ -6,6 +6,15 @@
 .pub/
 build/
 coverage/
+*-debug.log
+functions/node_modules/
+config/firebase.public.json
+config/firebase.*.json
+!config/firebase.*.example.json
+config/iam.*.json
+!config/iam.*.example.json
+web/firebase-messaging-sw.js
+!functions/package-lock.json
 .idea/
 .vscode/
 *.iml
@@ -13,9 +22,11 @@ coverage/
 **/firebase_options.dart
 **/google-services.json
 **/GoogleService-Info.plist
+ios/Flutter/Firebase.local.xcconfig
 .env
 .env.*
 !.env.example
+.local/
 # Sensitive Firebase deployment data
 functions/.env
 functions/.env.*
@@ -26,3 +37,11 @@ build/
 *.jks
 *.keystore
 service-account*.json
+
+# Flutter applications retain their resolved dependency versions.
+!pubspec.lock
+
+__pycache__/
+android/.kotlin/
+
+test/failures/

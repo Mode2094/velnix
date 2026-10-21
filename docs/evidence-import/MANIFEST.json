@@ -1,0 +1,118 @@
+{
+  "generatedAtLocal": "2026-10-16",
+  "branch": "audit/production-readiness",
+  "baselineSha": "126fd612ebe7759aceaeb6589e89e76a2142b549",
+  "policy": {
+    "rawOriginalsCommittedToGit": false,
+    "reason": "click text file contains User_Name/User_Pass credential examples; video and agreement are private client material",
+    "verificationMethod": "SHA-256 compared against docs/evidence/click-delivery-contract.json"
+  },
+  "artifacts": [
+    {
+      "slot": "click/ClickApi.postman_collection.json",
+      "foundAt": "~/Downloads/ClickApi.postman_collection.json",
+      "sha256": "5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061",
+      "expectedSha256": "5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061",
+      "status": "RECOVERED_AND_VERIFIED",
+      "containsCredentials": false,
+      "independentLocalVerification": "complete",
+      "findings": {
+        "itemCount": 2,
+        "items": ["getorder", "removeorder"],
+        "setorderPresent": false,
+        "methodsConfirmed": ["getorder=POST", "removeorder=POST"],
+        "setorderMethod": "NOT DOCUMENTED",
+        "authorizationHeader": "client (literal, type=text) - NOT bearer",
+        "bodyMode": "raw",
+        "bodyLanguage": "json",
+        "contentTypeHeader": "NOT PRESENT in collection",
+        "getorderBodyFields": ["Order_ID", "User_Name", "User_Pass"],
+        "removeorderBodyFields": ["Order_ID", "User_Name", "User_Pass"],
+        "savedResponses": 0
+      }
+    },
+    {
+      "slot": "click/clickdelivery api[1] (2).txt",
+      "foundAt": "~/Downloads/clickdelivery api[1] (2).txt",
+      "sha256": "bc1c465ff57a5f67550fab43b8812217d380e260652c285a20a542c0af6f405f",
+      "expectedSha256": "bc1c465ff57a5f67550fab43b8812217d380e260652c285a20a542c0af6f405f",
+      "status": "RECOVERED_AND_VERIFIED",
+      "containsCredentials": true,
+      "credentialFields": ["User_Name", "User_Pass"],
+      "independentLocalVerification": "complete",
+      "findings": {
+        "lineCount": 39,
+        "structure": "two near-duplicate blocks: Arabic then English",
+        "baseUrl": "https://admin.clickdelivery.org/Client/",
+        "requestName": "setorder",
+        "setorderMethod": "NOT DOCUMENTED (only 'request name' given)",
+        "authorizationHeader": "client (literal) - NOT bearer",
+        "jsonExamples": "MALFORMED (missing commas) - illustrative only, not wire-accurate",
+        "setorderFields": [
+          "User_Name", "User_Pass", "Client_Serial", "Reciver_Name",
+          "Reciver_Phone", "Reciver_Address", "Ord_Content",
+          "Ord_Quantity", "Ord_Amt", "Ord_Note", "Is_Ord_Exchange", "Open_Shippment"
+        ],
+        "responsesDocumented": "NONE - zero response examples for any operation",
+        "conflictsConfirmed": {
+          "Ord_Amt": {
+            "arabicLine14": "shipment value, delivery fee will be DEDUCTED from it",
+            "englishLine35": "order amount + shipping amount",
+            "verdict": "GENUINE CONFLICT - blocks financial binding"
+          },
+          "Client_Serial": {
+            "arabicLine8": "merchant code for the shipment",
+            "englishLine29": "order number on your system",
+            "verdict": "GENUINE CONFLICT - blocks idempotency design"
+          }
+        },
+        "vendorNamingAmbiguity": {
+          "arabic": "Click",
+          "english": "speed logistic",
+          "verdict": "unresolved - requires vendor confirmation"
+        },
+        "booleanWireFormat": "placeholder string \"True or False\" shown; actual on-wire type UNDETERMINED"
+      }
+    },
+    {
+      "slot": "video/velnix_reference_~78.72s.mp4",
+      "status": "MISSING",
+      "sha256": null,
+      "independentLocalVerification": "pending",
+      "note": "No video file found anywhere on this machine (searched home to depth 5 for mp4/mov/webm/avi/m4v). Only an unrelated pub-cache asset matched.",
+      "impact": "Visual parity CANNOT be asserted. All video-derived claims rest on the written audit docs only."
+    },
+    {
+      "slot": "agreement/velnix_development_agreement",
+      "status": "MISSING",
+      "sha256": null,
+      "independentLocalVerification": "pending",
+      "note": "No agreement or annex document exists anywhere in the repository or on this machine.",
+      "impact": "Contractual scope is NOT provable from the repository; docs/01_SCOPE_AR.md was used as the de-facto written scope."
+    },
+    {
+      "slot": "agreement/annex_a",
+      "status": "MISSING",
+      "sha256": null,
+      "independentLocalVerification": "pending",
+      "impact": "Same as above."
+    }
+  ],
+  "derivedTextEvidencePresentInRepo": [
+    {
+      "path": "docs/10_VIDEO_SECOND_BY_SECOND_AR.md",
+      "kind": "written per-second audit of the 78.72s reference video",
+      "caveat": "text only; the 79 source frames it describes are NOT present"
+    },
+    {
+      "path": "docs/19_FULL_SCREEN_AND_BUTTON_AUDIT_AR.md",
+      "kind": "written screen/button audit",
+      "caveat": "self-declared HISTORICAL for v0.6; supersedes nothing for current source"
+    },
+    {
+      "path": "docs/evidence/click-delivery-contract.json",
+      "kind": "derived Click contract with source checksums",
+      "caveat": "derived summary, not the source; now independently re-verified against the recovered originals"
+    }
+  ]
+}

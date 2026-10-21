@@ -1,0 +1,80 @@
+{
+  "baseCommit": "8d94d4301eb4d0c8c25e8f6be2438b2c7d7bb267",
+  "scope": "local working-tree validation; synthetic emulators only; not evidence of cloud deployment",
+  "originalFailedCiRun": "https://github.com/Mode2094/velnix/actions/runs/38792364126",
+  "rootCause": "Workspace session refresh can reject before the next render frame attaches FutureBuilder. Deactivation still denies access, but the late error listener allows an uncaught browser error. This is an application timing bug, not teardown cleanup.",
+  "controlledBeforeFixReproduction": {
+    "method": "Hold requestAnimationFrame callbacks until the deactivation-triggered joinSession response completes, then resume frames.",
+    "uncaughtRole": "dataEntry",
+    "uncaughtError": "Error",
+    "uncaughtStackOrigin": "VelnixGateway.call (compiled main.dart.js:132959)",
+    "logSha256": "8db026cc3ddd3148328d40f283c1dba315f0e06b45435141c4280720a423f2c8",
+    "result": "failed zero-page-errors assertion"
+  },
+  "fix": "Immediately observe every assigned session future with ignore(), retaining the same future and its error for FutureBuilder. No success fallback or authorization changes.",
+  "regression": "Existing final scenario now holds frames and gates joinSession until saveMember finishes, requires actual HTTP 400, resumes frames in finally, verifies blocking UI and denied getOrder, then retains the global zero-page-errors assertion.",
+  "commands": {
+    "emulatorUi": "source scripts/cloud-env.sh; export NODE_PATH=/workspace/.velnix-tools/browser/node_modules; bash scripts/emulator-preview/run-qa.sh (twice, fresh emulator processes and seeded state)",
+    "validation": "source scripts/cloud-env.sh; export JAVA_TOOL_OPTIONS=\"${JAVA_TOOL_OPTIONS:-} -Xmx1536m -XX:ActiveProcessorCount=2\"; scripts/validate.sh",
+    "emulatorRerun": "npm --prefix functions run test:emulator",
+    "webDemo": "flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo",
+    "demoBrowser": "node scripts/browser_smoke.cjs (loopback Python HTTP server on 8767)",
+    "webLive": "flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=live",
+    "productionIsolation": "node scripts/emulator-preview/assert-production.cjs",
+    "androidDemo": "flutter build apk --debug --dart-define=VELNIX_MODE=demo",
+    "androidLive": "flutter build apk --debug --dart-define=VELNIX_MODE=live"
+  },
+  "emulatorUiRuns": [
+    {
+      "run": 1,
+      "passedScenarios": 21,
+      "pageErrors": [],
+      "backendReadback": "passed",
+      "resultsSha256": "f6e6504bc3892cacfad2fee6f221ffd7da6f8829efa28b11c033e96d1593e10a",
+      "logSha256": "4e7a633f34b666ef759b1488def12fbe0c33a1575c6491f1125f2e35429362af"
+    },
+    {
+      "run": 2,
+      "passedScenarios": 21,
+      "pageErrors": [],
+      "backendReadback": "passed",
+      "resultsSha256": "bca79370e6b6c6c6faae12d3f8079e7d5c770dcf233082a4e8ebc9634a979344",
+      "logSha256": "ce6122314ddb28a54958f9307760dba39cb4ea906f9f5db684307e81f1e35630"
+    }
+  ],
+  "validation": {
+    "flutterTestsPassed": 325,
+    "nodeTestsPassed": 128,
+    "configurationTestsPassed": 12,
+    "barcodeChecksPassed": 36,
+    "analysis": "passed",
+    "format": "passed",
+    "syntax": "passed",
+    "secrets": "0 findings",
+    "productionDependencyAudit": "0 vulnerabilities",
+    "initialValidateExitCode": 1,
+    "initialEmulatorPassed": 67,
+    "initialEmulatorFailed": 1,
+    "initialFailure": "concurrent REST bootstrap attempts produce exactly one administrator and audit: both transactions aborted; emulator log shows Transaction lock timeout. Bootstrap code/test unchanged.",
+    "freshEmulatorRerunPassed": 68,
+    "freshEmulatorRerunFailed": 0,
+    "emulatorRerunExitCode": 0,
+    "demoBrowserChecksPassed": 30,
+    "webDemo": "built",
+    "webLive": "built",
+    "liveBuildEmulatorIsolation": "passed",
+    "androidDemoDebug": "built",
+    "androidLiveDebug": "built",
+    "remainingRisk": "Separate bootstrap emulator contention flake observed once and passed unchanged on fresh full-suite rerun; not fixed by this scoped UI change."
+  },
+  "sourceSha256": {
+    "lib/live/live_app.dart": "e6de4e557e2777e628de5bd6d51ec38cfd92f592da9d849fa0bd3e2d76aef7ce",
+    "scripts/emulator-preview/browser.cjs": "3cd665c2d7f9d75335aa9c1fb1f000102769eef8a091fbe36d7f4cef5c57117c"
+  },
+  "unchanged": "Functions source including orderEventNotice us-central1, rules, indexes, IAM config, dependencies and lockfiles",
+  "cloudMutations": false,
+  "realBootstrapExecuted": false,
+  "clickCalls": false,
+  "deployExecuted": false,
+  "mergeExecuted": false
+}

@@ -1,0 +1,290 @@
+{
+  "stage": "3 - preparation only",
+  "baseCommit": "4a9540726e86b450ac49ce821a9341635f6ba26a",
+  "projectId": "velnix-6c1a2",
+  "deploymentAuthorized": false,
+  "cloudResourcesChanged": false,
+  "bootstrapExecuted": false,
+  "realGoogleCallsExecuted": false,
+  "billing": {
+    "ownerReportedPlan": "Blaze",
+    "freshBillingInfoRead": false
+  },
+  "publishedRules": {
+    "ownerReported": "deny all reads and writes",
+    "freshSourceRead": false,
+    "publishedSha256": null
+  },
+  "source": {
+    "functions": [
+      {
+        "name": "me",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listOrders",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "searchOrders",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "dashboardStats",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "companyStats",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "getOrder",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "createOrder",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "updateOrder",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "changeOrderStatus",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "assignCompany",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listCompanies",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "saveCompany",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "archiveCompany",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "restoreCompany",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "testCompanyConnection",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "sendOrderToDelivery",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "resolveDispatchException",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listMembers",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "saveMember",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listNotices",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "markNoticeRead",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listSyncEvents",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listAudit",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "deliveryWebhook",
+        "kind": "onRequest",
+        "region": "europe-west1"
+      },
+      {
+        "name": "reconcileDeliveryStatuses",
+        "kind": "onSchedule",
+        "region": "europe-west1"
+      },
+      {
+        "name": "registerDevice",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "unregisterDevice",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "pushNotice",
+        "kind": "onDocumentCreated",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listOrderCreators",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "getSettings",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "saveSettings",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "orderEventNotice",
+        "kind": "onDocumentCreated",
+        "region": "europe-west1"
+      },
+      {
+        "name": "joinSession",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "listJoinRequests",
+        "kind": "callable",
+        "region": "europe-west1"
+      },
+      {
+        "name": "decideJoinRequest",
+        "kind": "callable",
+        "region": "europe-west1"
+      }
+    ],
+    "backendSha256": "c8f08dd93a441f1295636f143cbeff6853d3f0bdc142626046b7eb6b1c7eb6be",
+    "joinHandlersSha256": "b7c5bfcab3fbcabae86e7718305d20a94246a669a1509e8d56b9885111217b77",
+    "indexesSha256": "9841053670235eeaf70be199646298e17339f8b53e60daccb173a146a1321ba8",
+    "rulesSha256": "e1c900b72da82dbe03fd5fd87e277e1e7bcb21e8d79d0764b53b70b1bb959075",
+    "clickEnabled": false,
+    "deployAuthorized": false,
+    "bootstrapForbidden": true,
+    "indexCount": 109
+  },
+  "proposedBatches": {
+    "internal": [
+      "joinSession",
+      "listJoinRequests",
+      "decideJoinRequest",
+      "me",
+      "listOrders",
+      "searchOrders",
+      "dashboardStats",
+      "companyStats",
+      "getOrder",
+      "createOrder",
+      "updateOrder",
+      "changeOrderStatus",
+      "listCompanies",
+      "listMembers",
+      "saveMember",
+      "listNotices",
+      "markNoticeRead",
+      "listSyncEvents",
+      "listAudit",
+      "listOrderCreators",
+      "getSettings",
+      "saveSettings",
+      "orderEventNotice"
+    ],
+    "pushLater": [
+      "registerDevice",
+      "unregisterDevice",
+      "pushNotice"
+    ],
+    "deferredShippingAndScheduler": [
+      "assignCompany",
+      "saveCompany",
+      "archiveCompany",
+      "restoreCompany",
+      "testCompanyConnection",
+      "sendOrderToDelivery",
+      "resolveDispatchException",
+      "deliveryWebhook",
+      "reconcileDeliveryStatuses"
+    ]
+  },
+  "proposedFirstApiApprovalOnly": [
+    "cloudfunctions.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "run.googleapis.com",
+    "eventarc.googleapis.com",
+    "pubsub.googleapis.com",
+    "storage.googleapis.com",
+    "firestore.googleapis.com",
+    "firebaserules.googleapis.com",
+    "identitytoolkit.googleapis.com",
+    "firebaseappcheck.googleapis.com"
+  ],
+  "freshCloudVerification": {
+    "available": false,
+    "reason": "No gcloud executable or authorized Google credential binding available; no repeated unauthenticated project requests"
+  },
+  "localPlatformPreflight": {
+    "android": "passed structural only; Google/Push flags false",
+    "ios": "passed structural only; no macOS/device acceptance",
+    "web": "failed: App Check site key empty; no bypass"
+  },
+  "index400": {
+    "cause": "unconfirmed without structured authorized response",
+    "routeMatchesPinnedFirebaseCli": true,
+    "requestChanged": false
+  },
+  "goNoGo": {
+    "preparation": "GO",
+    "realDeployment": "NO_GO_pending_explicit_approval_and_live_preconditions"
+  },
+  "localValidation": {
+    "flutterTests": 325,
+    "nodeTests": 123,
+    "emulatorTests": 68,
+    "pythonConfigurationTests": 12,
+    "pdfBarcodeChecks": 36,
+    "fullSuite": "passed",
+    "productionDependencyAudit": "0 vulnerabilities",
+    "webPreflight": "failed, not waived",
+    "logSha256": "6f27a07601bd86738a6b592f8ba0ee58d01788f21524045d0f67ab3045b81eb6"
+  }
+}

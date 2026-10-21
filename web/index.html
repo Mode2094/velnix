@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Velnix — إدارة الطلبات والفرق والتوصيل">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="velnix">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <meta name="theme-color" content="#495BEE">
+  <title>Velnix</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preload" href="main.dart.js" as="script" fetchpriority="high">
+  <style>
+    #velnix-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f6f7fb;color:#182033;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;transition:opacity .2s ease}
+    #velnix-splash .mark{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#495bee;color:#fff;font-size:30px;font-weight:800;box-shadow:0 10px 30px rgba(73,91,238,.25)}
+    #velnix-splash .name{font-size:28px;font-weight:800;letter-spacing:-.5px}
+    #velnix-splash .hint{color:#667085;font-size:13px}
+    #velnix-splash .bar{width:148px;height:3px;border-radius:999px;background:#e4e7f0;overflow:hidden;margin-top:4px}
+    #velnix-splash .bar span{display:block;width:44%;height:100%;border-radius:inherit;background:#495bee;animation:velnix-slide 1.1s ease-in-out infinite}
+    @keyframes velnix-slide{0%{transform:translateX(-120%)}100%{transform:translateX(340%)}}
+    @media (prefers-reduced-motion:reduce){#velnix-splash .bar span{animation:none;width:100%}}
+  </style>
+</head>
+<body>
+  <div id="velnix-splash" role="status" aria-live="polite">
+    <div class="mark">V</div>
+    <div class="name">Velnix</div>
+    <div class="hint">جارٍ تجهيز مساحة العمل…</div>
+    <div class="bar"><span></span></div>
+  </div>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script>
+    (() => {
+      const splash = document.getElementById('velnix-splash');
+      if (!splash) return;
+      let hidden = false;
+      const hide = () => {
+        if (hidden) return;
+        hidden = true;
+        performance.mark('velnix-first-frame');
+        splash.style.opacity = '0';
+        splash.style.pointerEvents = 'none';
+        setTimeout(() => splash.remove(), 250);
+      };
+      window.addEventListener('flutter-first-frame', hide, { once: true });
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('flt-glass-pane')) {
+          observer.disconnect();
+          hide();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      setTimeout(hide, 12000);
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

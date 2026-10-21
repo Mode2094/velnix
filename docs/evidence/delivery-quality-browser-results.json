@@ -1,0 +1,283 @@
+{
+  "baseline_commit": "0635f21",
+  "source": "phase-two working tree; file hashes identify tested source",
+  "mode": "demo",
+  "served_bundle_sha256": "eb23983808aa09b05e0de6b1494f9450ff9d0062a6b1789fc5d44b34b3fbdd89",
+  "source_files_sha256": {
+    "lib/core/dates.dart": "fba2ccb44ed90f6c805a7a3258314c73b3d8944a38cd6b0486180a9e56c91767",
+    "lib/core/theme.dart": "67096934a03084f62e5f1572887e7a9e992d492d899680d465b28a2730db5568",
+    "lib/core/widgets.dart": "2a9cdf72ad3afc79b2e917b44dc182e2c8169d437b4e5611eeb9593736ba8085",
+    "lib/data/demo_store.dart": "4e21fc3e97a17cbc5cbe150fa6fe249b722db6990182ffb4f2807c987137f175",
+    "lib/live/directory_panel.dart": "044e3f1dbbbc304fef9217c7714166450ef8e7e970acb0b3416c7c82ff8bad5f",
+    "lib/live/gateway.dart": "3cccd0462ecd4e577ff64c8db427ef8fc4729eea6271d6796947976d3392c6ef",
+    "lib/live/live_admin.dart": "01f4b6fb8d63f2d7c7f00339b5889f7cb54bfd5ae343b04d24a650497f51bce7",
+    "lib/live/live_app.dart": "78ae3e35cf807372e1ee8686ba1a3094602cba86a0ca0d635b38b887d0079f77",
+    "lib/live/live_dashboard.dart": "0b7c09365d6be74e2a7af0eeb222622a3bb69d101f0ac989854a4428c39c0d9a",
+    "lib/live/live_notices.dart": "b499af53ac76e9a7927e0f1eedf7690144bcb4e5e6514ea192c201a1e2f97ddc",
+    "lib/live/live_operations.dart": "eac5c1ad40e9d656a7d0fb06b94ce78cfda76be087ee0bb266594b554b23b69f",
+    "lib/live/live_orders.dart": "9f596e0ff817629bef5ab4fadea718b934ecc1d6f4859f121eb1347bfe6548af",
+    "lib/live/live_settings.dart": "2010d9d1c6814dbe76176f3c3e6fd20cd49120d46ca95dede8ff24abb4a57ead",
+    "lib/live/notifications_service.dart": "c8cf340fca2e6157e49e3ef50ae4627da813cf71dbf5ad9d7d0ae7c77e304301",
+    "lib/live/order_filters.dart": "bf708b5807d3aa692c7803b657d85790f28f46621f87d1c6598cb3ba647b444b",
+    "lib/main.dart": "d80697130ca07ce04bf7f66042104c8f28345e94165c23e4d612a98e125a9a5d",
+    "lib/models/entities.dart": "eb28540655c407eba89ec6e4cd88abc3c8e3e3c9c84fc987e3b47b6d3ad9027d",
+    "lib/printing/order_printing.dart": "d18b647a270581d5076a73708c8166613fe82def9aee5c7ee7149579a11e510b",
+    "lib/screens/dashboard_screen.dart": "64f9c53499b4832278bae9a275ae52f88f3dda96e0510a11485f8ca5af1b50c1",
+    "lib/screens/delivery_screens.dart": "8b454213e255ca3df9b0f833d380316c7285d79d06f658b50a17ed93d9551cae",
+    "lib/screens/login_screen.dart": "953f37a1cee9e231c7fac43decdc9f205a444a8e639c03ef98b8931eb7315221",
+    "lib/screens/notifications_screen.dart": "6d574dfc79631aca40f7cd48812486fc5081af52e154e39a6e25c62917bf4dae",
+    "lib/screens/orders_screen.dart": "f562c64e68dd2e1ade1fa834c987db88d91cc1e39efa5170ff2dbc7fe3855a84",
+    "lib/screens/reports_screen.dart": "75f5b0560c24ca6fc9f8713df90321b44a784eca15b651e34694219f4b28087c",
+    "lib/screens/settings_screen.dart": "7d79724376213fbfac7e8b81a82bfe1c33c80f7db7e5f90378074fec9e7fde31",
+    "lib/screens/shell_screen.dart": "b7d17ede3d7bf7aec287397de37c5273d14e373329e8da384dd4be1d1d380860",
+    "lib/screens/team_screen.dart": "4decd8081646656d779ad58cbec21b1404d118794233d2616971cb406b990b26"
+  },
+  "results": [
+    {
+      "role": "generalManager",
+      "width": 390,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "generalManager",
+      "width": 390,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 390,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 390,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 390,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 390,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 390,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 390,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 390,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 390,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "generalManager",
+      "width": 768,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "generalManager",
+      "width": 768,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 768,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 768,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 768,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 768,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 768,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 768,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 768,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 768,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "generalManager",
+      "width": 1440,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "generalManager",
+      "width": 1440,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 1440,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "manager",
+      "width": 1440,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 1440,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "warehouse",
+      "width": 1440,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 1440,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "sales",
+      "width": 1440,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 1440,
+      "screen": "dashboard",
+      "mode": "demo",
+      "pageErrors": []
+    },
+    {
+      "role": "dataEntry",
+      "width": 1440,
+      "screen": "orders",
+      "mode": "demo",
+      "pageErrors": []
+    }
+  ],
+  "screenshots_sha256": {
+    "dataEntry-dashboard-1440.png": "c10abb2d87881093d0b1be3bdd960af7f35a623581d428e1dfb756eb78da12fd",
+    "dataEntry-dashboard-390.png": "767c92bce48ca870dd52c94317dcb730adb6501f00c7d7bc720af19b57f442d1",
+    "dataEntry-dashboard-768.png": "bc5bb232c26302c8dc8c74b3519a5d4b6f514a758ee17972ff16b29d8d03ed2d",
+    "dataEntry-orders-1440.png": "3a45c160f6d6bce853ee5cfedfed5d941f93631b8406e787c5c67aa0b435e14b",
+    "dataEntry-orders-390.png": "9579942bd5a3da33300d933b4fc5fc3dd4a89850068e6eb529bbf2d8afab3b95",
+    "dataEntry-orders-768.png": "865f624cd8e66d1ce47a2e14e39ab61d46be7e17aa42492fc2f09a687bb0f706",
+    "generalManager-dashboard-1440.png": "fe57c485bbda6952643d12c3801d3048a191b95cb981c04250e09c27d3fa309f",
+    "generalManager-dashboard-390.png": "506ed4497e62707053a517701ac5b0cd85ce7abc48f9dd98549e622879cf8962",
+    "generalManager-dashboard-768.png": "f2097b5d46e1cdf3997e44373650d02f5283db39eeb02b032f38b1454fe81e0b",
+    "generalManager-orders-1440.png": "c55665187c57358abc95534053bd474c7d41fcdf46426c32b23aa4695961cc3d",
+    "generalManager-orders-390.png": "158b2da387a081f5544a10b62b6cc5ad00c33857566bacdbb313a4af0701f55c",
+    "generalManager-orders-768.png": "f449635961f4e4b80465d0208cf968364d0ed346ce45e19120491d23c446fb81",
+    "manager-dashboard-1440.png": "bd2a18b56859578c16a6d6617486bca6a4fb97a5234c3a528f0fabc1381551a1",
+    "manager-dashboard-390.png": "03df32b80d5e2a4a3ac19fbb6e023a9ed5aef36fb75dfdb81525bb70f5d7645d",
+    "manager-dashboard-768.png": "dfaef063fcbad5023f7f75e0bd6699b6392c17480bdbdf968f9620080b2c1682",
+    "manager-orders-1440.png": "557fef37e5bf9e2c5f957aec1b914563ac2641ef70bb947686e6abf2a5a0b432",
+    "manager-orders-390.png": "96fb1c7d68b4d8276f8d3690071b27036b50f51310d9985feea3bc2c98f4e579",
+    "manager-orders-768.png": "35372277e6b608925e35a237b3f516d9805bba5b9ffdd22524cf6c12909a068f",
+    "sales-dashboard-1440.png": "1b5faf4c5301ce13539b956bb91f4057346ca2a43ae3b02e381ff05fb408692a",
+    "sales-dashboard-390.png": "2b21a12e0c906dc437d16887f34bbfc3007cd6df125a5d6950c0e34d2f957219",
+    "sales-dashboard-768.png": "851e4b9d82c1347f2ed243b8f6495c1ace5e559e5a1cc26e321c7c9c9bebfdeb",
+    "sales-orders-1440.png": "1d448ace73601c965c3961652348236f9fe3e33fb876e25e05a5d5d75a1b8668",
+    "sales-orders-390.png": "d8dbb6ebcb1d1a017b2db4a23c8e3d157d412f8f2cf5e07f7de81ba284592aeb",
+    "sales-orders-768.png": "399155aaa1cf858a125a6e53cf18772cdccbe26776b7ff38d8d520e55be9b625",
+    "warehouse-dashboard-1440.png": "05504705bd9bd26725314db7726c4c321ab07bfec3f554d4545a5d4aa5826d9f",
+    "warehouse-dashboard-390.png": "02faf8720405c00221fe9e14591c149ea2c6a529b8dc4e7ff62acfc1fe44843e",
+    "warehouse-dashboard-768.png": "785d1c2600e80e7cd9e056f08d61e65ff17db5eec2503c82540f84408601df7f",
+    "warehouse-orders-1440.png": "c3dd921dfdc4b2de26855cee9d7aab9868dfcb5f9cff8b3ce136f05eee3c2b5d",
+    "warehouse-orders-390.png": "f4176ef3f960e7bb25d8df7433941898f15fa79f435cb7b9bfbe3c53133d5e30",
+    "warehouse-orders-768.png": "fd5e1c1fa5e3bf4aa4547fab651455623cc1d3c00df8821c97782660e16f3cef"
+  },
+  "limitations": [
+    "Synthetic demo data; no live Firebase/provider/physical device integration",
+    "Live visual baselines use an injected gateway and are stored in test/goldens/delivery_quality"
+  ]
+}

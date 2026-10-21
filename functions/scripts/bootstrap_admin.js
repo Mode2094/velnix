@@ -1,22 +1,27 @@
 'use strict';
-// One-time admin setup. Use trusted local ADC; never check credentials into Git.
-const admin=require('firebase-admin');
-admin.initializeApp();
-const db=admin.firestore();
+// gcloud mode is strictly read-only. Managed ADC apply remains a separate operator action.
 async function main(){
-  const email=process.env.VELNIX_ADMIN_EMAIL;
-  const password=process.env.VELNIX_ADMIN_PASSWORD;
-  const name=process.env.VELNIX_ADMIN_NAME||'المدير العام';
-  if(!email||!password||password.length<14)throw Error('Set VELNIX_ADMIN_EMAIL and a 14+ character VELNIX_ADMIN_PASSWORD in your protected shell');
-  const all=await db.collection('members').where('role','==','generalManager').limit(1).get();
-  if(!all.empty)throw Error('General manager already exists. Bootstrap refused.');
-  let user;
-  try{user=await admin.auth().getUserByEmail(email);}catch(e){if(e.code!=='auth/user-not-found')throw e;}
-  const created=!user;
-  if(!user)user=await admin.auth().createUser({email,password,displayName:name,emailVerified:false});
-  try{await db.doc(`members/${user.uid}`).create({name,email,role:'generalManager',active:true,
-    permissions:[],salesSupervisorId:null,createdAt:admin.firestore.FieldValue.serverTimestamp()});}
-  catch(e){if(created)await admin.auth().deleteUser(user.uid);throw e;}
-  console.log('First general manager created:', user.uid, 'Change the initial password after signing in.');
+ const apply=process.argv.includes('--apply'),explicitGcloud=process.argv.includes('--gcloud-session'),managed=process.argv.includes('--managed-adc');
+ if(explicitGcloud&&managed)throw Error('conflicting_operator_auth_modes');
+ const gcloud=explicitGcloud||(!apply&&!managed);
+ if(gcloud&&apply)throw Error('gcloud_bootstrap_is_readonly');
+ const {initializeApp,getApp}=require('firebase-admin/app');
+ const {getAuth}=require('firebase-admin/auth');
+ let result;
+ if(gcloud){
+  const {PROJECT,createGcloudSession}=require('./gcloud_session');
+  const {gcloudBootstrapDryRun}=require('./bootstrap_readonly');
+  const session=createGcloudSession({expectedAccount:process.env.VELNIX_OPERATOR_ACCOUNT});
+  process.env.GOOGLE_CLOUD_QUOTA_PROJECT=PROJECT;
+  initializeApp({projectId:PROJECT,credential:session.credential});
+  result=await gcloudBootstrapDryRun({session,auth:getAuth(),project:PROJECT,confirmedProject:process.env.VELNIX_BOOTSTRAP_CONFIRM_PROJECT,uid:process.env.VELNIX_ADMIN_GOOGLE_UID});
+ }else{
+  const {getFirestore,FieldValue}=require('firebase-admin/firestore');
+  const {bootstrapGoogleAdmin}=require('../src/bootstrap_google');
+  initializeApp();
+  result=await bootstrapGoogleAdmin({db:getFirestore(),auth:getAuth(),FieldValue,project:getApp().options.projectId||process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT,confirmedProject:process.env.VELNIX_BOOTSTRAP_CONFIRM_PROJECT,uid:process.env.VELNIX_ADMIN_GOOGLE_UID,apply});
+ }
+ console.log(result.applied?'Google administrator bootstrapped; audit recorded.':'Read-only validation passed. No resources changed.');
 }
-main().catch(e=>{console.error(e.message);process.exitCode=1;});
+if(require.main===module)main().catch(()=>{console.error('Bootstrap refused. Verify the human gcloud session, project, Google UID and existing administration. No credentials printed; no automatic fallback.');process.exitCode=1;});
+module.exports={main};

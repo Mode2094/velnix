@@ -1,0 +1,31 @@
+{
+  "baselineCommit": "0de9b54a1da231ac5b213f190d25b8f4eb8ec98e",
+  "scope": "Owner-approved bootstrap tooling; no cloud writes executed from Codex",
+  "checks": {
+    "scripts/validate.sh": "passed (323 Flutter, 96 Node and 67 emulator tests at initial full run)",
+    "final npm test": {"passed": 97, "failed": 0, "skipped": 0},
+    "final npm run test:emulator": {"passed": 68, "failed": 0, "skipped": 0},
+    "pythonTests": 12,
+    "digitalPdfChecks": 36,
+    "flutterAnalyze": "passed",
+    "npmAudit": "0 vulnerabilities",
+    "shellSyntax": "passed"
+  },
+  "newCoverage": [
+    "owner, verified UID, Google provider and approval binding",
+    "disable during transaction validation refuses before commit",
+    "read-only dry-run before approved apply",
+    "incomplete or duplicate snapshot fails closed",
+    "transaction success, server timestamps, join update field preservation and verified readback",
+    "repeat and any prior membership refused",
+    "concurrent attempts create exactly one member and audit",
+    "failed commit precondition leaves zero partial records",
+    "lost commit/readback is unknown with no automatic retry",
+    "Origin/Cookie/CSRF and browser-supplied UID protection retained",
+    "generalManager retains all policy permissions"
+  ],
+  "emulatorEvidence": "Real REST transactions on loopback Firestore emulator in isolated demo namespace; not a live Firebase/IAM test",
+  "liveMembershipCreated": "not executed or verified by Codex",
+  "deploymentMergeBillingChanges": "none",
+  "githubCi": "Must be checked against final pushed commit; results reported separately"
+}

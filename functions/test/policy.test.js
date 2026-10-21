@@ -22,8 +22,9 @@ test('closed orders cannot be edited',()=>{
   assert.equal(canEditOrder(users.gm, {...order,status:'cancelled'}),false);
 });
 test('invalid payloads rejected and integer fils used',()=>{
-  const input={customer:'test',phone:'0791234567',city:'Amman',area:'X',address:'street',description:'box',amount:'12.345',quantity:1};
+  const input={customer:'test',phone:'0791234567',city:'عمان',area:'X',address:'street',description:'box',amount:'12.345',quantity:1};
   assert.equal(validateOrderFields(input).amountMinor,12345);
+  assert.throws(()=>validateOrderFields({...input,city:'Amman'}),/invalid_city/);
   assert.throws(()=>validateOrderFields({...input,amount:-1}));
   assert.throws(()=>validateOrderFields({...input,quantity:0}));
 });
@@ -40,4 +41,17 @@ test('Arabic numeral input is normalized for Jordanian phone and amounts',()=>{
   assert.equal(order.phone,'0791234567');
   assert.equal(order.quantity,2);
   assert.equal(order.amountMinor,12500);
+});
+
+test('internal completion is ready-only and never bypasses carrier or terminal states',()=>{
+  for(const role of ['generalManager','warehouse','manager','sales','dataEntry']) {
+    const actor={id:'owner',role,active:true,permissions:role==='manager'?['updateOrderStatus']:[]};
+    const permitted=['generalManager','warehouse','manager'].includes(role);
+    const ready={createdBy:'owner',status:'ready',companyId:null};
+    assert.equal(allowedTransition(actor,ready,'delivered'),permitted);
+    for(const dispatchState of ['sending','sent','needs_review'])assert.equal(allowedTransition(actor,{...ready,dispatchState},'delivered'),false);
+    for(const marker of [{companyId:'carrier'},{hasDelivery:true},{trackingNumber:'tracking'},{remoteStatus:'delivered'}])assert.equal(allowedTransition(actor,{...ready,...marker},'delivered'),false);
+    for(const status of ['created','review','preparing','dispatched','inTransit','delivered','returned','cancelled'])assert.equal(allowedTransition(actor,{...ready,status},'delivered'),false);
+    for(const status of ['delivered','returned','cancelled'])for(const target of ['created','review','preparing','ready','dispatched','inTransit','delivered','returned','cancelled'])assert.equal(allowedTransition(actor,{...ready,status},target),false);
+  }
 });

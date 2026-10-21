@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Named channel for order update pushes. Declared here so the manifest
+         default and MainActivity agree on one identifier mirroring the value
+         sent by the backend in push.js. -->
+    <string name="velnix_order_updates_channel">تحديثات الطلبات</string>
+    <string name="velnix_order_updates_channel_description">إشعارات تغيّر حالة الطلبات المسموح لك بمتابعتها</string>
+</resources>

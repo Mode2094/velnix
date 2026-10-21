@@ -1,0 +1,78 @@
+{
+  "dateUtc": "2026-10-14",
+  "sourceCommit": "e35c973b7251d30b4c0b7e52eb7036db934b7f6f",
+  "branch": "audit/production-readiness",
+  "changes": "Documentation only; no application, rules, CI, dependencies or runtime configuration changed",
+  "ci": {
+    "source": "Owner externally confirmed both Push and PR success on sourceCommit, including Firebase/Flutter/Android",
+    "runIds": null,
+    "apiObservation": "CONNECT tunnel rejected by proxy with HTTP 403 before GitHub API response",
+    "newDocumentationCommitCI": "Not verified here"
+  },
+  "checks": {
+    "flutterFirebaseConfiguration": {
+      "passed": 4,
+      "failed": 0
+    },
+    "nodeUnit": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    "firebaseSetupPython": {
+      "passed": 7,
+      "failed": 0
+    },
+    "authFirestoreEmulators": {
+      "passed": 48,
+      "failed": 0,
+      "skipped": 0,
+      "project": "demo-velnix",
+      "scope": "loopback only",
+      "jvmHeapMiB": 1536,
+      "activeProcessors": 2
+    },
+    "publicPreflight": {
+      "android": "passed",
+      "ios": "passed",
+      "web": "blocked: required FIREBASE_APPCHECK_SITE_KEY absent; not bypassed"
+    },
+    "runtimeConfigPython": {
+      "passed": 5,
+      "failed": 0
+    },
+    "secretSignatureScan": {
+      "trackedFiles": 345,
+      "findings": 0,
+      "scope": "signature scan, not proof of absence of every possible secret"
+    }
+  },
+  "localConfiguration": {
+    "projectId": "velnix-6c1a2",
+    "packageAndBundle": "com.mode2094.velnix",
+    "mode": "live",
+    "environment": "staging; not data isolation",
+    "debugAppCheck": false,
+    "googleEnabled": false,
+    "pushEnabled": false,
+    "localSDKFilesIgnored": true
+  },
+  "capabilities": {
+    "androidSDKAndAdb": true,
+    "androidEmulatorAndSystemImages": false,
+    "kvmDevice": false,
+    "xcodebuild": false,
+    "googleADCorFirebaseCLIIdentityPresent": false
+  },
+  "notPerformed": [
+    "Real Firebase service calls or data mutations",
+    "Click network calls or login",
+    "Shipments",
+    "Deploy or merge",
+    "Resource creation or billing activation",
+    "Device/printer acceptance",
+    "New iOS build",
+    "New Web or Android build; prior owner-confirmed CI used"
+  ],
+  "decision": "5A local preparation recorded; real 5B awaits service inventory, access, platform setup and specifically approved synthetic operations; Click separately blocked by contract"
+}

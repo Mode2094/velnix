@@ -1,0 +1,134 @@
+name: Validate Velnix
+on:
+  pull_request:
+  push:
+    branches: [main, audit/production-readiness]
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - run: flutter pub get --enforce-lockfile
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: python3 scripts/check_secrets.py
+      - run: python3 scripts/test_runtime_config.py
+      - run: python3 scripts/test_firebase_setup.py
+      - run: flutter analyze
+      - run: flutter test --reporter expanded
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+          python3 -m venv /tmp/velnix-qa
+          /tmp/velnix-qa/bin/pip install -r scripts/qa-requirements.txt
+          /tmp/velnix-qa/bin/python scripts/verify_barcodes.py
+      - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo
+      - name: Capture demo roles in Chromium
+        run: |
+          npm install --prefix /tmp/velnix-browser --package-lock=false playwright@1.64.0
+          python3 -m http.server 8767 --bind 127.0.0.1 --directory build/web > /tmp/velnix-demo-http.log 2>&1 &
+          VELNIX_HTTP_PID=$!
+          trap 'kill "$VELNIX_HTTP_PID"' EXIT
+          NODE_PATH=/tmp/velnix-browser/node_modules CHROME_EXECUTABLE=/usr/bin/google-chrome node scripts/browser_smoke.cjs
+      - run: flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=live
+      - run: node scripts/emulator-preview/assert-production.cjs
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: flutter-qa-artifacts
+          path: |
+            build/qa/
+            test/failures/
+          if-no-files-found: ignore
+  firebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run syntax
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm test
+      - run: npm run test:emulator
+      - name: Retain Firestore emulator failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: firestore-emulator-failure
+          path: functions/firestore-debug.log
+          retention-days: 7
+          if-no-files-found: warn
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --debug --dart-define=VELNIX_MODE=demo
+      - run: flutter build apk --debug --dart-define=VELNIX_MODE=live
+  emulator-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: flutter pub get --enforce-lockfile
+      - run: npm --prefix functions ci
+      - run: npm install --prefix /tmp/velnix-emulator-browser --package-lock=false playwright@1.64.0
+      - name: Exercise five live roles against local Firebase Backend
+        env:
+          NODE_PATH: /tmp/velnix-emulator-browser/node_modules
+          CHROME_EXECUTABLE: /usr/bin/google-chrome
+        run: bash scripts/emulator-preview/run-qa.sh
+      - name: Retain emulator UI evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: emulator-ui-evidence
+          retention-days: 14
+          path: |
+            build/qa/emulator-ui/*.png
+            build/qa/emulator-ui/*.json
+            build/qa/emulator-ui/*.log
+          if-no-files-found: warn
