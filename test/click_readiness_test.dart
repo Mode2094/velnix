@@ -118,23 +118,14 @@ void main() {
             find.text('مرجع Click (Order_ID): VNX-CLICK-TEST-20261019-d'),
             findsOneWidget,
           );
-          if (role == 'generalManager') {
-            await tester.ensureVisible(find.text('تفاصيل تقنية'));
-            await tester.tap(find.text('تفاصيل تقنية'));
-            await tester.pumpAndSettle();
-            expect(
-              find.text(
-                'المرجع الأصلي لكود التاجر: VNX-CLICK-TEST-20261019-d4a0f8fb',
-              ),
-              findsOneWidget,
-            );
-            expect(
-              find.text('تاريخ حالة Click: 2026-10-19T00:00:00'),
-              findsOneWidget,
-            );
-          } else {
-            expect(find.text('تفاصيل تقنية'), findsNothing);
-          }
+          // The technical panel is removed from the client order details;
+          // Firebase ids and raw provider payloads never reach this screen.
+          expect(find.text('تفاصيل تقنية'), findsNothing);
+          expect(
+            find.textContaining('المرجع الأصلي لكود التاجر'),
+            findsNothing,
+          );
+          expect(find.textContaining('رقم الطلب الداخلي'), findsNothing);
 
           expect(
             find.text('ملاحظة شركة التوصيل: شحنة قيد انتظار الموافقة'),

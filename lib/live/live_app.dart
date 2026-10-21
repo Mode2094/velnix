@@ -89,6 +89,10 @@ String auditActionLabel(dynamic action, [dynamic extra]) {
       'عملية مسجلة';
 }
 
+/// Below this width the shell shows the phone bottom bar; tablets and
+/// desktops keep the rail/drawer navigation only.
+bool isPhoneShellWidth(double width) => width < 768;
+
 final liveNavigatorKey = GlobalKey<NavigatorState>();
 String displayAmount(dynamic amount) =>
     amount is num ? '${amount.toStringAsFixed(3)} د.أ' : '—';
@@ -716,6 +720,7 @@ class LiveShell extends StatefulWidget {
 }
 
 class _LiveShellState extends State<LiveShell> {
+  final scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<RemoteMessage>? foregroundPush, openedPush;
   final pushRouting = PushRouting();
   @override
@@ -803,6 +808,9 @@ class _LiveShellState extends State<LiveShell> {
 
   void go(int index) {
     if (!permittedEntries.contains(index)) return;
+    // Re-tapping the create slot must never rebuild the form: that would drop
+    // unsaved fields without the discard warning.
+    if (index == 2 && selected == 2) return;
     setState(() {
       if (index == 1) {
         selectedBucket = 'all';
@@ -824,6 +832,20 @@ class _LiveShellState extends State<LiveShell> {
     if (widget.policy.can('manageEmployees')) 4,
     if (widget.policy.can('viewReports')) 7,
     6,
+  ];
+
+  // Every active role may create orders today, but the shortcut still goes
+  // through the same permitted-entry list the rail and drawer use, so a role
+  // that loses the entry loses the central button too.
+  bool get canCreateOrder => permittedEntries.contains(2);
+
+  // `null` marks the central create-order slot so the bar keeps it in the
+  // middle of the RTL sequence: home, orders, create, notifications, menu.
+  List<int?> get phoneSlots => [
+    if (permittedEntries.contains(0)) 0,
+    if (permittedEntries.contains(1)) 1,
+    if (canCreateOrder) null,
+    if (permittedEntries.contains(6)) 6,
   ];
 
   Widget _navEntry(int index, {required bool expanded, bool drawer = false}) {
@@ -1072,8 +1094,20 @@ class _LiveShellState extends State<LiveShell> {
       _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
     };
     return Scaffold(
+      key: scaffoldKey,
       drawer: wide ? null : _drawer(context),
       drawerEnableOpenDragGesture: !wide,
+      bottomNavigationBar: isPhoneShellWidth(w)
+          ? VelnixBottomBar(
+              selectedIndex: selected,
+              slots: phoneSlots,
+              titles: titles,
+              icons: icons,
+              onSelect: go,
+              onCreateOrder: () => go(2),
+              onOpenMenu: () => scaffoldKey.currentState?.openDrawer(),
+            )
+          : null,
       appBar: AppBar(
         toolbarHeight: 70,
         backgroundColor: Colors.white,
@@ -1138,6 +1172,163 @@ class _LiveShellState extends State<LiveShell> {
             ),
           Expanded(child: screen),
         ],
+      ),
+    );
+  }
+}
+
+/// Phone-only bottom navigation for [LiveShell].
+///
+/// RTL order: home, orders, the central create-order button, notifications and
+/// the drawer opener. `slots` holds the shell entry indices in display order
+/// and uses `null` for the create-order slot; the menu slot is always last.
+class VelnixBottomBar extends StatelessWidget {
+  const VelnixBottomBar({
+    super.key,
+    required this.selectedIndex,
+    required this.slots,
+    required this.titles,
+    required this.icons,
+    required this.onSelect,
+    required this.onCreateOrder,
+    required this.onOpenMenu,
+  });
+  final int selectedIndex;
+  final List<int?> slots;
+  final List<String> titles;
+  final List<IconData> icons;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onCreateOrder;
+  final VoidCallback onOpenMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 6,
+      shadowColor: Colors.black.withValues(alpha: .2),
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: VColors.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+            child: Row(
+              children: [
+                for (final slot in slots)
+                  Expanded(
+                    child: slot == null
+                        ? _createButton()
+                        : _destination(slot, selected: selectedIndex == slot),
+                  ),
+                Expanded(child: _menuButton()),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _destination(int index, {required bool selected}) => Semantics(
+    container: true,
+    selected: selected,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => onSelect(index),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icons[index],
+              size: 24,
+              color: selected ? VColors.brand : VColors.muted,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              titles[index],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected ? VColors.brand : VColors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _menuButton() => Semantics(
+    container: true,
+    button: true,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onOpenMenu,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.menu, size: 24, color: VColors.muted),
+            SizedBox(height: 3),
+            Text(
+              'القائمة',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: VColors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget _createButton() {
+    final active = selectedIndex == 2;
+    return Semantics(
+      container: true,
+      button: true,
+      label: 'طلب جديد',
+      selected: active,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onCreateOrder,
+        child: Center(
+          child: Container(
+            padding: EdgeInsets.all(active ? 4 : 0),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? VColors.softBlue : Colors.transparent,
+            ),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: VColors.brand,
+                boxShadow: [
+                  BoxShadow(
+                    color: VColors.brand.withValues(alpha: .35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.add, color: Colors.white, size: 30),
+            ),
+          ),
+        ),
       ),
     );
   }
