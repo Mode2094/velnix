@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const {aggregateGroups}=require('../src/aggregations');
-test('all creator chunks across status and bucket groups share a four-RPC bound',async()=>{
+test('all creator chunks across status and bucket groups share an eight-RPC bound',async()=>{
   const groups=Array.from({length:18},(_,group)=>Array.from({length:3},(_,chunk)=>({id:group*3+chunk,group,count:chunk+1,amountMinor:100*(chunk+1)})));
   let active=0,peak=0;const calls=[];
   const result=await aggregateGroups(groups,async query=>{
@@ -9,7 +9,7 @@ test('all creator chunks across status and bucket groups share a four-RPC bound'
     await new Promise(resolve=>setImmediate(resolve));
     active--;return {count:query.count,amountMinor:query.amountMinor};
   });
-  assert.equal(peak,4);assert.equal(active,0);
+  assert.equal(peak,8);assert.equal(active,0);
   assert.deepEqual(calls.sort((a,b)=>a-b),Array.from({length:54},(_,i)=>i));
   assert.deepEqual(result,Array.from({length:18},()=>({count:6,amountMinor:600})));
 });

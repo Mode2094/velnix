@@ -44,7 +44,8 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  orders[role]={id:body.result.id,orderNumber:saved.order.orderNumber,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
 }
 async function openOrder(p,o){
- await nav(p,'orders');await p.getByText(o.customer,{exact:false}).first().waitFor({timeout:30000});
+ await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());
+ await p.getByText(o.customer,{exact:false}).first().waitFor({timeout:30000});
  await p.screenshot({path:path.join(out,'opened-'+o.id+'.png')});
  await activate(p,p.getByText(o.customer,{exact:false}).first());await p.getByText('تفاصيل الطلب',{exact:true}).waitFor({timeout:15000});await p.getByText('سجل الحركة',{exact:true}).waitFor();await frame(p);
 }

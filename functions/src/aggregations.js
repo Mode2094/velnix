@@ -12,7 +12,7 @@ async function aggregateGroups(groups,read) {
       totals[index].amountMinor+=value.amountMinor;
     }
   };
-  await Promise.all(Array.from({length:Math.min(4,jobs.length)},worker));
+  await Promise.all(Array.from({length:Math.min(8,jobs.length)},worker));
   return totals;
 }
 module.exports={aggregateGroups};

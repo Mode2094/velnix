@@ -539,6 +539,15 @@ void main() {
     );
   });
 
+  testWidgets('login exposes email access only when Google is disabled', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app(const LiveLogin()));
+    expect(find.text('تسجيل الدخول بالبريد'), findsOneWidget);
+    expect(find.text('المتابعة باستخدام Google'), findsNothing);
+    expect(find.text('أو'), findsNothing);
+  });
+
   testWidgets('create order back returns to orders and confirms discards', (
     tester,
   ) async {

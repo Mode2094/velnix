@@ -72,11 +72,6 @@ class _LiveCompaniesState extends State<LiveCompanies> {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'إعداد أكثر من شركة ممكن. المحوّلان المضمّنان: Generic v1 وClick Delivery.',
-              style: TextStyle(color: VColors.muted, fontSize: 12),
-            ),
             const SizedBox(height: 15),
             if (operating) const LinearProgressIndicator(),
             if (companies.isEmpty)
@@ -881,22 +876,24 @@ class _LiveMembersState extends State<LiveMembers> {
                         icon: const Icon(Icons.person_add_alt_1_outlined),
                         label: const Text('إضافة موظف'),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: operating
-                            ? null
-                            : () async {
-                                await Navigator.push<void>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        LiveJoinRequests(policy: widget.policy),
-                                  ),
-                                );
-                                if (mounted) refresh();
-                              },
-                        icon: const Icon(Icons.person_add_alt),
-                        label: const Text('طلبات الانضمام'),
-                      ),
+                      if (googleEnabled)
+                        OutlinedButton.icon(
+                          onPressed: operating
+                              ? null
+                              : () async {
+                                  await Navigator.push<void>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => LiveJoinRequests(
+                                        policy: widget.policy,
+                                      ),
+                                    ),
+                                  );
+                                  if (mounted) refresh();
+                                },
+                          icon: const Icon(Icons.person_add_alt),
+                          label: const Text('طلبات الانضمام'),
+                        ),
                     ],
                   ),
               ],

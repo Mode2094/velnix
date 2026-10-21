@@ -47,7 +47,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     super.dispose();
   }
 
-  Future<void> load({bool reset = false}) async {
+  Future<void> load({bool reset = false, bool fresh = false}) async {
     if (busy && !reset) return;
     final current = ++generation;
     setState(() {
@@ -81,6 +81,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
+              fresh: fresh,
             );
       final list = gateway.listResult(result);
       if (!mounted || generation != current) return;
@@ -219,7 +220,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     final visible = rows;
     final compact = MediaQuery.sizeOf(context).width < 720;
     return RefreshIndicator(
-      onRefresh: () => load(reset: true),
+      onRefresh: () => load(reset: true, fresh: true),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: LiveContent(
@@ -237,21 +238,33 @@ class _LiveOrdersState extends State<LiveOrders> {
                         : 'طلبات شركة التوصيل',
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                        builder: (_) => LiveOrderForm(
-                          policy: widget.policy,
-                          onSaved: () {
-                            Navigator.pop(context);
-                            load(reset: true);
-                          },
-                        ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      IconButton.filledTonal(
+                        tooltip: 'تحديث القائمة',
+                        onPressed: busy
+                            ? null
+                            : () => load(reset: true, fresh: true),
+                        icon: const Icon(Icons.refresh),
                       ),
-                    ),
-                    icon: const Icon(Icons.add),
-                    label: const Text('طلب جديد'),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => LiveOrderForm(
+                              policy: widget.policy,
+                              onSaved: () {
+                                Navigator.pop(context);
+                                load(reset: true);
+                              },
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('طلب جديد'),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -294,11 +307,6 @@ class _LiveOrdersState extends State<LiveOrders> {
                           label: const Text('مسح البحث'),
                         ),
                       ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'البحث على الخادم. الاسم من حرفين، والهاتف برقم كامل؛ تظهر أول 50 نتيجة.',
-                      style: TextStyle(fontSize: 11, color: VColors.muted),
-                    ),
                   ],
                 ),
               ),
@@ -489,12 +497,14 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     reload();
   }
 
-  void reload() {
+  void reload({bool fresh = false}) {
     final generation = ++_generation;
     _events = null;
     _eventsMore = false;
     _eventsAfterId = null;
-    request = VelnixGateway.instance.order(widget.id).then((data) {
+    request = VelnixGateway.instance.order(widget.id, fresh: fresh).then((
+      data,
+    ) {
       if (generation == _generation) {
         _events = (data['events'] as List? ?? [])
             .map((v) => Map<String, dynamic>.from(v as Map))
@@ -507,7 +517,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
   }
 
   void refresh() {
-    setState(reload);
+    setState(() => reload(fresh: true));
   }
 
   Future<void> loadMoreEvents() async {

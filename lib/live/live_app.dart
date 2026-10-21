@@ -31,6 +31,10 @@ part 'live_operations.dart';
 final statusLabels = <String, String>{
   for (final status in OrderStatus.values) status.name: status.label,
 };
+const googleEnabled =
+    bool.fromEnvironment('VELNIX_GOOGLE_ENABLED') &&
+    bool.fromEnvironment('VELNIX_TEST_GOOGLE_ENABLED');
+
 final statusColors = <String, Color>{
   for (final status in OrderStatus.values) status.name: status.color,
 };
@@ -436,45 +440,44 @@ class _LiveLoginState extends State<LiveLogin> {
                         onPressed: busy ? null : sendPasswordReset,
                         child: const Text('نسيت كلمة المرور؟'),
                       ),
-                      const Row(
-                        children: [
-                          Expanded(child: Divider()),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              'أو',
-                              style: TextStyle(color: VColors.muted),
+                      if (googleEnabled) ...[
+                        const Row(
+                          children: [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              child: Text(
+                                'أو',
+                                style: TextStyle(color: VColors.muted),
+                              ),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        FilledButton.icon(
+                          onPressed: busy ? null : signInWithGoogle,
+                          icon: busy
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.account_circle_outlined),
+                          label: const Text('المتابعة باستخدام Google'),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Text(
+                            'الحسابات الجديدة تنتظر موافقة المدير العام. لا يمنح تسجيل الدخول صلاحيات تلقائية.',
+                            style: TextStyle(
+                              color: VColors.muted,
+                              fontSize: 11,
                             ),
                           ),
-                          Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      FilledButton.icon(
-                        onPressed:
-                            busy ||
-                                !const bool.fromEnvironment(
-                                  'VELNIX_GOOGLE_ENABLED',
-                                )
-                            ? null
-                            : signInWithGoogle,
-                        icon: busy
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.account_circle_outlined),
-                        label: const Text('المتابعة باستخدام Google'),
-                      ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'الحسابات الجديدة تنتظر موافقة المدير العام. لا يمنح تسجيل الدخول صلاحيات تلقائية.',
-                          style: TextStyle(color: VColors.muted, fontSize: 11),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -512,6 +515,7 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? joinDecision;
 
   Future<Map<String, dynamic>> loadSession() async {
+    _prefetchWorkspace();
     try {
       final status = await VelnixGateway.instance.call('joinSession');
       if (status['status'] != 'approved') return status;
@@ -534,6 +538,15 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
       }
       rethrow;
     }
+  }
+
+  void _prefetchWorkspace() {
+    unawaited(
+      VelnixGateway.instance.dashboard().catchError((_) => <String, dynamic>{}),
+    );
+    unawaited(
+      VelnixGateway.instance.orders().catchError((_) => <String, dynamic>{}),
+    );
   }
 
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? membership;

@@ -27,9 +27,10 @@ class _LiveDashboardState extends State<LiveDashboard> {
     reload();
   }
 
-  void reload() => request = VelnixGateway.instance.dashboard(filters);
+  void reload({bool fresh = false}) =>
+      request = VelnixGateway.instance.dashboard(filters, fresh);
   void refresh() {
-    setState(reload);
+    setState(() => reload(fresh: true));
   }
 
   @override
@@ -165,20 +166,6 @@ class _LiveDashboardState extends State<LiveDashboard> {
                   'الطلبات غير المسندة لشركة',
                   'internal',
                   counters['internal'],
-                ),
-                const SizedBox(height: 20),
-                VLivePanel(
-                  child: Row(
-                    children: [
-                      const Icon(Icons.security_outlined, color: VColors.brand),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'تُطبّق صلاحيات ${widget.policy.roleLabel} من Firebase على البيانات والإجراءات.',
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ],
             ),

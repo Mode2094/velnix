@@ -41,7 +41,7 @@ print(h.hexdigest())
 PY2
 )
 if [[ ! -f build/qa/emulator-ui/web/main.dart.js || ! -f build/qa/emulator-ui/fingerprint || "$(cat build/qa/emulator-ui/fingerprint)" != "$fingerprint" ]]; then
- flutter build web --target .dart_tool/local_preview/main.dart --output build/qa/emulator-ui/web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_GOOGLE_ENABLED=true > build/qa/emulator-ui/build.log 2>&1
+ flutter build web --target .dart_tool/local_preview/main.dart --output build/qa/emulator-ui/web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_GOOGLE_ENABLED=true --dart-define=VELNIX_TEST_GOOGLE_ENABLED=true > build/qa/emulator-ui/build.log 2>&1
  printf '%s' "$fingerprint" > build/qa/emulator-ui/fingerprint
 fi
 env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy functions/node_modules/.bin/firebase emulators:start --project demo-velnix-preview --config .firebase-local-preview.lock --only auth,firestore,functions > build/qa/emulator-ui/emulators.log 2>&1 &

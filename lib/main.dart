@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme.dart';
 import 'core/runtime_config.dart';
 import 'core/firebase_configuration.dart';
+import 'core/app_check_gate.dart';
 import 'data/demo_store.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
@@ -62,19 +64,29 @@ Future<void> main() async {
       return;
     }
     if (!kIsWeb || webSiteKey.isNotEmpty) {
-      await FirebaseAppCheck.instance.activate(
-        providerAndroid: debugAppCheck
-            ? const AndroidDebugProvider()
-            : const AndroidPlayIntegrityProvider(),
-        providerApple: debugAppCheck
-            ? const AppleDebugProvider()
-            : const AppleDeviceCheckProvider(),
-        providerWeb: kIsWeb
-            ? FirebaseConfiguration.webAppCheckProvider(webSiteKey)
-            : null,
+      AppCheckGate.configure(
+        () => FirebaseAppCheck.instance.activate(
+          providerAndroid: debugAppCheck
+              ? const AndroidDebugProvider()
+              : const AndroidPlayIntegrityProvider(),
+          providerApple: debugAppCheck
+              ? const AppleDebugProvider()
+              : const AppleDeviceCheckProvider(),
+          providerWeb: kIsWeb
+              ? FirebaseConfiguration.webAppCheckProvider(webSiteKey)
+              : null,
+        ),
       );
     }
     runApp(const VelnixLiveApp());
+    if (kIsWeb) {
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 300),
+          AppCheckGate.wait,
+        ),
+      );
+    }
   } catch (_) {
     runApp(const SetupFailureApp());
   }

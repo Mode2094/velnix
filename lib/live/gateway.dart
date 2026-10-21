@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../core/app_check_gate.dart';
 
 /// All privileged reads and writes go through authenticated callable functions.
 /// Firestore client rules reject orders/companies/audit access by design.
@@ -70,6 +71,11 @@ class VelnixGateway {
     Map<String, dynamic> data,
   ) async {
     try {
+      await AppCheckGate.wait();
+    } catch (_) {
+      throw VelnixException('تعذر تهيئة حماية App Check؛ أعد تحميل الصفحة');
+    }
+    try {
       final result = await functions.httpsCallable(name).call(data);
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {
@@ -91,40 +97,58 @@ class VelnixGateway {
     String? companyId,
     Map<String, dynamic> filters = const {},
     String sort = 'desc',
-  }) => call('listOrders', {
-    ...filters,
-    'sort': sort,
-    'pageSize': pageSize,
-    'bucket': bucket,
-    'status': ?status,
-    'afterId': ?afterId,
-    'companyId': ?companyId,
-  });
+    bool fresh = false,
+  }) {
+    final data = <String, dynamic>{
+      ...filters,
+      'sort': sort,
+      'pageSize': pageSize,
+      'bucket': bucket,
+      'status': ?status,
+      'afterId': ?afterId,
+      'companyId': ?companyId,
+    };
+    if (afterId == null && !fresh) {
+      return _cached(
+        'orders:${jsonEncode(data)}',
+        () => call('listOrders', data),
+        ttl: const Duration(seconds: 10),
+      );
+    }
+    return call('listOrders', data);
+  }
+
   Future<Map<String, dynamic>> searchOrders(
     String query, {
     String? status,
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
-  }) => call('searchOrders', {
-    ...filters,
-    'query': query,
-    'bucket': bucket,
-    'status': ?status,
-    'companyId': ?companyId,
-  });
+  }) {
+    final data = <String, dynamic>{
+      ...filters,
+      'query': query,
+      'bucket': bucket,
+      'status': ?status,
+      'companyId': ?companyId,
+    };
+    return call('searchOrders', data);
+  }
+
   Future<Map<String, dynamic>> dashboard([
     Map<String, dynamic> filters = const {},
+    bool fresh = false,
   ]) {
     final keys =
         filters.entries
             .where((e) => e.value != null && e.value.toString().isNotEmpty)
             .toList()
           ..sort((a, b) => a.key.compareTo(b.key));
+    if (fresh) return call('dashboardStats', filters);
     return _cached(
       'dashboard:${jsonEncode({for (final e in keys) e.key: e.value})}',
       () => call('dashboardStats', filters),
-      ttl: const Duration(seconds: 30),
+      ttl: const Duration(seconds: 60),
     );
   }
 
@@ -132,11 +156,23 @@ class VelnixGateway {
     String id, {
     String? eventsAfterId,
     int eventsPageSize = 8,
-  }) => call('getOrder', {
-    'id': id,
-    'eventsPageSize': eventsPageSize,
-    'eventsAfterId': ?eventsAfterId,
-  });
+    bool fresh = false,
+  }) {
+    final data = <String, dynamic>{
+      'id': id,
+      'eventsPageSize': eventsPageSize,
+      'eventsAfterId': ?eventsAfterId,
+    };
+    if (eventsAfterId == null && !fresh) {
+      return _cached(
+        'order:${jsonEncode(data)}',
+        () => call('getOrder', data),
+        ttl: const Duration(seconds: 15),
+      );
+    }
+    return call('getOrder', data);
+  }
+
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> order) async {
     final result = await call('createOrder', order);
     _invalidateOrderData();
@@ -166,6 +202,9 @@ class VelnixGateway {
   void _invalidateOrderData() {
     invalidate('dashboard');
     invalidate('companyStats');
+    invalidate('orders');
+    invalidate('search');
+    invalidate('order');
   }
 
   Future<void> resolveDispatchException(
@@ -310,7 +349,7 @@ class VelnixGateway {
     return _cached(
       'dir:$endpoint',
       () => _loadDirectory(endpoint),
-      ttl: const Duration(seconds: 30),
+      ttl: const Duration(seconds: 120),
     );
   }
 
