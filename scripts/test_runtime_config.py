@@ -62,11 +62,17 @@ class ConfigSafetyTest(unittest.TestCase):
         target = json.loads((root / "firebase.hosting.json").read_text())
         self.assertEqual(set(target), {"hosting"})
         hosting = target["hosting"]
-        self.assertEqual(set(hosting), {"site", "public", "ignore", "rewrites"})
+        self.assertEqual(set(hosting), {"site", "public", "ignore", "rewrites", "headers"})
         self.assertEqual(hosting["site"], "velnix-6c1a2")
         self.assertEqual(hosting["public"], "build/web")
         self.assertEqual(hosting["rewrites"], [{"source": "**", "destination": "/index.html"}])
         self.assertIn("**/.*", hosting["ignore"])
+        for rule in hosting["headers"]:
+            self.assertEqual(set(rule), {"source", "headers"})
+            self.assertTrue(rule["source"].startswith("/"))
+            for header in rule["headers"]:
+                self.assertEqual(set(header), {"key", "value"})
+                self.assertEqual(header["key"], "Cache-Control")
         main = (root / "lib/main.dart").read_text()
         self.assertNotIn("ReCaptchaV3Provider", main)
         self.assertIn("FirebaseConfiguration.webAppCheckProvider(webSiteKey)", main)
