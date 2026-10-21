@@ -4,7 +4,7 @@ const {shippingStatus}=require('./shipping_status');
 const safeDate=v=>v?.toDate?.()?.toISOString?.() ?? null;
 function publicOrder(d) {
   const o=d.data();
-  return {id:d.id,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
+  return {id:d.id,orderNumber:o.orderNumber||null,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
     companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,

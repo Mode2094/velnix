@@ -2,6 +2,7 @@
 const ROLES = ['generalManager','manager','warehouse','sales','dataEntry'];
 const STATUSES = ['created','review','preparing','ready','dispatched','inTransit','delivered','returned','cancelled'];
 const PERMISSIONS = ['viewAllOrders','editAllOrders','updateOrderStatus','sendToDelivery','viewReports','viewAmounts','manageEmployees','manageCompanies','viewSync','viewAudit','manageSettings'];
+const JORDAN_CITIES = new Set(['عمان','عمّان','إربد','الزرقاء','البلقاء','المفرق','جرش','عجلون','مادبا','الكرك','الطفيلة','معان','العقبة','الأغوار الشمالية','الأغوار الجنوبية']);
 const CLOSED = new Set(['delivered','returned','cancelled']);
 const REMOTE = new Set(['inTransit','delivered','returned']);
 const TRANSITIONS = Object.freeze({
@@ -40,7 +41,7 @@ function moneyMinor(value) {
   if (!Number.isFinite(n) || n < 0 || n > 1000000) throw new Error('invalid_amount');
   return Math.round(n * 1000);
 }
-function validateOrderFields(data) {
+function validateOrderFields(data, {legacyCity=null} = {}) {
   const text = (key, max, required=true) => {
     const v = typeof data[key] === 'string' ? data[key].trim() : '';
     if (v.length > max || (required && !v)) throw new Error(`invalid_${key}`);
@@ -48,6 +49,7 @@ function validateOrderFields(data) {
   };
   const customer=text('customer',120), phone=arabicDigits(text('phone',30)), city=text('city',80),
     area=text('area',120), address=text('address',240), description=text('description',500);
+  if(!JORDAN_CITIES.has(city) && city!==legacyCity) throw new Error('invalid_city');
   const extraPhone=arabicDigits(text('extraPhone',30,false)), note=text('note',600,false);
   if (!['string','number'].includes(typeof data.quantity)) throw new Error('invalid_quantity');
   const quantity = Number(arabicDigits(data.quantity));
@@ -80,4 +82,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,PERMISSIONS,CLOSED,REMOTE,TRANSITIONS,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validateOrderFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId};
+module.exports={ROLES,STATUSES,PERMISSIONS,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validateOrderFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId};

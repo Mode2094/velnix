@@ -25,24 +25,17 @@ const NOTE = 'INTERNAL TEST — ' + TAG;
 const EDITED_NOTE = 'INTERNAL TEST EDITED — ' + TAG;
 
 const FORM_FIELDS = {
-  'اسم المستلم': TAG,
-  'رقم الهاتف': PHONE,
-  'المحافظة': 'اختبار آلي',
-  'المنطقة': 'منطقة اختبار',
-  'العنوان التفصيلي': 'TEST ONLY — عنوان اصطناعي للاختبار',
-  'وصف محتويات الطلب': 'INTERNAL TEST — ' + TAG,
-  'الكمية': '1',
-  'المبلغ (دينار أردني)': '0.000',
-  'ملاحظات': NOTE
+  'اسم المستلم *': TAG,
+  'رقم الهاتف *': PHONE,
+  'المنطقة *': 'منطقة اختبار',
+  'العنوان التفصيلي *': 'TEST ONLY — عنوان اصطناعي للاختبار',
+  'وصف محتويات الطلب *': 'INTERNAL TEST — ' + TAG,
+  'الكمية *': '1',
+  'المبلغ (دينار أردني) *': '0.000',
+  'ملاحظات (اختياري)': NOTE
 };
 
-// Flutter web draws the form on a canvas, so fields are addressed by position
-// in a fixed 1440x1000 viewport. Changing them means re-running the emulator suite.
-const FORM_POINTS = {
-  'اسم المستلم': [890, 185], 'رقم الهاتف': [300, 185], 'المحافظة': [300, 276],
-  'المنطقة': [890, 367], 'العنوان التفصيلي': [300, 367], 'وصف محتويات الطلب': [890, 470],
-  'الكمية': [300, 458], 'المبلغ (دينار أردني)': [890, 574], 'ملاحظات': [300, 585]
-};
+
 
 // Production loads the Firebase JS SDK from Google's CDN. The emulator preview
 // serves the same 12.19.0 modules locally, so the base is supplied by the driver
@@ -67,7 +60,12 @@ const back = (p) => activate(p, p.getByRole('button', { name: /رجوع|Back/ })
 
 async function nav(p, kind) {
   const label = { home: 'الرئيسية', orders: 'الطلبات', create: 'طلب جديد', notices: 'الإشعارات', more: 'المزيد' }[kind];
-  await activate(p, p.getByRole('button').filter({ hasText: label }).filter({ hasText: 'علامة التبويب' }));
+  const exact = p.getByRole('button', { name: label, exact: true });
+  try {
+    await exact.first().waitFor({ timeout: 10000 });
+    return activate(p, exact.first());
+  } catch {}
+  await activate(p, p.getByRole('button').filter({ hasText: label }).filter({ hasText: 'علامة التبويب' }).first());
 }
 
 async function callable(p, name, data = {}) {
@@ -94,7 +92,7 @@ async function denied(p, name, data) {
 async function openTagged(p) {
   // The detail screen keeps the navigation rail; the edit screen hides it. Only
   // leave the route when the rail is genuinely missing.
-  const ordersTab = p.getByRole('button').filter({ hasText: 'الطلبات' }).filter({ hasText: 'علامة التبويب' });
+  const ordersTab = p.getByRole('button', { name: 'الطلبات', exact: true });
   if (!(await ordersTab.count()) && await p.getByRole('button', { name: /رجوع|Back/ }).count()) await back(p);
   const searchBox = p.getByRole('textbox', { name: 'بحث في كل الطلبات المسموح لك بها', exact: true });
   for (let attempt = 0; attempt < 3 && !(await searchBox.count()); attempt++) {
@@ -125,6 +123,17 @@ async function openTagged(p) {
 }
 
 
+
+async function selectCity(p, city) {
+  const input = p.getByRole('textbox', { name: 'المحافظة *', exact: true });
+  await activate(p, input);
+  await selectAll(p);
+  await p.keyboard.insertText(city);
+  const option = p.getByRole('button', { name: city, exact: true }).last();
+  await option.waitFor({ timeout: 10000 });
+  await activate(p, option);
+  await frame(p);
+}
 
 /**
  * Set a Flutter text field by semantics rather than by canvas coordinates.
@@ -176,12 +185,13 @@ async function createSyntheticOrder(p, { preflightConfirmedAbsent, evidence, sho
   for (const [label, value] of Object.entries(FORM_FIELDS)) {
     await setField(p, p.getByRole('textbox', { name: label, exact: true }), value, label);
   }
+  await selectCity(p, 'عمان');
 
   const posted = p.waitForResponse(
     r => new URL(r.url()).pathname.endsWith('/createOrder') && r.request().method() === 'POST',
     { timeout: 60000 }
   );
-  await p.mouse.dblclick(600, 814, { delay: 5 });
+  await click(p, 'حفظ الطلب');
 
   const res = await posted;               // throws on timeout: never retried
   assert.equal(res.status(), 200, `createOrder returned ${res.status()}; stop and reconcile`);
@@ -202,6 +212,7 @@ async function assertApprovedFixture(p, id, evidence) {
   const o = await okay(p, 'getOrder', { id });
   assert.equal(o.order.customer, TAG);
   assert.equal(o.order.phone, PHONE);
+  assert.equal(o.order.city, 'عمان');
   // order_view serialises amount as amountMinor/1000, so zero is the number 0.
   assert.equal(Number(o.order.amount), 0, 'the synthetic order must be worth 0 JOD');
   assert.equal(o.order.quantity, 1);
@@ -241,7 +252,7 @@ async function editNotes(p, id, evidence) {
   const storedNote = current.note;
   await openTagged(p);
   await click(p, 'تعديل');
-  const notes = p.getByRole('textbox', { name: 'ملاحظات', exact: true });
+  const notes = p.getByRole('textbox', { name: 'ملاحظات (اختياري)', exact: true });
   await notes.waitFor();
   // The field must hold the real stored note before it is replaced, and the
   // intended note must be in place before the save is triggered.
@@ -282,7 +293,7 @@ async function fourInternalTransitions(p, id, evidence) {
       await click(p, 'تأكيد الإكمال');
     }
     assert.equal((await response).status(), 200);
-    await p.getByText('الحالة: ' + { review: 'قيد المراجعة', preparing: 'قيد التجهيز', ready: 'جاهز للتسليم', delivered: 'تم التسليم' }[status], { exact: true }).waitFor();
+    await p.getByText({ review: 'قيد المراجعة', preparing: 'قيد التجهيز', ready: 'جاهز للتسليم', delivered: 'تم التسليم' }[status], { exact: true }).first().waitFor();
   }
   assert.equal(await p.getByRole('button', { name: 'تعديل', exact: true }).count(), 0, 'a delivered order must be locked');
   const closed = await okay(p, 'getOrder', { id });
@@ -316,7 +327,7 @@ async function noticeDisplayedAndRead(p, id, evidence) {
 }
 
 module.exports = {
-  TAG, PHONE, NOTE, EDITED_NOTE, FORM_FIELDS, FORM_POINTS, SDK, REGION,
+  TAG, PHONE, NOTE, EDITED_NOTE, FORM_FIELDS, SDK, REGION, selectCity,
   frame, selectAll, activate, click, back, nav, callable, okay, denied, openTagged, assertViewport, setField,
   createSyntheticOrder, assertApprovedFixture, replayMustNotDuplicate,
   editNotes, searchByTag, fourInternalTransitions, noticeDisplayedAndRead

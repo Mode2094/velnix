@@ -122,7 +122,7 @@ class _LiveSettingsState extends State<LiveSettings> {
                               maxLength: 120,
                               onChanged: (_) => setState(() => _dirty = true),
                               decoration: const InputDecoration(
-                                labelText: 'اسم المؤسسة',
+                                labelText: 'اسم المؤسسة *',
                               ),
                               validator: (value) =>
                                   (value?.trim().isEmpty ?? true)

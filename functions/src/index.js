@@ -93,7 +93,7 @@ async function oneOrder(user,id) {
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'المحافظة مطلوبة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يحتوي 7 إلى 15 رقماً',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -132,11 +132,14 @@ exports.searchOrders=callable(async req=>{
     if(!doc.exists||!canSeeOrder(user,{...doc.data(),id:doc.id})||!matchingFilters(doc.data(),filters))return;
     matches.set(doc.id,doc);
   };
-  // A printed VNX- barcode resolves to the immutable Firestore document ID.
+  // Accept both the human-readable order number and the legacy immutable
+  // Firestore document ID; neither is used as a Click reference.
+  const orderNumber=query.toUpperCase().startsWith('VNX-')?query.toUpperCase():null;
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get());
   const scoped=scopeQueries(user,filters);
   const searches=[];
+  if(orderNumber)searches.push(db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get());
   for(const base of scoped){
     if(digits.length>=7)searches.push(base.where('phoneDigits','==',digits).limit(50).get());
     searches.push(base.where('customerKey','>=',needle).where('customerKey','<=',needle+'\uf8ff').orderBy('customerKey').limit(50).get());
@@ -228,7 +231,13 @@ exports.createOrder=callable(async req=>{
       resolvedId=previous.data().orderId;
       return;
     }
-    tx.create(ref,{...fields,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
+    const counterRef=db.doc('settings/orderCounter');
+    const counter=await tx.get(counterRef);
+    const nextNumber=Number(counter.data()?.value||0)+1;
+    if(!Number.isSafeInteger(nextNumber)||nextNumber>999999)fail('resource-exhausted','نفد نطاق أرقام الطلبات');
+    const orderNumber=`VNX-${String(nextNumber).padStart(6,'0')}`;
+    tx.set(counterRef,{value:nextNumber,updatedAt:FieldValue.serverTimestamp()},{merge:true});
+    tx.create(ref,{...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
       companyId:null,hasDelivery:false,revision:0,status:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
@@ -247,7 +256,7 @@ exports.updateOrder=callable(async req=>{
     const old=snap.data();
     const financialAccess=user.role==='generalManager'||can(user,'viewAmounts')||old.createdBy===user.id;
     const payload={...req.data,amount:financialAccess?(req.data?.amount??old.amountMinor/1000):old.amountMinor/1000};
-    fields=validateOrderFields(payload);
+    fields=validateOrderFields(payload,{legacyCity:old.city});
   }catch(e){return firebaseError(e);}
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);

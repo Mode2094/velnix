@@ -22,8 +22,9 @@ test('closed orders cannot be edited',()=>{
   assert.equal(canEditOrder(users.gm, {...order,status:'cancelled'}),false);
 });
 test('invalid payloads rejected and integer fils used',()=>{
-  const input={customer:'test',phone:'0791234567',city:'Amman',area:'X',address:'street',description:'box',amount:'12.345',quantity:1};
+  const input={customer:'test',phone:'0791234567',city:'عمان',area:'X',address:'street',description:'box',amount:'12.345',quantity:1};
   assert.equal(validateOrderFields(input).amountMinor,12345);
+  assert.throws(()=>validateOrderFields({...input,city:'Amman'}),/invalid_city/);
   assert.throws(()=>validateOrderFields({...input,amount:-1}));
   assert.throws(()=>validateOrderFields({...input,quantity:0}));
 });

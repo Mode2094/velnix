@@ -406,7 +406,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               ),
               const SizedBox(height: 4),
               Text(
-                'طلب #${o['id']} • $scope • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
+                'طلب #${o['orderNumber'] ?? o['id']} • $scope • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
                 '${created != null ? ' • $created' : ''}',
                 style: const TextStyle(color: VColors.muted, fontSize: 11),
               ),
@@ -1000,7 +1000,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
               children: [
                 Flexible(
                   child: Text(
-                    'رقم الطلب: ${o['id']}',
+                    'رقم الطلب: ${o['orderNumber'] ?? o['id']}',
                     style: const TextStyle(
                       color: VColors.muted,
                       fontSize: 12.5,
@@ -1010,7 +1010,10 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'نسخ رقم الطلب',
-                  onPressed: () => _copy('${o['id']}', 'تم نسخ رقم الطلب'),
+                  onPressed: () => _copy(
+                    '${o['orderNumber'] ?? o['id']}',
+                    'تم نسخ رقم الطلب',
+                  ),
                   icon: const Icon(Icons.copy_outlined, size: 17),
                 ),
               ],
@@ -1963,10 +1966,12 @@ class LiveOrderForm extends StatefulWidget {
     super.key,
     required this.policy,
     required this.onSaved,
+    this.onBack,
     this.initial,
   });
   final SessionPolicy policy;
   final VoidCallback onSaved;
+  final VoidCallback? onBack;
   final Map<String, dynamic>? initial;
   @override
   State<LiveOrderForm> createState() => _LiveOrderFormState();
@@ -1977,6 +1982,8 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   final inputs = <String, TextEditingController>{};
   bool busy = false;
   bool _dirty = false;
+  String? city;
+  bool _leaving = false;
   final String _requestKey = List.generate(
     5,
     (_) => Random.secure().nextInt(1 << 30).toRadixString(36).padLeft(6, '0'),
@@ -1998,6 +2005,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   @override
   void initState() {
     super.initState();
+    city = widget.initial?['city']?.toString();
     for (final key in names.keys) {
       inputs[key] = TextEditingController(
         text:
@@ -2028,11 +2036,25 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
     });
   }
 
+  Future<void> _leave() async {
+    if (_leaving) return;
+    if (_dirty && !await confirmDiscardChanges(context)) return;
+    if (!mounted) return;
+    _leaving = true;
+    _dirty = false;
+    if (widget.onBack != null) {
+      widget.onBack!();
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
   Future<void> save() async {
     if (!form.currentState!.validate() || busy) return;
     setState(() => busy = true);
     final map = <String, dynamic>{
-      for (final k in names.keys) k: inputs[k]!.text.trim(),
+      for (final k in names.keys)
+        k: k == 'city' ? (city ?? '') : inputs[k]!.text.trim(),
       'paymentMethod': paymentMethod,
     };
     map['phone'] = normalizedNumber(map['phone']!.toString());
@@ -2071,19 +2093,23 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
     }
   }
 
+  String _label(String key) =>
+      '${names[key]}${['extraPhone', 'note'].contains(key) ? ' (اختياري)' : ' *'}';
+
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_dirty,
+    canPop: widget.onBack == null && !_dirty,
     onPopInvokedWithResult: (didPop, result) async {
       if (didPop) return;
-      if (await confirmDiscardChanges(context) && context.mounted) {
-        Navigator.pop(context);
-      }
+      await _leave();
     },
     child: Scaffold(
-      appBar: widget.initial != null
-          ? AppBar(title: const Text('تعديل الطلب'))
-          : null,
+      appBar: widget.initial == null
+          ? null
+          : AppBar(
+              leading: BackButton(onPressed: _leave),
+              title: const Text('تعديل الطلب'),
+            ),
       body: SingleChildScrollView(
         child: LiveContent(
           child: Form(
@@ -2091,11 +2117,20 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  widget.initial == null ? 'إضافة طلب جديد' : 'تعديل الطلب',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
+                if (widget.initial == null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        BackButton(onPressed: _leave),
+                        const SizedBox(width: 4),
+                        Text(
+                          'إضافة طلب جديد',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                      ],
+                    ),
+                  ),
                 VLivePanel(
                   child: LayoutBuilder(
                     builder: (context, box) {
@@ -2107,8 +2142,64 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                         spacing: 16,
                         runSpacing: 12,
                         children: [
+                          SizedBox(
+                            width: width,
+                            child: FormField<String>(
+                              validator: (_) => city == null || city!.isEmpty
+                                  ? 'اختر المحافظة'
+                                  : null,
+                              builder: (field) => Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  DropdownMenu<String>(
+                                    initialSelection: city,
+                                    requestFocusOnTap: true,
+                                    enableFilter: true,
+                                    expandedInsets: EdgeInsets.zero,
+                                    label: const Text('المحافظة *'),
+                                    dropdownMenuEntries: [
+                                      for (final governorate
+                                          in jordanGovernorates)
+                                        DropdownMenuEntry(
+                                          value: governorate,
+                                          label: governorate,
+                                        ),
+                                      if (city != null &&
+                                          !jordanGovernorates.contains(city))
+                                        DropdownMenuEntry(
+                                          value: city!,
+                                          label: '${city!} (قيمة قديمة)',
+                                        ),
+                                    ],
+                                    onSelected: (value) {
+                                      setState(() {
+                                        city = value;
+                                        _dirty = true;
+                                      });
+                                      field.didChange(value);
+                                    },
+                                  ),
+                                  if (field.hasError)
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        top: 6,
+                                        right: 12,
+                                      ),
+                                      child: Text(
+                                        field.errorText!,
+                                        style: const TextStyle(
+                                          color: VColors.danger,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
                           for (final entry in names.entries)
-                            if (entry.key != 'amount' || _showAmount)
+                            if (entry.key != 'city' &&
+                                (entry.key != 'amount' || _showAmount))
                               SizedBox(
                                 width: width,
                                 child: TextFormField(
@@ -2147,8 +2238,29 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                         )
                                       ? TextInputType.phone
                                       : TextInputType.text,
+                                  inputFormatters:
+                                      entry.key == 'phone' ||
+                                          entry.key == 'extraPhone'
+                                      ? [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[0-9٠-٩۰-۹+\- ()]'),
+                                          ),
+                                        ]
+                                      : entry.key == 'quantity'
+                                      ? [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[0-9٠-٩۰-۹]'),
+                                          ),
+                                        ]
+                                      : entry.key == 'amount'
+                                      ? [
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[0-9٠-٩۰-۹.٫]'),
+                                          ),
+                                        ]
+                                      : null,
                                   decoration: InputDecoration(
-                                    labelText: entry.value,
+                                    labelText: _label(entry.key),
                                   ),
                                   maxLines:
                                       entry.key == 'note' ||

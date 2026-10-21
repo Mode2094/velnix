@@ -592,7 +592,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                         maxLength: 140,
                         onChanged: (_) => setState(() => _dirty = true),
                         decoration: const InputDecoration(
-                          labelText: 'اسم شركة التوصيل',
+                          labelText: 'اسم شركة التوصيل *',
                         ),
                         validator: (v) => v == null || v.trim().isEmpty
                             ? 'أدخل اسم الشركة'
@@ -605,7 +605,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                         keyboardType: TextInputType.url,
                         onChanged: (_) => setState(() => _dirty = true),
                         decoration: const InputDecoration(
-                          labelText: 'رابط API (HTTPS)',
+                          labelText: 'رابط API (HTTPS) *',
                         ),
                         validator: (v) => v == null || !v.startsWith('https://')
                             ? 'يجب أن يكون رابط HTTPS'
@@ -653,7 +653,7 @@ class _LiveCompanyFormState extends State<LiveCompanyForm> {
                           keyboardType: TextInputType.number,
                           onChanged: (_) => setState(() => _dirty = true),
                           decoration: const InputDecoration(
-                            labelText: 'Client ID / User_ID (مثال 1603)',
+                            labelText: 'Client ID / User_ID (مطلوب لـClick)',
                           ),
                           validator: (v) {
                             final value = v?.trim() ?? '';
@@ -1138,7 +1138,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                 obscureText: true,
                 textDirection: TextDirection.ltr,
                 decoration: const InputDecoration(
-                  labelText: 'تأكيد كلمة المرور',
+                  labelText: 'تأكيد كلمة المرور *',
                 ),
               ),
             ],
@@ -1217,7 +1217,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                         maxLength: 120,
                         onChanged: (_) => setState(() => _dirty = true),
                         decoration: const InputDecoration(
-                          labelText: 'اسم الموظف',
+                          labelText: 'اسم الموظف *',
                         ),
                         validator: (v) => v == null || v.trim().isEmpty
                             ? 'الاسم مطلوب'
@@ -1231,7 +1231,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                         keyboardType: TextInputType.emailAddress,
                         onChanged: (_) => setState(() => _dirty = true),
                         decoration: const InputDecoration(
-                          labelText: 'البريد الإلكتروني',
+                          labelText: 'البريد الإلكتروني *',
                         ),
                         validator: (v) => v == null || !v.contains('@')
                             ? 'بريد غير صحيح'
@@ -1245,7 +1245,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                           textDirection: TextDirection.ltr,
                           onChanged: (_) => setState(() => _dirty = true),
                           decoration: const InputDecoration(
-                            labelText: 'كلمة المرور الابتدائية',
+                            labelText: 'كلمة المرور الابتدائية *',
                             helperText:
                                 '8 أحرف على الأقل؛ لا تُخزّن في Firestore',
                           ),
@@ -1260,7 +1260,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                           textDirection: TextDirection.ltr,
                           onChanged: (_) => setState(() => _dirty = true),
                           decoration: const InputDecoration(
-                            labelText: 'تأكيد كلمة المرور',
+                            labelText: 'تأكيد كلمة المرور *',
                           ),
                           validator: (v) => v != password.text
                               ? 'كلمتا المرور غير متطابقتين'
@@ -1272,7 +1272,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                         isExpanded: true,
 
                         initialValue: role,
-                        decoration: const InputDecoration(labelText: 'الدور'),
+                        decoration: const InputDecoration(labelText: 'الدور *'),
                         items: [
                           if (widget.policy.role == 'generalManager') ...[
                             const DropdownMenuItem(

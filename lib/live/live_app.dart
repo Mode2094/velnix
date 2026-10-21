@@ -7,6 +7,7 @@ import 'notifications_service.dart';
 import 'push_routing.dart';
 import 'order_filters.dart';
 import 'directory_panel.dart';
+import 'jordan_locations.dart';
 import 'live_settings.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -1035,6 +1036,7 @@ class _LiveShellState extends State<LiveShell> {
         key: ValueKey('form$refreshVersion'),
         policy: widget.policy,
         onSaved: () => go(1),
+        onBack: () => go(1),
       ),
       3 => LiveCompanies(
         key: ValueKey('company$refreshVersion'),

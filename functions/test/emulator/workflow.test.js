@@ -141,6 +141,10 @@ for(const [role,id]of Object.entries(users))test(role+' creates a real persisted
   const doc=await db.doc('orders/'+result.id).get();
   assert.equal(doc.data().createdBy,id);assert.equal(doc.data().amountMinor,12345);
   assert.equal(doc.data().barcodeValue,'VNX-'+result.id);
+  assert.match(doc.data().orderNumber,/^VNX-\d{6}$/);
+  const searched=await invoke('searchOrders','gm',{query:doc.data().orderNumber});
+  assert.ok(searched.items.some(item=>item.id===result.id));
+  assert.equal(searched.items.find(item=>item.id===result.id).orderNumber,doc.data().orderNumber);
   const read=await invoke('getOrder',id,{id:result.id});assert.equal(read.order.id,result.id);
   if(id==='entry')orderId=result.id;
 });
@@ -151,6 +155,14 @@ test('concurrent duplicate requests produce one order and one creation event',as
   assert.equal(results.filter(r=>!r.alreadyExists).length,1);
   const events=await db.collection('orders/'+results[0].id+'/events').get();assert.equal(events.size,1);
   await assert.rejects(invoke('createOrder','entry',{...input,customer:'Different'}),{code:'already-exists'});
+});
+test('concurrent distinct orders receive unique sequence numbers',async()=>{
+  const input=(n)=>({...payload,customer:`Concurrent order ${n}`,requestKey:`concurrent_numbers_${n}`});
+  const results=await Promise.all([invoke('createOrder','entry',input(1)),invoke('createOrder','entry',input(2))]);
+  const docs=await Promise.all(results.map(r=>db.doc('orders/'+r.id).get()));
+  const numbers=docs.map(d=>d.data().orderNumber);
+  assert.equal(new Set(numbers).size,2);
+  for(const number of numbers)assert.match(number,/^VNX-\d{6}$/);
 });
 test('roles, private amounts and disabled accounts enforced by handlers',async()=>{
   const team=await invoke('getOrder','sales',{id:orderId});assert.equal('amount'in team.order,false);

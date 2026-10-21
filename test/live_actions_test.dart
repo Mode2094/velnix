@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:velnix/core/theme.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
+import 'package:velnix/live/jordan_locations.dart';
 import 'package:velnix/live/live_settings.dart';
 import 'package:velnix/live/order_filters.dart';
 
@@ -23,7 +24,6 @@ Future<void> fill(WidgetTester tester) async {
   const values = {
     'اسم المستلم': 'عميل اختبار',
     'رقم الهاتف': '٠٧٩١٢٣٤٥٦٧',
-    'المحافظة': 'عمان',
     'المنطقة': 'وسط',
     'العنوان التفصيلي': 'شارع الاختبار',
     'وصف محتويات الطلب': 'طرد',
@@ -31,10 +31,17 @@ Future<void> fill(WidgetTester tester) async {
     'المبلغ (دينار أردني)': '١٢٫٣٤٥',
   };
   for (final entry in values.entries) {
-    final input = find.widgetWithText(TextFormField, entry.key);
+    final label = ['هاتف إضافي', 'ملاحظات'].contains(entry.key)
+        ? '${entry.key} (اختياري)'
+        : '${entry.key} *';
+    final input = find.widgetWithText(TextFormField, label);
     await tester.ensureVisible(input);
     await tester.enterText(input, entry.value);
   }
+  final cityField = find.byType(DropdownMenu<String>);
+  await tester.ensureVisible(cityField);
+  tester.widget<DropdownMenu<String>>(cityField).onSelected?.call('عمان');
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -118,6 +125,8 @@ void main() {
       expect(payload?['quantity'], 2);
       expect(payload?['amount'], 12.345);
       expect(payload?['phone'], '0791234567');
+      expect(payload?['extraPhone'], '');
+      expect(payload?['city'], 'عمان');
       expect(
         (payload?['requestKey'] as String).length,
         greaterThanOrEqualTo(16),
@@ -183,7 +192,10 @@ void main() {
       await fill(tester);
       FocusManager.instance.primaryFocus?.unfocus();
       await tester.pumpAndSettle();
-      final amount = find.widgetWithText(TextFormField, 'المبلغ (دينار أردني)');
+      final amount = find.widgetWithText(
+        TextFormField,
+        'المبلغ (دينار أردني) *',
+      );
       await tester.enterText(amount, '12.3456');
       await tester.ensureVisible(find.text('حفظ الطلب'));
       await tester.pumpAndSettle();
@@ -213,7 +225,7 @@ void main() {
     await tester.pumpWidget(app(const LiveSettings()));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'اسم المؤسسة'),
+      find.widgetWithText(TextFormField, 'اسم المؤسسة *'),
       'مؤسسة اختبار',
     );
     await tester.ensureVisible(find.text('حفظ الإعدادات'));
@@ -332,7 +344,7 @@ void main() {
       app(LiveMemberForm(policy: policy, members: [member], initial: member)),
     );
     await tester.pumpAndSettle();
-    final nameField = find.widgetWithText(TextFormField, 'اسم الموظف');
+    final nameField = find.widgetWithText(TextFormField, 'اسم الموظف *');
     expect(nameField, findsOneWidget);
     expect(
       tester.widget<TextFormField>(nameField).controller?.text,
@@ -341,7 +353,7 @@ void main() {
     expect(
       tester
           .widget<TextFormField>(
-            find.widgetWithText(TextFormField, 'البريد الإلكتروني'),
+            find.widgetWithText(TextFormField, 'البريد الإلكتروني *'),
           )
           .controller
           ?.text,
@@ -510,7 +522,7 @@ void main() {
     expect(
       tester
           .widget<TextFormField>(
-            find.widgetWithText(TextFormField, 'اسم شركة التوصيل'),
+            find.widgetWithText(TextFormField, 'اسم شركة التوصيل *'),
           )
           .controller
           ?.text,
@@ -519,12 +531,65 @@ void main() {
     expect(
       tester
           .widget<TextFormField>(
-            find.widgetWithText(TextFormField, 'رابط API (HTTPS)'),
+            find.widgetWithText(TextFormField, 'رابط API (HTTPS) *'),
           )
           .controller
           ?.text,
       'https://local-contract.example',
     );
+  });
+
+  testWidgets('create order back returns to orders and confirms discards', (
+    tester,
+  ) async {
+    var backed = false;
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      throw StateError(name);
+    });
+    await tester.pumpWidget(
+      app(
+        LiveOrderForm(
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+          onBack: () => backed = true,
+          onSaved: () {},
+        ),
+      ),
+    );
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(backed, isTrue);
+
+    backed = false;
+    await tester.pumpWidget(
+      app(
+        LiveOrderForm(
+          key: UniqueKey(),
+          policy: SessionPolicy({
+            'id': 'gm',
+            'role': 'generalManager',
+            'active': true,
+          }),
+          onBack: () => backed = true,
+          onSaved: () {},
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'اسم المستلم *'),
+      'عميل اختبار',
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('تغييرات غير محفوظة'), findsOneWidget);
+    expect(backed, isFalse);
+    await tester.tap(find.text('مغادرة دون حفظ'));
+    await tester.pumpAndSettle();
+    expect(backed, isTrue);
   });
 
   testWidgets('order form asks before discarding unsaved changes', (
@@ -561,14 +626,15 @@ void main() {
     await tester.tap(find.text('فتح النموذج'));
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'اسم المستلم'),
+      find.widgetWithText(TextFormField, 'اسم المستلم *'),
       'عميل اختبار',
     );
     expect(find.byType(LiveOrderForm), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
     expect(
       tester
           .widget<TextFormField>(
-            find.widgetWithText(TextFormField, 'اسم المستلم'),
+            find.widgetWithText(TextFormField, 'اسم المستلم *'),
           )
           .controller
           ?.text,
@@ -576,7 +642,7 @@ void main() {
     );
     tester
         .widget<TextFormField>(
-          find.widgetWithText(TextFormField, 'اسم المستلم'),
+          find.widgetWithText(TextFormField, 'اسم المستلم *'),
         )
         .onChanged
         ?.call('عميل اختبار');
@@ -589,6 +655,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('تغييرات غير محفوظة'), findsOneWidget);
   });
+
+  testWidgets(
+    'order form offers the governorate picker and persists a valley',
+    (tester) async {
+      Map<String, dynamic>? payload;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        expect(name, 'createOrder');
+        payload = data;
+        return {'id': 'saved-order'};
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrderForm(
+            policy: SessionPolicy({
+              'id': 'gm',
+              'role': 'generalManager',
+              'active': true,
+            }),
+            onSaved: () {},
+          ),
+        ),
+      );
+      await fill(tester);
+      final cityField = find.byType(DropdownMenu<String>);
+      final menu = tester.widget<DropdownMenu<String>>(cityField);
+      expect(menu.dropdownMenuEntries.map((e) => e.value), jordanGovernorates);
+      menu.onSelected?.call('الأغوار الجنوبية');
+      await tester.pumpAndSettle();
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('حفظ الطلب'));
+      await tester.tap(find.text('حفظ الطلب'));
+      await tester.pumpAndSettle();
+      expect(payload?['city'], 'الأغوار الجنوبية');
+      expect(payload?['extraPhone'], '');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('general manager creates an employee from the team form', (
     tester,
@@ -614,19 +718,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'اسم الموظف'),
+      find.widgetWithText(TextFormField, 'اسم الموظف *'),
       'موظف جديد',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'البريد الإلكتروني'),
+      find.widgetWithText(TextFormField, 'البريد الإلكتروني *'),
       'new.employee@velnix.test',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'كلمة المرور الابتدائية'),
+      find.widgetWithText(TextFormField, 'كلمة المرور الابتدائية *'),
       'InitialPass123!',
     );
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'تأكيد كلمة المرور'),
+      find.widgetWithText(TextFormField, 'تأكيد كلمة المرور *'),
       'InitialPass123!',
     );
     FocusManager.instance.primaryFocus?.unfocus();

@@ -83,7 +83,7 @@ function classify(res) {
   const gm = await login('generalManager');
   const created = await call(gm, 'createOrder', {
     customer: `probe-owner-${seq++}`, phone: '0000000000', quantity: 1, amount: '0.000',
-    city: 'probe', area: 'probe', address: 'probe', description: 'probe',
+    city: 'عمان', area: 'probe', address: 'probe', description: 'probe',
     note: 'probe', requestKey: 'stage4probeowner00000001'
   });
   gmOrderId = created.ok ? created.data.id : null;
@@ -99,7 +99,7 @@ function classify(res) {
   const memberId = ((await call(gm, 'listMembers', {})).data.items || [])[0]?.id || 'none';
   await call(gm, 'createOrder', {
     customer: `probe-own-${seq++}`, phone: '0000000000', quantity: 1, amount: '0.000',
-    city: 'probe', area: 'probe', address: 'probe', description: 'probe',
+    city: 'عمان', area: 'probe', address: 'probe', description: 'probe',
     note: 'probe', requestKey: 'stage4probeown000000001'
   });
 
@@ -138,7 +138,7 @@ function classify(res) {
     // idempotency keys never collide across the matrix.
     put('createOrder', await call(p, 'createOrder', {
     customer: `probe-${role}-${seq}`, phone: '0000000000', quantity: 1, amount: '0.000',
-    city: 'probe', area: 'probe', address: 'probe', description: 'probe',
+    city: 'عمان', area: 'probe', address: 'probe', description: 'probe',
     note: 'probe', requestKey: `stage4probe${role}0000${seq}`
   }));
 

@@ -26,7 +26,7 @@ const TAG = 'STAGE3_ACCEPTANCE_20261016T214135Z';
 const FIXTURE = {
   customer: TAG,
   phone: '0000000000',
-  city: 'اختبار آلي',
+  city: 'عمان',
   area: 'منطقة اختبار',
   address: 'TEST ONLY — عنوان اصطناعي للاختبار',
   description: 'INTERNAL TEST — ' + TAG,

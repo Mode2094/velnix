@@ -122,7 +122,7 @@ class OrderInvoicePdf {
       await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
     );
     final pdf = pw.Document(
-      title: 'Velnix - ${order['id']}',
+      title: 'Velnix - ${order['orderNumber'] ?? order['id']}',
       author: 'Velnix Smart Order Management',
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
@@ -206,6 +206,7 @@ class OrderInvoicePdf {
             ),
           ),
           pw.SizedBox(height: narrow ? 6 : 12),
+          item('رقم الطلب', order['orderNumber'] ?? order['id']),
           item('المستلم', order['customer']),
           item('الهاتف', order['phone']),
           if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
