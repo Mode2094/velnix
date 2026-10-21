@@ -285,7 +285,6 @@ class _LiveDashboardState extends State<LiveDashboard> {
 
   Widget _allCard(_ScopeTotals data) => _cardShell(
     onTap: () => widget.onNavigate('all', null),
-    label: 'كل الطلبات، ${data.count} طلب',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -354,7 +353,6 @@ class _LiveDashboardState extends State<LiveDashboard> {
     String? hint,
   }) => _cardShell(
     onTap: () => widget.onNavigate(bucket, null),
-    label: '$title، ${data.count} طلب',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -425,34 +423,30 @@ class _LiveDashboardState extends State<LiveDashboard> {
     ),
   );
 
-  Widget _cardShell({
-    required VoidCallback onTap,
-    required String label,
-    required Widget child,
-  }) => Semantics(
-    button: true,
-    label: label,
-    child: Material(
-      color: Colors.white,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: VColors.line),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        mouseCursor: SystemMouseCursors.click,
-        borderRadius: BorderRadius.circular(18),
-        hoverColor: VColors.softBlue.withValues(alpha: .6),
-        focusColor: VColors.softBlue,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 170),
-          padding: const EdgeInsets.all(18),
-          child: child,
+  Widget _cardShell({required VoidCallback onTap, required Widget child}) =>
+      Semantics(
+        button: true,
+        child: Material(
+          color: Colors.white,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: const BorderSide(color: VColors.line),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            mouseCursor: SystemMouseCursors.click,
+            borderRadius: BorderRadius.circular(18),
+            hoverColor: VColors.softBlue.withValues(alpha: .6),
+            focusColor: VColors.softBlue,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 170),
+              padding: const EdgeInsets.all(18),
+              child: child,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   Widget _miniStatuses(String bucket, Iterable<MapEntry<String, int>> entries) {
     if (entries.isEmpty) {
@@ -472,7 +466,6 @@ class _LiveDashboardState extends State<LiveDashboard> {
     final color = statusColors[entry.key] ?? VColors.brand;
     return Semantics(
       button: true,
-      label: '${statusLabels[entry.key]}، ${entry.value} طلب',
       child: Material(
         color: color.withValues(alpha: .08),
         clipBehavior: Clip.antiAlias,
