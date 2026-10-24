@@ -1317,7 +1317,12 @@ class VelnixBottomBar extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onCreateOrder,
+        // `heightFactor: 1` keeps the slot at the button's own height. A plain
+        // Center would expand to the Scaffold's full height budget, turning
+        // the whole bar into a full-screen overlay that hides the app bar and
+        // page content and pushes the icons to the middle of the screen.
         child: Center(
+          heightFactor: 1,
           child: Container(
             padding: EdgeInsets.all(active ? 4 : 0),
             decoration: BoxDecoration(

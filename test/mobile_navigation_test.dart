@@ -112,6 +112,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the bar stays pinned to the bottom inside the Scaffold', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    for (final size in const [
+      Size(320, 640),
+      Size(375, 812),
+      Size(390, 844),
+      Size(430, 932),
+      Size(767, 1024),
+    ]) {
+      tester.view.physicalSize = size;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: velnixTheme(),
+          locale: const Locale('ar'),
+          supportedLocales: const [Locale('ar')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: Scaffold(
+            appBar: AppBar(title: const Text('Velnix')),
+            body: const Text('محتوى لوحة الرئيسية'),
+            bottomNavigationBar: bar(selected: 0, selectedCalls: <int>[]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final barRect = tester.getRect(find.byType(VelnixBottomBar));
+      final contentRect = tester.getRect(find.text('محتوى لوحة الرئيسية'));
+      expect(barRect.height, lessThan(100), reason: '${size.width}px bar');
+      expect(barRect.bottom, size.height, reason: '${size.width}px bottom');
+      expect(
+        contentRect.bottom,
+        lessThanOrEqualTo(barRect.top),
+        reason: '${size.width}px content above bar',
+      );
+      expect(tester.takeException(), isNull, reason: '${size.width}px');
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   testWidgets('the bar has no overflow at every phone width', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(() {

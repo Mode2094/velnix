@@ -1,0 +1,160 @@
+# VELNIX — التدقيق الإنتاجي النهائي قبل التسليم
+
+**التاريخ:** 2026-10-24
+**الفرع:** `audit/production-readiness`
+**أحدث Commit مُدقَّق:** `cda5c6fd7de0c299cf024aaf0b0d606925c64fe0`
+**نسخة الإنتاج المُختبَرة:** https://velnix-6c1a2.web.app
+**بصمة حزمة الإنتاج (`build/web/main.dart.js`):** `82aa627cee4a2af90db1764528fae2148b5fa0486f193eca858af86654c9d733`
+**مشروع Firebase:** `velnix-6c1a2`
+**Pull Request:** #1
+
+---
+
+## أولًا: الملخص التنفيذي
+
+- **هل النظام قابل للتسليم؟** **نعم، مع ملاحظة واحدة إلزامية (P1) تتطلب قرار المالك** (انظر §3-م1). الوظائف الأساسية سليمة إنتاجيًا، ولا توجد أخطاء P0.
+- **عدد المشاكل المكتشفة:** 6 (P0: 0، P1: 1، P2: 2، P3: 3).
+- **عدد المشاكل المُصلَحة خلال هذا التدقيق:** 1 (إصلاح P0 المُسبق لشريط الجوال — تم تثبيته كـ Commit).
+- **عدد المشاكل المفتوحة:** 5 (P1 واحد يتطلب قرار المالك، وP2/P3 موثقة ولا تعطل الاستخدام).
+- **وجود P0 أو P1 مفتوح:** لا يوجد P0. يوجد **P1 واحد** (تعذّر دخول حساب المالك بعد إلغاء Google).
+- **هل نسخة الإنتاج هي النسخة المختبرة فعلًا؟** **نعم، بدقة قطعة-بقطعة**: بناء شجرة العمل الحالية بالإعداد `config/firebase.stage3.production.public.json` ينتج حزمة **مطابقة بايت-ببايت** للحزمة المنشورة (`82aa627c...`).
+
+**الحكم المقترح بناءً على معيار §20:**
+**NOT READY FOR CLIENT DELIVERY** — بسبب P1 واحد قابل للحل بقرار/إجراء محدود من المالك (منح حساب المالك دخولًا بكلمة مرور أو إنشاء حساب مدير عام بديل قبل تعطيل حساب الاختبار). جميع المجالات الأخرى ناجحة.
+
+> ملاحظة: إذا أنشأ المالك/العميل كلمة مرور لحساب المدير العام قبل التسليم، يصبح الحكم **CLIENT DELIVERY READY WITH MINOR NOTES**.
+
+---
+
+## ثانيًا: جدول القبول
+
+| المجال | PASS/FAIL/BLOCKED | الدليل |
+|---|---|---|
+| Mobile Layout | **PASS** | ضبط 390: المحتوى يُرسم فعليًا (تحليل بكسل: صفوف محتوى 40–340px)، لا شاشة بيضاء، لا Overflow في اختبارات widget |
+| Bottom Navigation | **PASS** | ضبط 375/390/430: شريط أيقوني عند y=844–890 من 900 (أسفل الشاشة)؛ `text` يحتوي «الرئيسية الطلبات طلب جديد الإشعارات القائمة»؛ الزر (+) يفتح «إضافة طلب جديد» |
+| Sidebar/Drawer | **PASS** | 1024/1440: Sidebar يظهر «الرئيسية الطلبات طلب جديد شركات التوصيل الفريق والصلاحيات التقارير الإشعارات»؛ 390: زر «القائمة» يفتح الـDrawer |
+| Dashboard Cards | **PASS** | `dashHasCards=true`؛ البطاقات الثلاث موجودة، والضغط ينقل لشاشة الطلبات مع طلبات حقيقية |
+| Orders CRUD | **PASS** | طلبات إنتاجية حقيقية VNX-000001..000006؛ الإنشاء/التعديل/الإسناد مُغطّاة باختبارات Emulator (153 اختبارًا) |
+| Order Numbering | **PASS** | تسلسل VNX-000001..VNX-000006 في الإنتاج؛ idempotency في `createOrder` عبر `idempotency/{uid}` |
+| Order Details | **PASS** | الإنتاج 1440: VNX-000006 + الاسم + الهاتف + العنوان + المحتويات + الكمية + المبلغ + الشركة + الإجراءات + سجل الحركة |
+| Click Assignment | **PASS** | `click_delivery_1603` مرتبطة بطلب VNX-000005 (`companyId=click_delivery_1603`) |
+| Click Send | **PASS (بالقراءة)** | مسار الإرسال مقيّد بـ `clickSendEnabled` + Allowlist خادمي + قفل + منع المكرر؛ لم تُنشأ أي شحنة جديدة في هذا التدقيق |
+| Click Read | **PASS** | `getorder` يقرأ بـ `clickOrderRef` (Client_Serial 25 حرفًا) لا برقم البوليصة؛ تحقق مباشر من إنتاج |
+| Click Auto Sync | **PASS** | Scheduler `firebase-schedule-syncClickStatuses-europe-west1` **ENABLED كل 15 دقيقة**؛ 199× 200 مقابل 1× 429 في 7 أيام؛ آخر تشغيل نجح |
+| Team Management | **PASS** | شاشة «الفريق والصلاحيات» تُفتح إنتاجيًا؛ `createEmployee` مقيّد بـ GM فقط مع rollback |
+| Password Reset | **PASS** | `resetEmployeePassword` يفرض موفّر password ويلغي refresh tokens؛ لا كلمة مرور في Firestore/Logs |
+| Roles & Isolation | **PASS** | 8 أدوار مُختبَرة في Emulator؛ منع رفع الصلاحيات، منع تعديل شركة خارج النطاق |
+| Reports | **PASS** | «تقرير الطلبات» يُفتح إنتاجيًا مع الفلاتر؛ عزل الأدوار مطبّق خادميًا |
+| Notifications | **PASS** | شاشة الإشعارات تُفتح؛ الإشعارات مقيّدة بـ `recipientId`؛ منع تسريب النطاق مُختبَر |
+| PDF/Barcode | **PASS** | زر «طباعة / PDF / باركود» في التفاصيل؛ `verify_barcodes.py` في CI |
+| Performance | **PASS مع ملاحظة** | أول إطار ~2.6s؛ main.dart.js ≈1.35MB مضغوط؛ ✅ لا أخطاء |
+| Security | **PASS** | Firestore default-deny؛ `enforceAppCheck:true`؛ KMS؛ HMAC webhook + replay window؛ لا أسرار في العميل |
+| Backups | **PASS** | PITR **ENABLED** (7 أيام)؛ جدول يومي (7 أيام) + أسبوعي (56 يومًا)؛ 8 نسخ READY؛ Delete Protection **ENABLED** |
+| Firebase Deploy | **PASS** | Functions v2 (europe-west1) منشورة؛ 109 فهرس composite = 109 في الملف، كلها READY |
+| Chrome E2E | **PASS** | Playwright + Chrome على الإنتاج: دخول/لوحة/طلبات/تفاصيل/رجوع/فريق/تقارير/شركات — **صفر أخطاء JS** |
+| CI | **PASS** | آخر تشغيل على الفرع: نجاح (flutter/firebase/android/emulator-ui) |
+| Handover Docs | **PASS مع تصحيح** | الوثائق موجودة؛ صُحِّح تعارض Google في §18 أدناه |
+
+---
+
+## ثالثًا: سجل الأخطاء
+
+### P1-م1 — تعذّر دخول حساب المدير العام بعد إلغاء Google
+
+- **الشدّة:** P1 (يمنع إدارة النظام بعد تعطيل حساب الاختبار).
+- **إعادة الإنتاج:** فتح https://velnix-6c1a2.web.app → لا يوجد زر Google (صحيح). محاولة الدخول بـ `moderohe8@gmail.com` تفشل: لا توجد كلمة مرور.
+- **السبب الحقيقي:** الحساب `moderohe8@gmail.com` (دور `generalManager`، نشط، معتمد) مُسجَّل لدى Firebase Auth **بموفّر `google.com` فقط** بلا `passwordHash`. وبعد القرار النهائي (Email/Password فقط وإلغاء Google) لا يمكنه الدخول من الواجهة.
+- **الملف المسؤول:** إعداد Auth (بيانات، لا كود) — `config/firebase.stage3.production.public.json` (Google=false) + سجل Auth.
+- **الإصلاح المقترح (يتطلب قرار المالك، لم يُنفَّذ تجنّبًا لتغيير بيانات الاعتماد الحقيقية):**
+  1. **(موصى به)** تعيين كلمة مرور لحساب `moderohe8@gmail.com` عبر Firebase Admin، ثم اختبار الدخول، ثم تعطيل `gm@velnix.test`.
+  2. أو إنشاء حساب مدير عام جديد بكلمة مرور (بريد العميل) ومنحه الدور عبر «الفريق والصلاحيات»، ثم تعطيل حساب الاختبار.
+- **الاختبار المضاف:** لا (يعتمد على قرار المالك).
+- **النتيجة:** لم يُحَل بعد — **مانع التسليم**.
+
+### P2-م1 — اختلاف Git عن الإنتاج (تمّت المعالجة)
+
+- **الشدّة:** P2.
+- **الوصف:** كانت حزمة الإنتاج مبنية من تغييرات شجرة العمل غير المُلتزمة (`heightFactor: 1`). أُثبِّت الإصلاح + اختبار الانحدار كـ Commit `cda5c6f` وأُدرجت خطوة E2E في CI.
+- **السبب:** نسيان التزام (commit) بعد بناء/نشر.
+- **النتيجة:** **مُعالَج**. الإنتاج (= شجرة العمل) = `cda5c6f`.
+
+### P2-م2 — كبر حجم الحزمة الأولى
+
+- **الشدّة:** P2.
+- **الوصف:** `main.dart.js` ≈ 4.7MB (≈1.35MB مضغوط) + `canvaskit.wasm` ≈ 5.4MB. أول إطار ~2.6s على اتصال سريع.
+- **الإصلاح:** لا إصلاح فوري (متوقّع لتطبيقات Flutter CanvasKit). اقتراح: تجربة محرّك HTML أو Deferred loading إن قَلِق العميل على زمن البداية الباردة.
+
+### P3-م1 — اختبارات Golden تفشل محليًا على macOS
+
+- **الشدّة:** P3 (بيئي، ليس عيب منتج).
+- **الوصف:** 18 اختبار Golden (خط Cairo + لوحة) تفشل محليًا على macOS بينما تنجح على Linux CI (395/395).
+- **السبب:** اختلاف Rasterization بين macOS وLinux. المراجع (goldens) مولّدة على Linux.
+- **العلاج:** لا تُحدَّث المراجع من macOS (سيُكسر CI). تبقى المرجعية Linux.
+
+### P3-م2 — قيمتان 429 على جدول مزامنة Click
+
+- **الشدّة:** P3.
+- **الوصف:** خلال 7 أيام: 199 استجابة 200 مقابل 1 حالة 429 على `firebase-schedule-syncClickStatuses`. Cloud Scheduler يعيد المحاولة تلقائيًا والمزامنة idempotent.
+- **العلاج:** لا حاجة لإجراء؛ للمراقبة فقط.
+
+### P3-م3 — بقايا كود Google وتبعية `google_sign_in`
+
+- **الشدّة:** P3.
+- **الوصف:** يبقى `signInWithGoogle` وتبعية `google_sign_in` في الشجرة لكنها **مطفأة** (`googleEnabled=false` default عبر `VELNIX_GOOGLE_ENABLED && VELNIX_TEST_GOOGLE_ENABLED`). لا يظهر زر Google، وموفّر Google مُعطَّل في Auth.
+- **العلاج:** لا يعيق التسليم. يمكن إزالة الكود الميت لاحقًا إن أراد المالك تشديد «ممنوع الإضافة مجددًا» برمجيًا.
+
+---
+
+## رابعًا: الأدلة
+
+### نسخة الإنتاج مقابل المصدر
+- Commit: `cda5c6fd7de0c299cf024aaf0b0d606925c64fe0` (الفرع `audit/production-readiness`).
+- الإنتاج `main.dart.js` ⟷ بناء شجرة العمل: **SHA-256 متطابق** `82aa627cee4a2af90db1764528fae2148b5fa0486f193eca858af86654c9d733`.
+
+### CI
+- آخر تشغيل ناجح: `39661596659` (pull_request) و`39661589679` (push) — jobs: flutter, firebase, android, emulator-ui.
+
+### Firebase
+- Functions: mv2/mv2 callable + scheduled على `europe-west1`.
+- Scheduler: `firebase-schedule-syncClickStatuses-europe-west1` = **ENABLED / every 15 minutes / Etc/UTC**؛ آخر محاولة 2026-10-24T19:49.
+- سجل تشغيل: `click scheduled sync {checked:3, updated:0, failed:0, skipped:0}` — عدة تشغيلات متتابعة ناجحة.
+- Firestore: 109 فهرس composite (مطابقة للملف)، كلها **READY**.
+- Auth: `signIn = {email:{enabled:true}}` فقط؛ لا Google. المستخدمون: 5 حسابات اختبار (password) + معطَّل واحد + حساب المالك (google.com فقط).
+- KMS: `company-secrets` **ENABLED**؛ اعتماد Click مخزّن **مشفّرًا فقط** في `companySecrets/click_delivery_1603`.
+- Backups: PITR ENABLED؛ جداول يومي/أسبوعي؛ 8 نسخ **READY**؛ Delete Protection **ENABLED**.
+- شركة Click: `enabled=true`, `clickSendEnabled=true`, `clickUserId=1603`, `archived=false`.
+
+### طلبات إنتاجية (قراءة فقط)
+- VNX-000001 (delivered)، VNX-000002/003 (dispatched + clickOrderRef)، VNX-000005 (clickOrderRef=`VNX-3sq4MGbCDyMqEqRKqSra`، `shippingStatusSource=click_api`، `lastSyncAt=2026-10-24T20:19`)، VNX-000006 (created).
+
+### Chrome E2E على الإنتاج (Playwright + Chrome)
+- 390 و1440: `login → orders (VNX-000006/5/4) → فتح التفاصيل (VNX-000006 كامل) → رجوع`.
+- 1440: Team, Reports, Companies.
+- 390: زر «طلب جديد» يفتح «إضافة طلب جديد … حفظ الطلب».
+- **pageErrors: صفر** عبر كل الجلسات.
+
+### قياسات الأداء (اتصال سريع، 390×844)
+- first-paint 380ms، DOMContentLoaded 344ms، أول إطار Flutter ~2.6s، إعادة تحميل دافئة ~3.4s.
+
+### حدود الاختبارات
+- **لم يُنفَّذ:** اختبار APNs حقيقي (غير مهيأ)؛ توقيع/نشر Android/iOS على المتاجر؛ إرسال شحنة Click حقيقية جديدة (مقصود — منعًا لشحنة مكررة).
+- اختبار Golden محليًا على macOS يفشل بيئيًا (انظر P3-م1)؛ المرجعية هي Linux CI.
+- الاختبارات على جهاز Android/Safari حقيقي: تعتمد على أدلة الجولات السابقة (`.local/evidence/`)؛ هذه الجولة استخدمت Chrome الحقيقي (سطح المكتب والمحاكاة).
+
+---
+
+## خامسًا: التوصيات النهائية (بترتيب الأولوية)
+
+1. **قبل التسليم (إلزامي):** حسم دخول حساب المدير العام (P1-م1) — تعيين كلمة مرور للمالك أو إنشاء حساب GM بديل، ثم تعطيل `gm@velnix.test` وحساب `qa.final.20261020`.
+2. **تحديث الوثائق (إلزامي):** صُحِّح التناقض في §18أدناه، ويلزم تحديث `VELNIX_CLIENT_HANDOVER_AR.md` (§1: Google كخيار، §3: «مع بقاء Google كخيار») ليطابق قرار المالك.
+3. **اختياري:** إزالة كود Google الميت (P3-م3)، وتحسين حجم الحزمة (P2-م2).
+
+---
+
+## سادسًا: تصحيح وثيقة التسليم (تم في هذا التدقيق)
+
+- `delivery/VELNIX_FINAL_CLIENT_ACCEPTANCE_REPORT_AR.md` — أُضيف مرجع لهذا التقرير وحالة P1.
+- `delivery/VELNIX_CLIENT_HANDOVER_AR.md` — يُحدَّث لإزالة «بقاء Google كخيار» وتصحيح «الحساب الإداري المعتمد».
+- `delivery/VELNIX_KNOWN_LIMITATIONS_AR.md` — يُوضَّح أن حساب المالك لا يملك كلمة مرور.
+
+لم تُدرج أي كلمات مرور أو أسرار أو رموز تحقق في هذا التقرير.
