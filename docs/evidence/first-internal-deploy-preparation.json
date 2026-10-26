@@ -1,0 +1,108 @@
+{
+  "validationContext": "local working tree based on f7ff33b361399d1ebe603b9c5028b21769a23765",
+  "projectId": "velnix-6c1a2",
+  "cloudChangesExecuted": false,
+  "deployExecuted": false,
+  "iamModified": false,
+  "rulesOrIndexesPublished": false,
+  "realIndexProbeExecuted": false,
+  "plan": {
+    "projectId": "velnix-6c1a2",
+    "region": "europe-west1",
+    "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+    "deployer": "moderohe8@gmail.com",
+    "functions": [
+      "joinSession",
+      "listJoinRequests",
+      "decideJoinRequest",
+      "me",
+      "listOrders",
+      "searchOrders",
+      "dashboardStats",
+      "companyStats",
+      "getOrder",
+      "createOrder",
+      "updateOrder",
+      "changeOrderStatus",
+      "listCompanies",
+      "listMembers",
+      "saveMember",
+      "listNotices",
+      "markNoticeRead",
+      "listSyncEvents",
+      "listAudit",
+      "listOrderCreators",
+      "getSettings",
+      "saveSettings",
+      "orderEventNotice"
+    ],
+    "cloudChangesAuthorized": false
+  },
+  "sdkDiscovery": {
+    "endpointCount": 23,
+    "requiredAPIs": [],
+    "runtimeIdentityInMetadata": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+    "runtimeAccountExistenceVerified": false,
+    "excludedEndpointsExported": false,
+    "originalFullManifestRequiresScheduler": true
+  },
+  "buildIdentity": {
+    "verified": false,
+    "nextRead": "gcloud builds get-default-service-account --project=velnix-6c1a2 --region=europe-west1"
+  },
+  "firstAcceptanceCompositeIndexes": [
+    {
+      "collectionGroup": "notices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "hasDelivery",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "amountMinor",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "localChecks": {
+    "flutter": 325,
+    "node": 127,
+    "emulator": 68,
+    "python": 12,
+    "pdfBarcode": 36,
+    "newTests": 4,
+    "focusedFinalNodeTests": 127,
+    "bundleProductionNpmCi": "passed",
+    "productionDependencyAudit": "0 vulnerabilities",
+    "allLocalRequiredSuites": "passed"
+  },
+  "sourceSha256": {
+    "config/first-internal-deploy.json": "028b7fac6b1d11c6ee53eaf85c7d00dcb12d11a7cf2753c045c6c4e5195fc567",
+    "config/firestore.first-acceptance.indexes.json": "45feb25306bb0f2bc0e904bfc88d48de2dbfab6c1b48e5263b17fc274c8cc32b",
+    "config/iam.first-internal-runtime.role.yaml": "d4cbf4e5d7590faaf035e016da6c9212845758db4fb0c79b21475b053137440b",
+    "functions/scripts/prepare_first_internal.js": "e7b9bd6e032eac7dd58b6db6f131104944e15da629234a0a31ec38a8a39ed318",
+    "functions/scripts/probe_first_deploy_indexes.js": "3a045bd44664e4ef0d7a5ad478c649bb6183cdc0991ea61b9846a8081f35a4e3",
+    "functions/test/first_internal_deploy.test.js": "3f45191a7fd1cd994bd37e0ff0bdf70da4548f8302c873c17624ec592eb71256"
+  },
+  "decision": "NO_GO_DEPLOY_pending_verified_IAM_build_identity_index_read_AppCheck_and_explicit_approval"
+}

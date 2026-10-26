@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 // These UI models intentionally remain independent of Firestore SDK.
 enum UserRole { generalManager, manager, warehouse, sales, dataEntry }
+
 extension UserRoleText on UserRole {
   String get label => switch (this) {
     UserRole.generalManager => 'مدير عام',
@@ -25,6 +26,7 @@ enum AppPermission {
   viewAudit,
   manageSettings,
 }
+
 extension PermissionText on AppPermission {
   String get label => switch (this) {
     AppPermission.viewAllOrders => 'مشاهدة جميع الطلبات',
@@ -42,20 +44,39 @@ extension PermissionText on AppPermission {
 }
 
 class TeamMember {
-  TeamMember({required this.id, required this.name, required this.role,
-    required this.email, this.phone = '', this.active = true, this.salesSupervisorId,
-    Set<AppPermission>? permissions}) : permissions = permissions ?? {};
+  TeamMember({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.email,
+    this.phone = '',
+    this.active = true,
+    this.salesSupervisorId,
+    Set<AppPermission>? permissions,
+  }) : permissions = permissions ?? {};
   final String id;
   String name;
   UserRole role;
   String email;
   String phone;
-  String? salesSupervisorId; // Assigned sales representative for data-entry members.
+  String?
+  salesSupervisorId; // Assigned sales representative for data-entry members.
   bool active;
   Set<AppPermission> permissions;
 }
 
-enum OrderStatus { created, review, preparing, ready, dispatched, inTransit, delivered, returned, cancelled }
+enum OrderStatus {
+  created,
+  review,
+  preparing,
+  ready,
+  dispatched,
+  inTransit,
+  delivered,
+  returned,
+  cancelled,
+}
+
 extension OrderStatusUI on OrderStatus {
   String get label => switch (this) {
     OrderStatus.created => 'جديد',
@@ -69,21 +90,29 @@ extension OrderStatusUI on OrderStatus {
     OrderStatus.cancelled => 'ملغي',
   };
   Color get color => switch (this) {
-    OrderStatus.created => const Color(0xFF3A72EA),
-    OrderStatus.review => const Color(0xFF8D6AD9),
-    OrderStatus.preparing => const Color(0xFFE5A13A),
-    OrderStatus.ready => const Color(0xFF0D9C90),
+    OrderStatus.created => const Color(0xFF315FD9),
+    OrderStatus.review => const Color(0xFF6946B0),
+    OrderStatus.preparing => const Color(0xFF965B10),
+    OrderStatus.ready => const Color(0xFF00756F),
     OrderStatus.dispatched => const Color(0xFF3C64B5),
-    OrderStatus.inTransit => const Color(0xFF327BBA),
-    OrderStatus.delivered => const Color(0xFF0B9C76),
-    OrderStatus.returned => const Color(0xFFE7813E),
-    OrderStatus.cancelled => const Color(0xFFD75B67),
+    OrderStatus.inTransit => const Color(0xFF176391),
+    OrderStatus.delivered => const Color(0xFF006D55),
+    OrderStatus.returned => const Color(0xFF9F520E),
+    OrderStatus.cancelled => const Color(0xFFB52B3F),
   };
-  bool get isClosed => this == OrderStatus.delivered || this == OrderStatus.returned || this == OrderStatus.cancelled;
+  bool get isClosed =>
+      this == OrderStatus.delivered ||
+      this == OrderStatus.returned ||
+      this == OrderStatus.cancelled;
 }
 
 class OrderEvent {
-  OrderEvent({required this.title, required this.actor, required this.time, this.details = ''});
+  OrderEvent({
+    required this.title,
+    required this.actor,
+    required this.time,
+    this.details = '',
+  });
   final String title;
   final String actor;
   final DateTime time;
@@ -91,15 +120,30 @@ class OrderEvent {
 }
 
 class OrderRecord {
-  OrderRecord({required this.id, required this.customer, required this.phone,
-    required this.city, required this.area, required this.address,
-    required this.description, required this.quantity, required this.amount,
-    required this.createdBy, required this.createdByName,
-    required this.createdByRole, required this.createdAt,
-    this.extraPhone = '', this.note = '', this.paymentMethod = 'عند الاستلام',
-    this.companyId, this.trackingNumber, this.remoteStatus,
-    this.status = OrderStatus.created, List<OrderEvent>? events})
-      : events = events ?? [];
+  OrderRecord({
+    required this.id,
+    required this.customer,
+    required this.phone,
+    required this.city,
+    required this.area,
+    required this.address,
+    required this.description,
+    required this.quantity,
+    required this.amount,
+    required this.createdBy,
+    required this.createdByName,
+    required this.createdByRole,
+    required this.createdAt,
+    this.extraPhone = '',
+    this.note = '',
+    this.paymentMethod = 'عند الاستلام',
+    this.companyId,
+    this.trackingNumber,
+    this.providerOrderId,
+    this.remoteStatus,
+    this.status = OrderStatus.created,
+    List<OrderEvent>? events,
+  }) : events = events ?? [];
   final String id;
   String customer;
   String phone;
@@ -114,6 +158,7 @@ class OrderRecord {
   String note;
   String? companyId;
   String? trackingNumber;
+  String? providerOrderId;
   String? remoteStatus;
   OrderStatus status;
   final String createdBy;
@@ -124,21 +169,33 @@ class OrderRecord {
 }
 
 class DeliveryCompany {
-  DeliveryCompany({required this.id, required this.name, required this.apiUrl,
-    this.enabled = true, this.archived = false, this.connectionLabel = 'لم يتم الاختبار',
-    Map<String,OrderStatus>? mappings}) : mappings = mappings ?? {};
+  DeliveryCompany({
+    required this.id,
+    required this.name,
+    required this.apiUrl,
+    this.enabled = true,
+    this.archived = false,
+    this.connectionLabel = 'لم يتم الاختبار',
+    Map<String, OrderStatus>? mappings,
+  }) : mappings = mappings ?? {};
   final String id;
   String name;
   String apiUrl;
   bool enabled;
   bool archived;
   String connectionLabel; // Demo UI label only; never a real network test.
-  Map<String,OrderStatus> mappings;
+  Map<String, OrderStatus> mappings;
 }
 
 class AppNotice {
-  AppNotice({required this.id, required this.title, required this.body,
-    required this.time, this.icon = Icons.notifications_outlined, this.recipientIds});
+  AppNotice({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.time,
+    this.icon = Icons.notifications_outlined,
+    this.recipientIds,
+  });
   final String id;
   final String title;
   final String body;
@@ -152,13 +209,14 @@ class AppNotice {
 /// Split from the reference video: orders with a delivery-company assignment
 /// and orders still managed internally. NOT a store/inventory module.
 enum OrderBucket { all, delivery, internal }
+
 extension OrderBucketLabel on OrderBucket {
-  String get label => switch(this) {
+  String get label => switch (this) {
     OrderBucket.all => 'كل الطلبات',
     OrderBucket.delivery => 'طلبات شركات التوصيل',
     OrderBucket.internal => 'الطلبات الداخلية',
   };
-  bool matches(OrderRecord o) => switch(this) {
+  bool matches(OrderRecord o) => switch (this) {
     OrderBucket.all => true,
     OrderBucket.delivery => o.companyId != null,
     OrderBucket.internal => o.companyId == null,

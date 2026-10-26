@@ -1,0 +1,112 @@
+{
+  "generatedAtLocal": "2026-10-18",
+  "branch": "audit/production-readiness",
+  "investigationBaseSha": "6d6dc397d210086f7353211fa487201934288108",
+  "method": {
+    "how": "Read-only DOM inspection of the owner's own authenticated portal session in the owner's Chrome profile, via macOS AppleScript 'execute javascript'. Value fields were never submitted, no buttons that save/send/cancel/delete/approve were pressed, and no network requests were replayed.",
+    "session": "Owner's authorized session on client code 1603; credentials were never read, copied or printed.",
+    "honored": [
+      "no shipment created",
+      "no cancellation, deletion or data edit",
+      "no user created",
+      "no collection or payment action",
+      "no account setting changed",
+      "no cookies or session tokens extracted",
+      "no authentication bypass",
+      "no Firebase deployment",
+      "no paid provider call"
+    ],
+    "uiLanguage": "Portal language was toggled between Arabic and English (en-* routes) purely for label evidence and restored to Arabic afterwards. This is a per-browser UI preference, not an account setting change.",
+    "sessionNote": "The ASP.NET session expired once during the investigation and the owner re-authenticated in the same browser; no credentials were handled by the investigation."
+  },
+  "portal": {
+    "baseUrl": "https://admin.clickdelivery.org",
+    "platform": "ASP.NET WebForms (postback model), Arabic UI with English mirror routes (en-*)",
+    "clientVisibleMenu": ["لوحة التحكم", "إدارة المستخدمين", "اضافة شحنات", "شحناتى", "طلبات فلاير", "بيك اب", "طلبات سداد", "سجل السداد والفوترة", "التقارير"],
+    "adminConfigLinksPresentButHiddenForClientAccount": ["Permissions", "UserMoves", "Branches", "Reasons", "Cities", "Areas", "CodesCities", "AllPriceList"],
+    "adminConfigAccess": "direct navigation to hidden sections redirects to the login page; the client account cannot read them"
+  },
+  "addShipmentForm": {
+    "url": "addclientorders -> addclientordersdtls?Dat=..&Client=1603&ClientNm=..&StoreNm=..&PriceList=70",
+    "priceListId": "70 (client-specific Click price list)",
+    "fields": [
+      {"controlId": "Txt_Client_Serial", "arLabel": "كود التاجر", "enLabel": "Reference no", "required": false},
+      {"controlId": "DDLOrdBranch", "arLabel": "الفرع", "enLabel": "Branch", "required": true},
+      {"controlId": "Chk_Is_Exchange", "arLabel": "شحنة استبدال", "enLabel": "Order exchange", "required": false},
+      {"controlId": "Chk_Open_Shippment", "arLabel": "مسموح بفتح الشحنة", "enLabel": "Open shippment", "required": false},
+      {"controlId": "Txt_Sender_Display_Nm", "arLabel": "اسم الراسل علي البوليصة", "enLabel": "Sender display name on policy", "required": false},
+      {"controlId": "Chk_Fixed", "arLabel": "تثبيت الاسم", "enLabel": "Fixed name", "required": false},
+      {"controlId": "Txt_Client_Phone", "arLabel": "موبايل المستلم", "enLabel": "Reciver phone", "required": true, "rule": "أرقام فقط، لا تقل عن 9 أرقام"},
+      {"controlId": "Txt_Client_Name", "arLabel": "المستلم", "enLabel": "Reciver", "required": true},
+      {"controlId": "DDLCity", "arLabel": "إلى مدينة", "enLabel": "To city", "required": true},
+      {"controlId": "DDLArea", "arLabel": "المنطقة", "enLabel": "Area", "required": true, "note": "dependent dropdown loaded by postback after city selection"},
+      {"controlId": "Txt_Client_Address", "arLabel": "العنوان", "enLabel": "Address", "required": true},
+      {"controlId": "Txt_Ord_Content", "arLabel": "محتوى الشحنة", "enLabel": "Order content", "required": false},
+      {"controlId": "Txt_Ord_Quantity", "arLabel": "الكمية", "enLabel": "Quantity", "required": true},
+      {"controlId": "DDLShippType", "arLabel": "شحن على", "enLabel": "Shipping on", "required": true},
+      {"controlId": "Txt_Ord_Ship_Discount", "arLabel": "قيمة الشحن", "enLabel": "Shipping Amt", "required": true, "note": "disabled until Shipping on is chosen; server-side price list fills it"},
+      {"controlId": "Txt_Ord_Total_Price", "arLabel": "قيمة الشحنة", "enLabel": "Order Amt", "required": true},
+      {"controlId": "Txt_Ord_Final_Price", "arLabel": "الإجمالي", "enLabel": "Total Amt", "required": true},
+      {"controlId": "Txt_Ord_Note", "arLabel": "ملاحظات", "enLabel": "Notes", "required": false}
+    ],
+    "dropdowns": {
+      "branch": [{"ar": "الرئيسي", "value": "1"}, {"ar": "فرع اربد", "value": "2"}, {"ar": "فرع عمان", "value": "3"}],
+      "shippingOn": [{"ar": "على المستلم", "value": "1"}, {"ar": "على الراسل", "value": "2"}],
+      "cities": [{"ar": "إربد", "value": "1"}, {"ar": "البلقاء", "value": "2"}, {"ar": "جرش", "value": "3"}, {"ar": "الزرقاء", "value": "4"}, {"ar": "الطفيلة", "value": "5"}, {"ar": "عجلون", "value": "6"}, {"ar": "العقبة", "value": "7"}, {"ar": "عمان", "value": "8"}, {"ar": "الكرك", "value": "9"}, {"ar": "مادبا", "value": "10"}, {"ar": "معان", "value": "11"}, {"ar": "المفرق", "value": "12"}, {"ar": "الأزرق", "value": "13"}, {"ar": "ألاغوار", "value": "14"}, {"ar": "الديسة", "value": "15"}, {"ar": "وادي رم", "value": "16"}, {"ar": "وادي عربة", "value": "17"}],
+      "area": "loaded by server postback after a city is chosen; the client account cannot list Areas/CodesCities sections"
+    },
+    "moneyLogicProvenFromPortalJs": {
+      "GetPerVal": "Total Amt = parseFloat(Order Amt) + parseFloat(Shipping Amt)",
+      "GetFinalVal": "Order Amt = parseFloat(Total Amt) - parseFloat(Shipping Amt)",
+      "GetCondStat": "Shipping on = 1 (on receiver): Order Amt enabled/focused, Total Amt disabled; Shipping on = 2 (on sender): Order Amt disabled, Total Amt enabled/focused",
+      "conclusion": "In the portal the receiver-payable Total is exactly Order Amt + Shipping Amt; the three money concepts are distinct fields"
+    }
+  },
+  "statuses": {
+    "orderTabs": [
+      {"ar": "قيد انتظار الموافقة", "en": null, "internalToken": "LnkWating"},
+      {"ar": "في مخزن الشحن", "en": "In shipping store", "internalToken": "LnkConfirmed"},
+      {"ar": "في الشحن", "en": "In shipping", "internalToken": "LnkInShipping"},
+      {"ar": "تم التسليم", "en": "Delivered", "internalToken": "LnkDelivered"},
+      {"ar": "تسليم جزئي", "en": "Part delivered", "internalToken": "LnkPartDeliverd"},
+      {"ar": "مؤجل", "en": "Postponed", "internalToken": "LnkPostponed"},
+      {"ar": "ملغي", "en": "Canceled", "internalToken": "LnkCanceled"},
+      {"ar": "مرتجع", "en": "Returned", "internalToken": "LnkReturned"},
+      {"ar": "مرتجع جزئي", "en": "Part returned", "internalToken": "LnkPartReturned"},
+      {"ar": "في مخزن المرتجعات", "en": "In returned store", "internalToken": "LnkInStore"},
+      {"ar": "في الشحن للراسل", "en": "In shipping to sender", "internalToken": "LnkInShippingReturned"},
+      {"ar": "تم استلام المرتجع", "en": "Delivered to sender", "internalToken": "LnkClientReturned"}
+    ],
+    "dashboardRatioLabels": ["قيد الانتظار", "في مخزن الشحن", "في الشحن", "تم التسليم", "ملغاة", "مؤجلة", "تسليم جزئي", "مرتجع", "مرتجع جزئي", "في مخزن المرتجع", "في الشحن للراسل", "تم التسليم للراسل"],
+    "paymentStatusFilter": [{"ar": "غير مسدد", "value": "1"}, {"ar": "تم السداد", "value": "2"}],
+    "codesWarning": "The internal tokens and numeric values above are portal UI identifiers, NOT confirmed Click API status codes. No API code mapping is derived."
+  },
+  "lists": {
+    "ordersTable": {"ar": ["م", "رقم البوليصة", "كود التاجر", "شحنة استبدال", "مندوب التوصيل", "المستلم", "العنوان", "محتوى الشحنة", "ملاحظات", "شحن على", "الإجمالي", "قيمة الشحن", "المستحق للراسل", "حالة السداد", "حالة الشحنة", "خيارات"], "en": ["S", "Policy no", "Reference no", "Order exchange", "Delivery name", "Reciver", "Address", "Order content", "Notes", "Shipping on", "Total Amt", "Shipping Amt", "Sender duo amt", "Payment status", "Order status", "Choices"], "clientRowsPresent": false},
+    "ordersReport": {"filters": ["Branch", "City", "Area", "Payment status"], "columnsAr": ["م", "رقم البوليصة", "كود التاجر", "شحنة استبدال", "تاريخ الدخول", "المستلم", "العنوان", "محتوى الشحنة", "ملاحظات", "شحن على", "الإجمالي", "قيمة الشحن", "المستحق للراسل", "حالة السداد", "حالة الشحنة", "محاولات الشحن"]},
+    "returnsReport": {"columnsAr": ["م", "رقم البوليصة", "كود التاجر", "شحنة استبدال", "تاريخ الدخول", "تاريخ المرتجع", "المستلم", "العنوان", "محتوى الشحنة", "ملاحظات", "شحن على", "قيمة الشحنة", "المستحق للراسل", "حالة المرتجع", "حالة الشحنة"]},
+    "accountStatement": {"columnsAr": ["م", "التاريخ", "كود التاجر", "تفاصيل", "لك", "عليك", "الرصيد"]},
+    "paymentRequests": {"columnsAr": ["رقم الطلب", "التاريخ", "موظف استلام الطلب", "قيمة السداد", "ملاحظات", "الحالة"], "clientCanCreate": false},
+    "paymentRecordsInvoices": {"columnsAr": ["كود", "التاريخ", "سداد من", "سداد إلى", "قيمة السداد", "ملاحظات", "طباعة فاتورة"]},
+    "users": {"columnsAr": ["م", "اسم المستخدم", "رقم الموبايل / اسم الدخول", "خيارات"], "addFormFields": ["Txt_Client_User_Name", "Txt_Client_User_Phone", "Txt_Client_User_Pass"], "allRequired": true},
+    "pickup": {"columnsAr": ["م", "العميل", "القيمة", "التاريخ", "العنوان", "المندوب", "طريقة الدفع", "الحالة", "خيارات"], "addFormFieldsAr": ["اختر عنوان العميل (DDLAddress)", "مبلغ الزيارة (Txt_Req_Visit_Amt)", "رقم الطلب (Txt_Order_No)", "تاريخ الاستلام (Txt_Recive_Date)", "ملاحظات (Txt_Note)"]},
+    "flyerRequests": {"columnsAr": ["رقم الطلب", "التاريخ", "موظف استلام الطلب", "الكمية", "ملاحظات", "الحالة"]}
+  },
+  "apiFieldNameMatchesFromPortalLabels": [
+    {"portalControl": "Txt_Client_Serial", "portalEnLabel": "Reference no", "apiField": "Client_Serial"},
+    {"portalControl": "Txt_Client_Phone", "portalEnLabel": "Reciver phone", "apiField": "Reciver_Phone"},
+    {"portalControl": "Txt_Client_Name", "portalEnLabel": "Reciver", "apiField": "Reciver_Name"},
+    {"portalControl": "Txt_Ord_Content", "portalEnLabel": "Order content", "apiField": "Ord_Content"},
+    {"portalControl": "Txt_Ord_Quantity", "portalEnLabel": "Quantity", "apiField": "Ord_Quantity"},
+    {"portalControl": "Txt_Ord_Total_Price", "portalEnLabel": "Order Amt", "apiField": "Ord_Amt"},
+    {"portalControl": "Txt_Ord_Note", "portalEnLabel": "Notes", "apiField": "Ord_Note"},
+    {"portalControl": "Chk_Is_Exchange", "portalEnLabel": "Order exchange", "apiField": "Is_Ord_Exchange"},
+    {"portalControl": "Chk_Open_Shippment", "portalEnLabel": "Open shippment", "apiField": "Open_Shippment"}
+  ],
+  "stillOpen": [
+    "Ord_Amt semantic confirmation: portal label match is strong but the provider must confirm whether Ord_Amt equals Order Amt (goods value) with Click adding its price-list shipping, or the receivable total",
+    "no API status codes: portal names/tokens are not carrier codes; getorder success response sample still requires the provider",
+    "Client_Serial duplicate handling / idempotency guarantee still undeclared by the provider",
+    "setorder HTTP method still not supplied by the provider (POST is only inference; the portal itself is a WebForms postback app and proves nothing about /Client/ setorder)"
+  ]
+}

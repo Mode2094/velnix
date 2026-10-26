@@ -1,0 +1,28 @@
+{
+  "baselineCommit": "bfef13238ddd90f22d878bd201db487310c02420",
+  "ownerReportedCompleted": ["Google authentication", "generalManager membership with verified readback", "temporary Cloud Shell domain removed"],
+  "bootstrapRepeated": false,
+  "localValidation": {
+    "scripts/validate.sh": "exit 0; Flutter 323, Node 105, emulator 68 at full run",
+    "finalNodeSuite": {"pass": 107, "fail": 0, "skipped": 0},
+    "emulatorSuite": {"pass": 68, "fail": 0, "skipped": 0},
+    "flutterTests": 323,
+    "pythonTests": 12,
+    "digitalPdfChecks": 36,
+    "flutterAnalyze": "passed",
+    "npmAudit": "0 vulnerabilities",
+    "shellSyntax": "passed"
+  },
+  "publicPlatformPreflight": {
+    "android": "structural preflight passed; Google/Push flags false; OAuth/SHA/App Check need live verification",
+    "ios": "structural preflight passed; local OAuth keys present; Linux cannot build/sign iOS",
+    "web": "FAILED: missing public App Check site key; not bypassed",
+    "firebaseLiveRuntimeTest": "not executed by Codex"
+  },
+  "newCoverage": ["post-bootstrap owner record verification without bootstrap", "secrets and unrelated identities redacted", "403 and malformed/repeated pages remain unverified", "rules/index/backend/billing blockers", "current active registrations only", "pinned human IAM read", "broad runtime IAM and existing delivery configuration block unreviewed deployment", "missing native OAuth fails closed"],
+  "sourceDeploymentPlan": {"functions": 32, "callables": 28, "http": 1, "scheduled": 1, "firestoreTriggers": 2, "indexes": 109, "functionsRegion": "europe-west1", "runtime": "nodejs22"},
+  "cloudWritesDeployBillingMerge": "none",
+  "phaseComplete": false,
+  "remainingGate": "Owner-run read-only Cloud Shell inventory, then specific deployment/cost approval and live acceptance",
+  "githubCi": "Read and report final pushed SHA separately; local tests do not prove CI or cloud runtime"
+}

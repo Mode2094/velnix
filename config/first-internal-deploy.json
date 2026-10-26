@@ -1,0 +1,37 @@
+{
+  "projectId": "velnix-6c1a2",
+  "region": "europe-west1",
+  "functionRegions": {
+    "orderEventNotice": "us-central1"
+  },
+  "firestoreLocation": "nam5",
+  "runtimeServiceAccount": "velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com",
+  "deployer": "moderohe8@gmail.com",
+  "functions": [
+    "joinSession",
+    "listJoinRequests",
+    "decideJoinRequest",
+    "me",
+    "listOrders",
+    "searchOrders",
+    "dashboardStats",
+    "companyStats",
+    "getOrder",
+    "createOrder",
+    "updateOrder",
+    "changeOrderStatus",
+    "listCompanies",
+    "listMembers",
+    "saveMember",
+    "deleteMember",
+    "listNotices",
+    "markNoticeRead",
+    "listSyncEvents",
+    "listAudit",
+    "listOrderCreators",
+    "getSettings",
+    "saveSettings",
+    "orderEventNotice"
+  ],
+  "cloudChangesAuthorized": false
+}

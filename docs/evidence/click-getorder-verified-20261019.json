@@ -1,0 +1,55 @@
+{
+  "verifiedAtLocal": "2026-10-19",
+  "scope": "One live read-only getorder request. No setorder, no removeorder, no shipment creation or modification.",
+  "endpoint": "POST https://admin.clickdelivery.org/Client/getorder",
+  "request": {
+    "headers": {
+      "Authorization": "client",
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    "body": {
+      "Order_ID": "VNX-CLICK-TEST-20261019-d",
+      "User_ID": 1603
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "contentType": "application/json; charset=utf-8",
+    "server": "Microsoft-IIS/10.0",
+    "body": {
+      "result": {
+        "Stat_App_Nm": "قيد انتظار الموافقة",
+        "Status_Date": "2026-10-19T00:00:00",
+        "Ord_Status_Note": "شحنة قيد انتظار الموافقة",
+        "Ord_Amt_Duo": 0,
+        "Ord_Ship_Discount": 0,
+        "Ord_Will_Pay_Amt": 1
+      }
+    }
+  },
+  "identity": {
+    "clientId": 1603,
+    "clientIdSource": "Logged-in portal page /myaccrep label ArMainContent_UcMyAccRep_clintid = 1603",
+    "policyNumber": "1318368",
+    "policyNumberSource": "Portal /clientorders row and /clienteditorder?id=1318368",
+    "originalVelnixClientSerial": "VNX-CLICK-TEST-20261019-d4a0f8fb",
+    "sentClientSerial": "VNX-CLICK-TEST-20261019-d4a0f8fb",
+    "storedClickClientSerial": "VNX-CLICK-TEST-20261019-d",
+    "getorderOrderId": "VNX-CLICK-TEST-20261019-d",
+    "match": "getorder Order_ID matches the 25-character Client_Serial stored by Click, not the policy number 1318368"
+  },
+  "verifiedFields": [
+    "result.Stat_App_Nm = قيد انتظار الموافقة",
+    "result.Status_Date = 2026-10-19T00:00:00",
+    "result.Ord_Status_Note = شحنة قيد انتظار الموافقة",
+    "result.Ord_Amt_Duo = 0",
+    "result.Ord_Ship_Discount = 0",
+    "result.Ord_Will_Pay_Amt = 1"
+  ],
+  "notes": [
+    "The numeric policy number 1318368 is not accepted as getorder Order_ID.",
+    "No financial meaning is assigned to Ord_Amt_Duo, Ord_Ship_Discount or Ord_Will_Pay_Amt.",
+    "No credential value is stored in this file."
+  ]
+}

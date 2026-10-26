@@ -1,0 +1,78 @@
+{
+  "dateUtc": "2026-10-14",
+  "baselineCommit": "e290b4416e036d8e0c3fb3ea0a4daf3ceef6b4b9",
+  "branch": "audit/production-readiness",
+  "change": "Google-only Live login, UID-bound pending requests, general-manager transactional approval and audited member administration; legacy same-UID membership preserved",
+  "validationCommand": "source scripts/cloud-env.sh; JAVA_TOOL_OPTIONS with Xmx1536m and ActiveProcessorCount=2; scripts/validate.sh",
+  "checks": {
+    "flutter": {
+      "passed": 323,
+      "failed": 0
+    },
+    "node": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 0
+    },
+    "authFirestoreEmulators": {
+      "passed": 64,
+      "failed": 0,
+      "skipped": 0,
+      "project": "demo-velnix; bootstrap isolated demo-velnix-bootstrap",
+      "network": "loopback only",
+      "googleFlow": "Auth emulator signInWithIdp synthetic assertion, verifyIdToken and real local provider record; not Google OAuth"
+    },
+    "python": {
+      "runtimeConfig": 5,
+      "firebaseSetup": 7,
+      "failed": 0
+    },
+    "pdfDigital": {
+      "passed": 36,
+      "physicalPrinterTested": false
+    },
+    "analyze": "passed",
+    "format": "passed",
+    "syntax": "passed",
+    "productionNpmAudit": "0 vulnerabilities",
+    "secretSignatureScan": {
+      "trackedFiles": 352,
+      "findings": 0,
+      "scope": "Signature scan; not a proof that every possible secret form is absent"
+    }
+  },
+  "newCoverage": {
+    "googleAuthAndApprovalEmulatorTests": 15,
+    "firestoreDecisionRulesTests": 1,
+    "flutterWidgets": 5,
+    "scenarios": [
+      "new pending identity and payload impersonation",
+      "privileged callable denial before approval",
+      "Google provider and verified email checks",
+      "general-manager-only listing and decisions",
+      "invalid role, permissions and supervisor grants",
+      "concurrent approval and approval/rejection race",
+      "all five roles",
+      "repeat login and persistent rejection",
+      "role and disable changes apply to same issued token",
+      "no automatic merge by email",
+      "stable pending pagination",
+      "own-request read only; writes and internal reads denied",
+      "dry-run and atomic first Google administrator bootstrap",
+      "password login and password employee creation cannot authorize Velnix"
+    ]
+  },
+  "initialTestCorrection": "New rejection widget test originally waited for all animations while an indeterminate busy indicator remained active during confirmation; changed to bounded dialog animation pumps with confirmation and no-early-decision assertions. Targeted rerun and full 323 suite pass. No test skips or timeouts raised.",
+  "builds": {
+    "webLiveGoogleEnabled": "passed compile only; no real Firebase startup",
+    "androidDebugLiveGoogleEnabled": "passed; no device or release signing acceptance",
+    "ios": "not run: Linux lacks macOS/Xcode"
+  },
+  "localArtifactSha256": {
+    "build/web/main.dart.js": "698770f1692534614d3ff16aabdbc80a3bf2fc4d512d3487bcdec9b14304eaf4",
+    "build/app/outputs/flutter-apk/app-debug.apk": "5d3367984dc782c0071db5c7521835cc3155f11e2d77d75292fe9013022ccff2"
+  },
+  "cloudOperations": "No deploy, merge, Console changes, resource creation, real Auth users, customer data, Click calls or printer tests",
+  "migrationGate": "Do not deploy Google-only backend until existing general manager Google UID is proven to match membership. Do not disable Email/Password until real Google acceptance and separate owner authorization.",
+  "githubCI": "Final commit Push/PR not verified; API connectivity must be checked after push. Earlier owner confirmation applies only to e35c973."
+}

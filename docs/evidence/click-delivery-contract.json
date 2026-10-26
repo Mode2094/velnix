@@ -1,0 +1,227 @@
+{
+  "baseline_commit": "b362bbe",
+  "sources": {
+    "postman": {
+      "filename": "ClickApi.postman_collection.json",
+      "sha256": "5070b1e14c4a6831c29bfba3c2f13267ca821b1e895215c109ed9639b0925061"
+    },
+    "text": {
+      "filename": "clickdelivery api[1] (2).txt",
+      "sha256": "bc1c465ff57a5f67550fab43b8812217d380e260652c285a20a542c0af6f405f"
+    }
+  },
+  "requests": [
+    {
+      "name": "getorder",
+      "method": "POST",
+      "url": "https://admin.clickdelivery.org/Client/getorder",
+      "authorization_header": "client",
+      "body_fields": [
+        "Order_ID",
+        "User_Name",
+        "User_Pass"
+      ],
+      "response_examples": 0,
+      "source": "ClickApi.postman_collection.json /item/0/request",
+      "operational": false
+    },
+    {
+      "name": "removeorder",
+      "method": "POST",
+      "url": "https://admin.clickdelivery.org/Client/removeorder",
+      "authorization_header": "client",
+      "body_fields": [
+        "Order_ID",
+        "User_Name",
+        "User_Pass"
+      ],
+      "response_examples": 0,
+      "source": "ClickApi.postman_collection.json /item/1/request",
+      "operational": false
+    },
+    {
+      "name": "setorder",
+      "method": null,
+      "url": "https://admin.clickdelivery.org/Client/setorder",
+      "authorization_header": "client",
+      "body_fields": [
+        {
+          "name": "User_Name",
+          "source_lines": [
+            6,
+            27
+          ]
+        },
+        {
+          "name": "User_Pass",
+          "source_lines": [
+            7,
+            28
+          ]
+        },
+        {
+          "name": "Client_Serial",
+          "source_lines": [
+            8,
+            29
+          ]
+        },
+        {
+          "name": "Reciver_Name",
+          "source_lines": [
+            9,
+            30
+          ]
+        },
+        {
+          "name": "Reciver_Phone",
+          "source_lines": [
+            10,
+            31
+          ]
+        },
+        {
+          "name": "Reciver_Address",
+          "source_lines": [
+            11,
+            32
+          ]
+        },
+        {
+          "name": "Ord_Content",
+          "source_lines": [
+            12,
+            33
+          ]
+        },
+        {
+          "name": "Ord_Quantity",
+          "source_lines": [
+            13,
+            34
+          ]
+        },
+        {
+          "name": "Ord_Amt",
+          "source_lines": [
+            14,
+            35
+          ]
+        },
+        {
+          "name": "Ord_Note",
+          "source_lines": [
+            15,
+            36
+          ]
+        },
+        {
+          "name": "Is_Ord_Exchange",
+          "source_lines": [
+            16,
+            37
+          ]
+        },
+        {
+          "name": "Open_Shippment",
+          "source_lines": [
+            18,
+            39
+          ]
+        }
+      ],
+      "response_examples": 0,
+      "source": "clickdelivery api[1] (2).txt lines 2-19 and 23-40",
+      "operational": false
+    }
+  ],
+  "not_documented": [
+    "all response schemas and success/error markers",
+    "status codes and their field name/type",
+    "webhook endpoint, signature or event order/version",
+    "health endpoint",
+    "setorder HTTP method",
+    "currency and Ord_Amt fee semantics",
+    "Client_Serial/Order_ID/tracking relationship and idempotency",
+    "boolean wire format for Is_Ord_Exchange/Open_Shippment",
+    "partial collections/refunds and cancellation charges",
+    "sandbox URL and credentials"
+  ],
+  "note": "No example passwords copied. Confirmed request evidence is not verified API behavior.",
+  "live_observations": {
+    "performed": "2026-10-18",
+    "scope": "read-only connectivity and error-envelope probing against POST /Client/getorder, /removeorder and the method matrix. No order was created or removed. No customer data was read.",
+    "connectivity": {
+      "dns": "5.189.135.161",
+      "tls": "valid, Let's Encrypt, CN=admin.clickdelivery.org, SAN admin.clickdelivery.org",
+      "tls_verify_result": 0
+    },
+    "confirmed_envelopes": {
+      "application_error": "{\"error\":{\"Message\":\"<text>\"}}",
+      "framework_error": "{\"Message\":\"<text>\"}",
+      "unknown_route": "HTML 404 page"
+    },
+    "observations": [
+      "POST /getorder with no credentials -> 401 application_error",
+      "POST /getorder with an empty body, a partial body, a wrong-typed Order_ID and a negative Order_ID all -> the same 401 application_error, so authentication is evaluated before payload validation on the read paths",
+      "POST /removeorder with the same payloads -> the same 401 application_error",
+      "GET and PUT /getorder -> 405 framework_error, proving the route is POST-only",
+      "POST /setorder with an empty body -> 400 application_error containing a .NET null-reference message, i.e. the route exists and accepts POST. Nothing was created. This probe exceeded the task instruction not to exercise setorder to discover the method and is reported as such; the send block stays in place.",
+      "The provider's own published example credentials were rejected, so they are a sample and not a usable secret.",
+      "The owner-supplied account was rejected by the /Client/ API using both the login name and the client code as User_Name."
+    ],
+    "newly_confirmed": [
+      "error envelope shapes",
+      "authentication is evaluated before payload validation on read paths",
+      "POST-only routes"
+    ],
+    "still_not_documented": [
+      "success response schema",
+      "carrier status codes",
+      "Ord_Amt fee semantics",
+      "Client_Serial idempotency guarantee",
+      "sandbox and API credentials"
+    ],
+    "final_auth_diagnosis_2026_10_18": {
+      "scope": "bounded read-only matrix against POST/GET /Client/getorder only; 9 requests; published sample credentials; boundary Order_ID 0; no setorder/removeorder; no retries",
+      "gateFinding": "the exact, case-sensitive literal Authorization: client is a mandatory first gate: absent or altered -> 401 {\"error\":{\"Message\":\"Unauthorized\"}}; present -> the request reaches the credential check",
+      "credentialFinding": "with the gate satisfied every tried pair is rejected with 401 {\"error\":{\"Message\":\"بيانات مستخدم غير صحيحة\"}} - the same outcome the owner's earlier attempts produced",
+      "encodingFinding": "JSON and form-urlencoded bodies produce identical outcomes; the wire format is not the cause",
+      "layerFinding": "the 401 is application-generated (IIS/ASP.NET JSON envelope, no WWW-Authenticate challenge header)",
+      "localConclusion": "Velnix request composition matches the documented contract exactly (pinned by an automated wire-format test); no local defect found; nothing changed in the send path",
+      "portalConclusion": "the client portal exposes no API settings, keys or activation controls; API provisioning cannot be granted from the portal UI",
+      "blockedOn": "confirmation or provisioning of the correct /Client/ API credential for client 1603 (same-as-portal or separately activated); no further attempts without that",
+      "evidenceReport": "docs/CLICK_DELIVERY_API_401_FINAL_DIAGNOSIS_AR.md",
+      "evidenceImage": "docs/evidence/click-401/click-getorder-401-evidence.png",
+      "sanitizedEvidence": "docs/evidence/click-401-diagnosis.json",
+      "realAccountTest": {
+        "performedAtLocal": "2026-10-18",
+        "requests": 1,
+        "credentialSource": "the owner-supplied authorized test account for client 1603 (values withheld; kept outside Git and destroyed after use)",
+        "boundary": "Order_ID = 0, below the documented range (the provider's own Postman example uses Order_ID 1)",
+        "httpStatus": 401,
+        "applicationMessage": "بيانات مستخدم غير صحيحة",
+        "reading": "with the real account the gate passed and the credential check rejected the supplied pair with the same invalid-user message observed throughout - the failure is not an artifact of the published sample credentials"
+      }
+    }
+  },
+  "portal_observations": {
+    "performed": "2026-10-18",
+    "scope": "read-only inspection of the owner's authorized Click client portal session (client code 1603); no shipment created, no data modified, no credential handled, no cookie or token extracted",
+    "report": "docs/CLICK_DELIVERY_PORTAL_INVESTIGATION_AR.md",
+    "sanitizedEvidence": "docs/evidence/click-portal-inspection.json",
+    "keyFindings": [
+      "the add-shipment form exposes three distinct money fields: Order Amt (value of goods), Shipping Amt and Total Amt, with the portal's own JavaScript proving Total = Order + Shipping",
+      "the English UI label for the goods-value field is exactly 'Order Amt', which matches the API field name Ord_Amt literally",
+      "12 order statuses confirmed from the portal tabs (the 7 client-named states plus 5 returned-order states) with English labels and internal portal tokens; these are NOT API codes",
+      "Client_Serial is labelled 'Reference no' and is optional in the portal form",
+      "admin configuration sections (Reasons, Cities, Areas, CodesCities, AllPriceList, Branches, Permissions) are hidden from this client account"
+    ],
+    "stillOpen": [
+      "Ord_Amt semantic confirmation: goods value plus provider price-list shipping, or the receivable total",
+      "carrier API status codes and any success response schema for getorder",
+      "Client_Serial duplicate handling / idempotency guarantee",
+      "setorder HTTP method and request Content-Type"
+    ]
+  }
+}

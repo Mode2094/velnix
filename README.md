@@ -1,37 +1,28 @@
-# Velnix — Smart Order Management v0.7
+# Velnix
 
-**حزمة كود ومراجعة هندسية غير معتمدة للإطلاق التجاري.** Flutter + Firebase Functions + سياسات وصول + فواتير PDF/باركود.
+التشغيل الموحد للمالك دون ZIP: [فتح الفرع والدليل في Google Cloud Shell](https://shell.cloud.google.com/cloudshell/editor?project=velnix-6c1a2&cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FMode2094%2Fvelnix&cloudshell_git_branch=audit%2Fproduction-readiness&cloudshell_tutorial=docs%2FCLOUD_SHELL_OWNER_TUTORIAL.md). يتطلب إجازة إجراء التشغيل الواحد وتسجيل Google؛ لا ينشئ عضوية مدير ولا ينشر شيئاً تلقائياً.
 
-## ما الجديد
+الدخول الحي Google فقط مع طلبات انضمام وموافقة المدير العام: [خطة الترحيل والقبول](docs/GOOGLE_ONLY_ACCESS_MIGRATION_AR.md). لا تنشر Backend الجديد قبل إثبات Google UID للإدارة الحالية، ولا تعطّل Email/Password من Console قبل القبول.
 
-- شاشة طباعة فاتورة/سند طلب عربية مع Code128 ثابت وإعادة الطباعة وPDF ومقاسات ورق متعددة، في الوضعين التجريبي والحي.
-- اعتماد استعلام جديد قبل طباعة بيانات حيّة، وإخفاء المبالغ حسب صلاحية المستخدم في الخادم.
-- تسجيل Google Sign-In مبدئياً دون منح صلاحيات تلقائياً، وإصلاح تفعيل شركات التوصيل.
-- حماية إنشاء الطلبات من إعادة الإرسال بذات requestKey في Firestore transaction.
-- إصلاح البحث عبر الباركود وإدخال الأرقام العربية، واستخدام Firestore Aggregation للأعداد المالية والحالات بدل حد 1,000.
-- توسعت اختبارات خادم Node.js إلى 30 حالة ناجحة (تشمل اختبارات بنية كود، وليست Firebase Emulator).
+تهيئة المشروع الحالي على Android/iOS/Web: [FIREBASE_CURRENT_PROJECT_SETUP_AR](docs/FIREBASE_CURRENT_PROJECT_SETUP_AR.md). ملفات SDK وdart-defines محلية مستثناة؛ لا ينشئ التجهيز تسجيلات أو ينشر خدمات. المشروع الواحد الحالي للتجربة والتسليم لا يوفّر عزلاً للبيانات.
 
-## الملفات المرجعية
+Flutter + Firebase لإدارة الطلبات باللغة العربية. تغييرات التدقيق على `audit/production-readiness`؛ التطبيق غير معتمد للإنتاج، ولم ينشر على أي مشروع حقيقي.
 
-- `docs/23_FINAL_QA_AND_LIMITATIONS_AR.md` — قائمة الشاشات وما ثبت وما لم يثبت، ومانعات P0.
-- `docs/24_PRINTING_AND_AUTH_SETUP_AR.md` — طريقة الطباعة وإعداد Google.
-- `docs/25_OPEN_CODE_EXECUTION_GATE_AR.md` — بروموت قبول هندسي عملي في Open Code.
-- `docs/26_UI_ACTION_INVENTORY_AR.md` — جرد استاتيكي لمواضع الأزرار والتفاعلات.
+المرجع الحالي: [التسليم الآمن — المرحلة الرابعة](docs/SAFE_HANDOFF_STAGE4_REPORT_AR.md)، [الإعدادات وتسليم المصدر](docs/SAFE_CONFIGURATION_HANDOFF_AR.md)، [الاستعادة والتراجع](docs/BACKUP_RESTORE_ROLLBACK_AR.md)، [قبول المرحلة الخامسة](docs/STAGING_ACCEPTANCE_PLAN.md). إعداد Live يستعمل VELNIX_ENVIRONMENT صراحة وملفاً عاماً لكل منصة مع preflight offline؛ Demo release development للـQA فقط. Click محجوب حتى اكتمال عقد الاستجابة، وgeneric_v1 ليس توافقاً مع الشركة. لا موارد أو Merge/Deploy.
 
-## أوامر الفحص
+تم إصلاح نطاق الفرق بعد نقل الأعضاء، معاملات الطلب ومراجعاته، العدادات والبحث والفلاتر، الأدوار والإشعارات الدائمة، واجهات RTL وطباعة PDF بخط محلي. أضيفت إعدادات مؤسسة محفوظة وملفات Android/iOS/Web وCI.
+
+استخدم Flutter 3.47.7 وNode 22.23.3 وJava 21. في البيئة الحالية:
 
 ```bash
-flutter create --platforms=android,ios,web,windows,macos,linux .
-flutter pub get
-flutter analyze
-flutter test
-npm --prefix functions install
-npm --prefix functions run syntax
-npm --prefix functions test
+source scripts/cloud-env.sh
+scripts/validate.sh
+flutter build web --no-web-resources-cdn --no-wasm-dry-run --dart-define=VELNIX_MODE=demo
+flutter build apk --debug --dart-define=VELNIX_MODE=demo
 ```
 
-لا تنفّذ إنشاء ملفات المنصات فوق أي تخصيص موجود دون نسخة احتياطية. `flutterfire configure` وإعداد Google/App Check/KMS/الشركة يجب تنفيذهما قبل التشغيل الحقيقي. Flutter SDK وFirebase Emulator **غير متوفرين في بيئة إعداد هذه الحزمة**، لذا لم يتم الاختبار الحقيقي على الأجهزة.
+المحاكيات `demo-velnix` محلية؛ الاختبارات تمسح بياناتها. لا تشغلها على خدمات فعلية. الوضع الافتراضي live يتطلب إعداد Firebase؛ demo صريح لا يمثل تشغيل الإنتاج. لا تستخدم flutter create فوق تخصيصات المنصات.
 
-## النطاق
+راجع [نتائج الاختبارات](docs/TEST_RESULTS.md)، [تقرير التدقيق](docs/AUDIT_REPORT.md)، [المعمارية](docs/ARCHITECTURE.md)، [الصلاحيات](docs/ROLE_PERMISSION_MATRIX.md)، [إعداد Firebase](docs/FIREBASE_SETUP.md)، [جاهزية الإنتاج](docs/PRODUCTION_READINESS.md) و[المتطلبات الخارجية](docs/REMAINING_EXTERNAL_REQUIREMENTS.md). التقارير المرقمة القديمة تاريخية وتسبق التحقق الحالي.
 
-نظام الطلبات والصلاحيات الخمس وتكامل شركة توصيل واحدة (بعد اعتماد وثائق مزودها) والطباعة. متجر إلكتروني/إدارة المخزون خارج المرحلة الأولى. نشر التطبيق على Google Play / App Store ورسوم وحسابات المتاجر خارج النطاق التعاقدي.
+المراجعة النهائية أضافت إكمالاً داخلياً موثقاً، retry محدوداً للدفع على الجدول الحالي، وصفحات بحث للإدارة، وباركود منفصل النص مع قراءة صور متعددة الدقات، وإصلاح خط جميع عناصر التحكم. QA Python يحتاج Poppler والمكتبات المثبتة في scripts/qa-requirements.txt. الصور والأدلة النهائية في docs/evidence، ونموذج الأداء والتكلفة في docs/PERFORMANCE_AND_COST.md. بناء Live المحلي يفحص compile فقط.

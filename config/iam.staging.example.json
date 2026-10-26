@@ -1,0 +1,20 @@
+{
+  "purpose": "Review-only additive IAM plan; not an executable replacement IAM policy",
+  "projectId": "",
+  "runtimeServiceAccount": "",
+  "kmsKeyResource": "",
+  "region": "europe-west1",
+  "candidateProjectRoles": [
+    "roles/datastore.user",
+    "roles/firebaseauth.admin",
+    "roles/firebasecloudmessaging.admin"
+  ],
+  "candidateKmsKeyRole": "roles/cloudkms.cryptoKeyEncrypterDecrypter",
+  "notes": [
+    "Confirm actual permissions/role definitions in the target project before granting",
+    "Prefer a reviewed custom Auth role if narrower permissions cover all existing user operations",
+    "Do not grant Owner/Editor, Auth hash-export access or KMS key-administration rights to runtime",
+    "Backup and restore identities are separate from application runtime",
+    "Preserve all existing bindings; do not replace project IAM policy from this template"
+  ]
+}

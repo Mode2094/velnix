@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -5,6 +6,9 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'live/live_app.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme.dart';
+import 'core/runtime_config.dart';
+import 'core/firebase_configuration.dart';
+import 'core/app_check_gate.dart';
 import 'data/demo_store.dart';
 import 'screens/login_screen.dart';
 import 'screens/shell_screen.dart';
@@ -14,64 +18,141 @@ import 'screens/shell_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const mode = String.fromEnvironment('VELNIX_MODE', defaultValue: 'live');
-  if (mode == 'demo') { runApp(const VelnixApp()); return; }
+  const config = RuntimeConfig(
+    mode: mode,
+    environment: String.fromEnvironment(
+      'VELNIX_ENVIRONMENT',
+      defaultValue: 'development',
+    ),
+    debugAppCheck: bool.fromEnvironment('VELNIX_DEBUG_APPCHECK'),
+  );
+  try {
+    config.validate(release: kReleaseMode);
+  } catch (_) {
+    runApp(const SetupFailureApp());
+    return;
+  }
+  if (mode == 'demo') {
+    runApp(const VelnixApp());
+    return;
+  }
   try {
     const apiKey = String.fromEnvironment('FIREBASE_API_KEY');
     if (apiKey.isNotEmpty) {
-      await Firebase.initializeApp(options: const FirebaseOptions(
-        apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
-        appId: String.fromEnvironment('FIREBASE_APP_ID'),
-        messagingSenderId: String.fromEnvironment('FIREBASE_SENDER_ID'),
-        projectId: String.fromEnvironment('FIREBASE_PROJECT_ID'),
-        authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
-      ));
+      FirebaseConfiguration.validate(
+        FirebaseConfiguration.supplied,
+        web: kIsWeb,
+        platform: defaultTargetPlatform,
+      );
+      await Firebase.initializeApp(options: FirebaseConfiguration.supplied);
     } else {
+      if (kIsWeb) throw StateError('يلزم ملف إعداد Web المحلي');
       await Firebase.initializeApp();
     }
+    config.validateProject(Firebase.app().options.projectId);
     const webSiteKey = String.fromEnvironment('FIREBASE_APPCHECK_SITE_KEY');
     const debugAppCheck = bool.fromEnvironment('VELNIX_DEBUG_APPCHECK');
-    if (kIsWeb && webSiteKey.isEmpty) {
-      throw StateError('FIREBASE_APPCHECK_SITE_KEY مطلوب لنسخة الويب الحية');
+    if (debugAppCheck && kReleaseMode) {
+      throw StateError('App Check debug غير مسموح في إصدار الإنتاج');
+    }
+    if (kIsWeb && webSiteKey.trim().isEmpty) {
+      runApp(
+        const SetupFailureApp(
+          message: FirebaseConfiguration.enterpriseSiteKeyRequired,
+        ),
+      );
+      return;
     }
     if (!kIsWeb || webSiteKey.isNotEmpty) {
-      await FirebaseAppCheck.instance.activate(
-        androidProvider: debugAppCheck ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-        appleProvider: debugAppCheck ? AppleProvider.debug : AppleProvider.deviceCheck,
-        webProvider: kIsWeb ? ReCaptchaV3Provider(webSiteKey) : null,
+      AppCheckGate.configure(
+        () => FirebaseAppCheck.instance.activate(
+          providerAndroid: debugAppCheck
+              ? const AndroidDebugProvider()
+              : const AndroidPlayIntegrityProvider(),
+          providerApple: debugAppCheck
+              ? const AppleDebugProvider()
+              : const AppleDeviceCheckProvider(),
+          providerWeb: kIsWeb
+              ? FirebaseConfiguration.webAppCheckProvider(webSiteKey)
+              : null,
+        ),
       );
     }
     runApp(const VelnixLiveApp());
-  } catch (e) {
-    runApp(MaterialApp(home: Scaffold(body: Center(child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text('تعذر تهيئة Firebase. تحقق من إعدادات المشروع وApp Check.\n$e',textAlign:TextAlign.center),
-    )))));
+    if (kIsWeb) {
+      unawaited(
+        Future<void>.delayed(
+          const Duration(milliseconds: 300),
+          AppCheckGate.wait,
+        ),
+      );
+    }
+  } catch (_) {
+    runApp(const SetupFailureApp());
   }
+}
+
+class SetupFailureApp extends StatelessWidget {
+  const SetupFailureApp({
+    super.key,
+    this.message =
+        'تعذر بدء التطبيق. راجع إعدادات بيئة التشغيل وFirebase وApp Check مع مسؤول المؤسسة.',
+  });
+  final String message;
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: velnixTheme(),
+    home: Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(message, textAlign: TextAlign.center),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class VelnixApp extends StatefulWidget {
   const VelnixApp({super.key});
-  @override State<VelnixApp> createState()=>_VelnixAppState();
+  @override
+  State<VelnixApp> createState() => _VelnixAppState();
 }
+
 class _VelnixAppState extends State<VelnixApp> {
-  final DemoStore _store=DemoStore();
-  bool _loggedIn=false;
-  @override void dispose(){_store.dispose();super.dispose();}
-  @override Widget build(BuildContext context)=>StoreScope(
-    store:_store,
-    child:MaterialApp(
-      title:'Velnix – Smart Order Management',debugShowCheckedModeBanner:false,
-      theme:velnixTheme(),
-      locale:const Locale('ar'),
-      supportedLocales:const [Locale('ar'),Locale('en')],
+  final DemoStore _store = DemoStore();
+  bool _loggedIn = false;
+  @override
+  void dispose() {
+    _store.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => StoreScope(
+    store: _store,
+    child: MaterialApp(
+      title: 'Velnix — إدارة الطلبات',
+      debugShowCheckedModeBanner: false,
+      theme: velnixTheme(),
+      locale: const Locale('ar'),
+      supportedLocales: const [Locale('ar'), Locale('en')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      builder:(context,child)=>Directionality(textDirection:TextDirection.rtl,child:child??const SizedBox.shrink()),
-      home:_loggedIn?ShellScreen(onLogout:()=>setState(()=>_loggedIn=false)):
-        LoginScreen(onDemoLogin:()=>setState(()=>_loggedIn=true)),
+      builder: (context, child) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: child ?? const SizedBox.shrink(),
+      ),
+      home: _loggedIn
+          ? ShellScreen(onLogout: () => setState(() => _loggedIn = false))
+          : LoginScreen(onDemoLogin: () => setState(() => _loggedIn = true)),
     ),
   );
 }

@@ -1,0 +1,185 @@
+{
+  "verifiedAtUtc": "2026-10-15T14:09:14.841469+00:00",
+  "validationContext": "local working tree based on 30dcce100175a8615ce044ed2a882c29ba170a77",
+  "projectId": "demo-velnix-preview",
+  "browser": "Chromium / Playwright 1.64.0",
+  "scenarios": [
+    {
+      "name": "generalManager: Google emulator login, dashboard and UI order creation",
+      "status": "passed",
+      "ms": 13305
+    },
+    {
+      "name": "manager: Google emulator login, dashboard and UI order creation",
+      "status": "passed",
+      "ms": 9453
+    },
+    {
+      "name": "warehouse: Google emulator login, dashboard and UI order creation",
+      "status": "passed",
+      "ms": 9046
+    },
+    {
+      "name": "sales: Google emulator login, dashboard and UI order creation",
+      "status": "passed",
+      "ms": 9300
+    },
+    {
+      "name": "dataEntry: Google emulator login, dashboard and UI order creation",
+      "status": "passed",
+      "ms": 8852
+    },
+    {
+      "name": "generalManager: visibility, financial redaction and forbidden APIs",
+      "status": "passed",
+      "ms": 3408
+    },
+    {
+      "name": "manager: visibility, financial redaction and forbidden APIs",
+      "status": "passed",
+      "ms": 2099
+    },
+    {
+      "name": "warehouse: visibility, financial redaction and forbidden APIs",
+      "status": "passed",
+      "ms": 4355
+    },
+    {
+      "name": "sales: visibility, financial redaction and forbidden APIs",
+      "status": "passed",
+      "ms": 2118
+    },
+    {
+      "name": "dataEntry: visibility, financial redaction and forbidden APIs",
+      "status": "passed",
+      "ms": 1863
+    },
+    {
+      "name": "UI hides out-of-scope search results, other amounts and administration",
+      "status": "passed",
+      "ms": 6766
+    },
+    {
+      "name": "pending and disabled accounts cannot enter workspace",
+      "status": "passed",
+      "ms": 9014
+    },
+    {
+      "name": "idempotent Backend retry preserves one order and rejects changed payload",
+      "status": "passed",
+      "ms": 131
+    },
+    {
+      "name": "concurrent Backend edits accept one revision and reject the stale writer",
+      "status": "passed",
+      "ms": 793
+    },
+    {
+      "name": "UI edit, stale revision protection, internal transitions and terminal lock",
+      "status": "passed",
+      "ms": 10491
+    },
+    {
+      "name": "UI cancellation retains order and history",
+      "status": "passed",
+      "ms": 2742
+    },
+    {
+      "name": "Firestore denies direct order reads, deletes and profile escalation for every role",
+      "status": "passed",
+      "ms": 1372
+    },
+    {
+      "name": "forged administration, identities and missing App Check are rejected",
+      "status": "passed",
+      "ms": 1177
+    },
+    {
+      "name": "UI audit log and locally generated notifications with read receipt",
+      "status": "passed",
+      "ms": 3700
+    },
+    {
+      "name": "UI network error and retry recover without fabricated success",
+      "status": "passed",
+      "ms": 679
+    },
+    {
+      "name": "authorization changes immediately block an existing data-entry UI session",
+      "status": "passed",
+      "ms": 1394
+    }
+  ],
+  "pageErrors": [],
+  "persistedReadback": {
+    "projectId": "demo-velnix-preview",
+    "sourceCommit": "30dcce100175a8615ce044ed2a882c29ba170a77",
+    "passedScenarios": 21,
+    "failedScenarios": 0,
+    "verifiedOrders": [
+      {
+        "role": "generalManager",
+        "orderId": "pD81S4P6KGXARW0YNVIG",
+        "status": "delivered",
+        "amountMinor": 11101,
+        "creationEvents": 1,
+        "auditEvents": 7
+      },
+      {
+        "role": "manager",
+        "orderId": "KEhJYm7unqZdt41DHpZx",
+        "status": "cancelled",
+        "amountMinor": 22202,
+        "creationEvents": 1,
+        "auditEvents": 2
+      },
+      {
+        "role": "warehouse",
+        "orderId": "2m7w46IXHDxlvXvEPx8O",
+        "status": "created",
+        "amountMinor": 33303,
+        "creationEvents": 1,
+        "auditEvents": 2
+      },
+      {
+        "role": "sales",
+        "orderId": "v90cVT69h0AK1bLn41mQ",
+        "status": "created",
+        "amountMinor": 44404,
+        "creationEvents": 1,
+        "auditEvents": 1
+      },
+      {
+        "role": "dataEntry",
+        "orderId": "vcVe5SJ5eyO5dPbKSXKF",
+        "status": "created",
+        "amountMinor": 55505,
+        "creationEvents": 1,
+        "auditEvents": 1
+      }
+    ],
+    "localNoticeReadVerified": true,
+    "devicePush": "not_tested_no_devices_or_FCM",
+    "realGoogleAndAppCheck": "not_tested_synthetic_emulators_only",
+    "cloudResourcesChanged": false
+  },
+  "sourceSha256": {
+    "lib/live/gateway.dart": "0cdaa421b4d4dec2a97b58f7eb8fa398f8a8466285b39a66213ac4e07b44acd0",
+    "test/live_presentation_test.dart": "b1c6ac5d249a9fdb4a3ad8cda5067b9768aef6c42d4d80b2314478cfcc40f40d",
+    "scripts/emulator-preview/appcheck.js": "a23b53deff78a95ec9b2bb484e0cb346c558ac58147b57de910473d9bec941ca",
+    "scripts/emulator-preview/assert-production.cjs": "65442547d36fb43afe02259f672e6371a4b4c2601c1bfcb18241aadf47a64d95",
+    "scripts/emulator-preview/browser.cjs": "b4ce94fb7f5854fbdc6dc99a7d59c6a02be7e58383234197b235ed5945e1aa48",
+    "scripts/emulator-preview/main.dart": "1f298ab06bd315cd8b195f674144828fcd2f432a449d4e9ccf7e4d95c0d15de8",
+    "scripts/emulator-preview/readback.cjs": "242a7d669c175e06e6917775d75d0c215cd184d72716f862f826c68c39557b24",
+    "scripts/emulator-preview/run-qa.sh": "8639968c6a27f9dcf25537a605166c4fb09ae5565d87162fdf89600e7c6d9a91",
+    "scripts/emulator-preview/seed.cjs": "84257f6b5ee4a92736b0eebde3bc83e7f98d8e7667016931242666318f3e0ea6",
+    "scripts/emulator-preview/serve.py": "ff109ea8551c3ea2e1679b4ab7b6d9e10d33f174f4dc694ac667f56982ec5ba5",
+    "scripts/emulator-preview/start.sh": "aa8b57d105f91178933622fa14f6bf05d4d02256f36d900ec8020533def9f9df"
+  },
+  "limitations": [
+    "Synthetic Auth and App Check only",
+    "No real Firebase or Google account mutation",
+    "No FCM/device/printing/Click verification",
+    "Local timings are not a load benchmark"
+  ]
+}

@@ -1,5 +1,7 @@
 # إعداد Firebase الحقيقي لتشغيل Velnix
 
+> وثيقة تاريخية؛ لا تنفذ أوامر إنشاء مشروع أو تفعيل مزودات/فوترة منها. المرجع الحالي [إعداد Firebase](FIREBASE_SETUP.md) و[Google فقط وموافقة الانضمام](GOOGLE_ONLY_ACCESS_MIGRATION_AR.md)؛ لا كلمات مرور موظفين ولا تعطيل Email/Password قبل القبول. عقد generic أدناه ليس عقد Click، ومحول Click محجوب.
+
 ## 1) البرامج والحسابات
 - Flutter حديث يدعم Dart >=3.6 (حسب حزم Firebase المختارة)، Firebase CLI وFlutterFire CLI، Node 22 وGoogle Cloud CLI.
 - أنشئ Firebase Project واحداً للعميل، وفعّل **Email/Password Authentication** وCloud Firestore وCloud Functions وApp Check.
@@ -91,17 +93,7 @@ https://europe-west1-YOUR_PROJECT_ID.cloudfunctions.net/deliveryWebhook?companyI
 
 ## 6) إنشاء المدير العام الأول
 
-من بيئة موثوقة عليها Firebase Admin SDK credentials عبر Application Default Credentials (ADC) ولا تعرّض كلمة المرور في تاريخ الشِل:
-
-```bash
-# ضع المتغيرات عبر secret prompt أو مدير أسرار محلي
-export VELNIX_ADMIN_EMAIL='admin@example.com'
-export VELNIX_ADMIN_NAME='المدير العام'
-export VELNIX_ADMIN_PASSWORD='A_VERY_STRONG_TEMPORARY_PASSWORD'
-node functions/scripts/bootstrap_admin.js
-```
-
-السكريبت يرفض الإنشاء إذا كان مدير عام موجوداً. غيّر كلمة المرور المؤقتة وفعّل MFA للمشرفين حيثما أمكن. لا تشغّل السكريبت على مشروع خاطئ.
+هذا القسم استُبدل بـ[خطة Google فقط والترحيل الآمن](GOOGLE_ONLY_ACCESS_MIGRATION_AR.md). لا تنشئ كلمات مرور للموظفين أو المدير. يحتاج bootstrap إلى Google UID موثق وتأكيد المشروع، وهو dry-run افتراضياً ويرفض أي إدارة موجودة؛ --apply يحتاج تفويضاً منفصلاً. عند وجود إدارة حالية، أثبت Google على UID نفسه قبل النشر ولا تعطل Email/Password الآن.
 
 ## 7) اختبارات قبل التشغيل
 

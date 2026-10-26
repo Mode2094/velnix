@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Stage 4 — empirical role/operation permission matrix against the emulator.
+set -euo pipefail
+export ALLOWED_DELIVERY_HOSTS="${ALLOWED_DELIVERY_HOSTS:-local-contract.example}"
+cd "$(dirname "$0")/../.."
+mkdir -p build/qa/emulator-stage4
+bash scripts/emulator-preview/start.sh > build/qa/emulator-stage4/launcher.log 2>&1 &
+preview_pid=$!
+trap 'kill "$preview_pid" 2>/dev/null || true; wait "$preview_pid" 2>/dev/null || true' EXIT
+trap 'exit 130' INT TERM
+python3 - "$preview_pid" <<'PY'
+import os, sys, time, urllib.request
+for _ in range(240):
+    try:
+        os.kill(int(sys.argv[1]), 0)
+    except ProcessLookupError:
+        raise SystemExit('Preview launcher stopped; read build/qa/emulator-stage4/launcher.log')
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:8767', timeout=2) as r:
+            if r.status == 200: break
+    except Exception: pass
+    time.sleep(1)
+else:
+    raise SystemExit('Preview startup not verified')
+PY
+node scripts/emulator-preview/stage4-role-matrix.cjs
