@@ -52,3 +52,7 @@ test/failures/
 
 # Android signing
 android/key.properties
+
+# Android build output
+*.apk
+delivery/apk/
