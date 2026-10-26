@@ -25,7 +25,7 @@ test('missing credentials before a vendor attempt return to idle and retain an a
   const ref=db.doc('orders/no_vendor_attempt');await ref.set({status:'ready',companyId:'missing_credentials',createdBy:'gm',dispatchState:'idle'});
   await assert.rejects(invoke('sendOrderToDelivery','gm',{id:ref.id}),{code:'failed-precondition'});
   const order=(await ref.get()).data();assert.equal(order.dispatchState,'idle');assert.equal(order.status,'ready');assert.equal(order.dispatchLockId,undefined);
-  assert.ok(order.syncError.includes('لم يبدأ'));
+  assert.ok(order.syncError.includes('لم تبدأ محاولة الإرسال'));
   assert.equal((await ref.collection('events').where('action','==','dispatch_preparation_failed').get()).size,1);
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_preparation_failed').get()).size,1);
 });

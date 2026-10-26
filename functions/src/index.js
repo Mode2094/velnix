@@ -501,7 +501,10 @@ exports.sendOrderToDelivery=callable(async req=>{
       await audit('order.sent_to_delivery',user,ref.id,{companyId:snapshot.companyId},tx);
     });return {ok:true,trackingNumber:tracking};
   }catch(e){
-    logger.error('delivery dispatch failed',{id:ref.id,code:e.code||'unknown'});
+    // Log the real internal reason safely (message only; no credentials, no
+    // customer data, no KMS material) plus the phase, so an operator can tell a
+    // pre-send configuration/KMS failure apart from an uncertain carrier call.
+    logger.error('delivery dispatch failed',{id:ref.id,code:e.code||'unknown',phase:vendorAttempted?'vendor':'pre_send',reason:typeof e.message==='string'?e.message.slice(0,200):'unknown'});
     await db.runTransaction(async tx=>{const o=await tx.get(ref);
       if(o.data()?.dispatchLockId===lockId){
         // Click can create a shipment and still answer HTTP 400 (observed
@@ -511,13 +514,13 @@ exports.sendOrderToDelivery=callable(async req=>{
         const clickAmbiguous=vendorAttempted&&e?.code==='click_ambiguous_creation';
         const clickRef=typeof e?.clickOrderRef==='string'?e.clickOrderRef:null;
         const clickSerial=typeof e?.clickClientSerial==='string'?e.clickClientSerial:null;
-        const failure=vendorAttempted?{dispatchState:'needs_review',nextClickSyncAt:Timestamp.now(),...(clickRef?{clickOrderRef:clickRef}:{}),...(clickSerial?{clickClientSerial:clickSerial}:{}),syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
+        const failure=vendorAttempted?{dispatchState:'needs_review',nextClickSyncAt:Timestamp.now(),...(clickRef?{clickOrderRef:clickRef}:{}),...(clickSerial?{clickClientSerial:clickSerial}:{}),syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز اتصال شركة التوصيل. لم تبدأ محاولة الإرسال. راجع المسؤول.'};
         tx.update(ref,{...failure,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
         const action=vendorAttempted?'dispatch_attempt_failed':'dispatch_preparation_failed';
         await addEvent(ref.id,action,user,{},tx);await audit('order.'+action,user,ref.id,{},tx);
       }
     });
-    fail(vendorAttempted?'unavailable':'failed-precondition',vendorAttempted?'فشل إرسال الطلب. تحقق من الشركة قبل إعادة المحاولة.':'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.');
+    fail(vendorAttempted?'unavailable':'failed-precondition',vendorAttempted?'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.':'تعذر تجهيز اتصال شركة التوصيل. لم تبدأ محاولة الإرسال. راجع المسؤول.');
   }
 });
 
@@ -626,12 +629,18 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
     const reason=typeof e?.reason==='string'?e.reason:(typeof e?.name==='string'?e.name:'transport_error');
     const failures=snapshot.clickSyncFailures+1;
     const backoffMinutes=Math.min(15*Math.pow(2,Math.min(failures-1,4)),240);
+    // A reason-aware, non-technical message so the UI can tell the cases apart.
+    const reasonMessage=reason==='unknown_status'
+      ? 'وصلت حالة غير معروفة من شركة التوصيل وتحتاج تحققًا. لم تُعدّل الحالة المحلية.'
+      : (reason.startsWith('http_')||reason==='transport_error'||reason==='AbortError'||reason==='click_sync_locked')
+      ? 'تعذر الاتصال بشركة التوصيل لمزامنة الحالة. ستُعاد المحاولة تلقائيًا.'
+      : 'تعذرت مزامنة حالة الشحنة؛ لم تُعدّل الحالة المحلية وستُعاد المحاولة لاحقًا.';
     await db.runTransaction(async tx=>{
       const current=await tx.get(ref);
       if(current.data()?.clickSyncLockId===lockId){
         tx.update(ref,{clickSyncLockId:FieldValue.delete(),clickSyncLockUntil:FieldValue.delete(),lastSyncAttemptAt:FieldValue.serverTimestamp(),
           nextClickSyncAt:Timestamp.fromMillis(Date.now()+backoffMinutes*60*1000),clickSyncFailures:FieldValue.increment(1),
-          syncError:'تعذرت مزامنة حالة Click؛ لم تُعدّل الحالة المحلية وستُعاد المحاولة لاحقاً.'});
+          syncError:reasonMessage});
         await addEvent(ref.id,'click_sync_failed',actor,{reason,source},tx);
         await audit('order.click_sync_failed',actor,ref.id,{reason,source},tx);
       }

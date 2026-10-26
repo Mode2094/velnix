@@ -1,8 +1,15 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {runtimeOptions}=require('../src/runtime_config');
-test('unconfigured runtime keeps existing defaults without pretending IAM was configured',()=>{
+const {runtimeOptions,defaultRuntimeAccount}=require('../src/runtime_config');
+test('unconfigured runtime keeps existing defaults for non-production projects',()=>{
   assert.deepEqual(runtimeOptions(undefined,'demo-velnix'),{});
+  assert.deepEqual(runtimeOptions(undefined,'some-other-project'),{});
+});
+test('the production project falls back to its non-secret runtime identity so KMS-backed paths never silently use the default compute account',()=>{
+  assert.equal(defaultRuntimeAccount('velnix-6c1a2'),'velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com');
+  assert.deepEqual(runtimeOptions(undefined,'velnix-6c1a2'),{serviceAccount:'velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com'});
+  // An explicit account still wins.
+  assert.deepEqual(runtimeOptions('velnix-runtime@velnix-6c1a2.iam.gserviceaccount.com','velnix-6c1a2'),{serviceAccount:'velnix-runtime@velnix-6c1a2.iam.gserviceaccount.com'});
 });
 test('explicit runtime identity stays in the selected project',()=>{
   const account='velnix-runtime@velnix-staging.iam.gserviceaccount.com';

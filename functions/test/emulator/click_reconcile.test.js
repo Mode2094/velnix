@@ -77,6 +77,27 @@ test('an ambiguous Click create keeps needs_review, stores the exact merchant re
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_attempt_failed').get()).size,1);
   clickSendError=null;
 });
+test('a pre-send credential failure never starts the carrier call and stays safe to retry',async()=>{
+  clickSendCalls=0;clickReadCalls=0;
+  // The company is allowed, but its credential doc is missing: the failure
+  // happens while preparing the connection, before any external HTTP call.
+  const secret=await db.doc('companySecrets/click_fixture').get();
+  const backup=secret.data();
+  await db.doc('companySecrets/click_fixture').delete();
+  try {
+    const ref=await clickOrder('click_pre_send_failure');
+    await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
+    assert.equal(clickSendCalls,0,'Click must never be contacted when credentials cannot be prepared');
+    const data=(await ref.get()).data();
+    assert.equal(data.dispatchState,'idle','a pre-send failure returns to idle, not needs_review');
+    assert.equal(data.dispatchLockId,undefined);
+    assert.equal(data.syncError,'تعذر تجهيز اتصال شركة التوصيل. لم تبدأ محاولة الإرسال. راجع المسؤول.');
+    assert.equal((await ref.collection('events').where('action','==','dispatch_preparation_failed').get()).size,1);
+    assert.equal((await ref.collection('events').where('action','==','dispatch_attempt_failed').get()).size,0);
+  } finally {
+    await db.doc('companySecrets/click_fixture').set(backup);
+  }
+});
 test('a non-ambiguous dispatch failure still persists the deterministic merchant reference',async()=>{
   clickSendCalls=0;clickReadCalls=0;
   // A transport-style rejection (not the Int64 ambiguous case) must still keep
@@ -241,7 +262,7 @@ test('a failed or timed-out Click read leaves the local state untouched and clea
   await assert.rejects(sync(ref.id),{code:'unavailable'});
   const data=(await ref.get()).data();
   assert.equal(data.shippingStatus,'awaitingPickup');assert.equal(data.shippingStatusSource,'click_api');
-  assert.equal(data.clickSyncLockId,undefined);assert.match(data.syncError,/تعذرت مزامنة/);
+  assert.equal(data.clickSyncLockId,undefined);assert.match(data.syncError,/تعذر الاتصال بشركة التوصيل|تعذرت مزامنة/);
   assert.equal((await ref.collection('events').where('action','==','click_sync_failed').get()).size,1);
   assert.equal(clickReadCalls,1,'no retry is attempted');
   clickReadError=null;
