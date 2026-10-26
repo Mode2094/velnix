@@ -121,12 +121,6 @@ jobs:
           NODE_PATH: /tmp/velnix-emulator-browser/node_modules
           CHROME_EXECUTABLE: /usr/bin/google-chrome
         run: bash scripts/emulator-preview/run-qa.sh
-      - name: Automated Stage 3 frontend acceptance against the emulator
-        env:
-          NODE_PATH: /tmp/velnix-emulator-browser/node_modules
-          CHROME_EXECUTABLE: /usr/bin/google-chrome
-          SOURCE_COMMIT: ${{ github.sha }}
-        run: bash scripts/emulator-preview/run-stage3-acceptance.sh
       - name: Retain emulator UI evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

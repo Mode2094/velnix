@@ -122,7 +122,10 @@ async function emulatorState(orderId) {
 }
 
 async function main() {
-  browser = await chromium.launch();
+  browser = await chromium.launch({
+    executablePath: process.env.CHROME_EXECUTABLE || undefined,
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+  });
 
   await scenario('GM dashboard renders for the authenticated internal session', async () => {
     gm = await login('generalManager');
