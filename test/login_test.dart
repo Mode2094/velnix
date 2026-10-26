@@ -55,4 +55,24 @@ void main() {
       'App Check token rejected',
     );
   });
+
+  test('a transient unauthenticated failure must not end a valid session', () {
+    // App Check / transport rejections surface as 'unauthenticated'; they must
+    // keep the employee's valid Firebase session so they can retry.
+    expect(
+      shouldEndSession(errorCode: 'unauthenticated', hasAuthUser: true),
+      isFalse,
+    );
+    // A genuinely invalid session (no Firebase user) does end.
+    expect(
+      shouldEndSession(errorCode: 'unauthenticated', hasAuthUser: false),
+      isTrue,
+    );
+    // Unrelated codes never end the session.
+    expect(
+      shouldEndSession(errorCode: 'unavailable', hasAuthUser: false),
+      isFalse,
+    );
+    expect(shouldEndSession(errorCode: null, hasAuthUser: false), isFalse);
+  });
 }
