@@ -18,7 +18,7 @@ const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
 const {CLICK_PROVIDER,readClickOrder,sendClickOrder}=require('./click_delivery');
 const {parseClickOrderResponse}=require('./click_response');
-const {shippingStatus}=require('./shipping_status');
+const {shippingStatus,isApiConfirmed}=require('./shipping_status');
 const {directoryPage}=require('./directory');
 const {aggregateGroups}=require('./aggregations');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
@@ -675,7 +675,10 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
     const terminal=['delivered','cancelled'].includes(parsed.shippingStatus);
     const patch={...clearLock,nextClickSyncAt:terminal?null:next,shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',
       shippingStatusUpdatedAt:parsed.statusDateMs!==null?Timestamp.fromMillis(parsed.statusDateMs):now,
-      clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,updatedAt:now};
+      clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,
+      // Marks whether the exact label is API-confirmed (seen in a real Click
+      // response) or only documented by the portal. Never a guessed meaning.
+      clickStatusVerified:isApiConfirmed(parsed.shippingStatus),updatedAt:now};
     // A read-only getorder that returns a known status for THIS order proves the
     // shipment exists at Click (the read used our unique merchant reference).
     // That resolves an uncertain dispatch without ever creating a second

@@ -138,19 +138,25 @@ const PORTAL_STATUS_VOCABULARY = Object.freeze([
 
 /*
  * Exact Arabic labels confirmed in the real successful getorder response
- * (2026-10-19, order VNX-CLICK-TEST-20261019-d) and in the owner's seven-state
- * list. Only exact labels are mapped; no numeric or guessed carrier code is
- * accepted.
+ * (2026-10-19, order VNX-CLICK-TEST-20261019-d), in the owner's seven-state
+ * list, and in the twelve states read from the provider's own client portal
+ * (2026-10-18, client code 1603). Only exact labels are mapped; no numeric or
+ * guessed carrier code is accepted.
  */
 const CLICK_STATUS_LABELS = Object.freeze({
   'قيد انتظار الموافقة': 'awaitingPickup',
-  'مخزن الشحن': 'carrierWarehouse',
   'في مخزن الشحن': 'carrierWarehouse',
+  'مخزن الشحن': 'carrierWarehouse',
   'في الشحن': 'outForDelivery',
   'تم التسليم': 'delivered',
   'تسليم جزئي': 'partiallyDelivered',
   'مؤجل': 'deferred',
   'ملغي': 'cancelled',
+  'مرتجع': 'returned',
+  'مرتجع جزئي': 'partiallyReturned',
+  'في مخزن المرتجعات': 'returnedWarehouse',
+  'في الشحن للراسل': 'inShippingToSender',
+  'تم استلام المرتجع': 'clientReceivedReturn',
 });
 
 function clickDate(value) {

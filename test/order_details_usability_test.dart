@@ -161,7 +161,7 @@ void main() {
       app(LiveOrderDetail(id: order['id'] as String, policy: gm())),
     );
     await tester.pumpAndSettle();
-    expect(find.text('تتبع الشحنة'), findsOneWidget);
+    expect(find.text('حالة الشحنة لدى Click Delivery'), findsOneWidget);
     expect(find.text('رقم البوليصة'), findsOneWidget);
     expect(find.text('1318368'), findsOneWidget);
     expect(find.text('حالة الشحنة'), findsOneWidget);

@@ -836,6 +836,11 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     ShippingStatus.partiallyDelivered => const Color(0xFF00756F),
     ShippingStatus.deferred => const Color(0xFF965B10),
     ShippingStatus.cancelled => VColors.danger,
+    ShippingStatus.returned => const Color(0xFF9F520E),
+    ShippingStatus.partiallyReturned => const Color(0xFFB15A12),
+    ShippingStatus.returnedWarehouse => const Color(0xFF7A3E0A),
+    ShippingStatus.inShippingToSender => const Color(0xFF8A4A0F),
+    ShippingStatus.clientReceivedReturn => const Color(0xFF6B3608),
     null => VColors.muted,
   };
 
@@ -847,12 +852,21 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     ShippingStatus.partiallyDelivered => Icons.rule_outlined,
     ShippingStatus.deferred => Icons.schedule_outlined,
     ShippingStatus.cancelled => Icons.cancel_outlined,
+    ShippingStatus.returned => Icons.assignment_return_outlined,
+    ShippingStatus.partiallyReturned => Icons.assignment_return_outlined,
+    ShippingStatus.returnedWarehouse => Icons.warehouse_outlined,
+    ShippingStatus.inShippingToSender => Icons.local_shipping_outlined,
+    ShippingStatus.clientReceivedReturn => Icons.markunread_mailbox_outlined,
     null => Icons.help_outline,
   };
 
   /// Prominent current shipment state: large label with a matching icon and
   /// colour, plus the source in a quiet sub-line.
-  Widget _shippingStatusBanner(ShippingStatus? status, String label) {
+  Widget _shippingStatusBanner(
+    ShippingStatus? status,
+    String label, {
+    bool verified = false,
+  }) {
     final color = _shippingColor(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -861,40 +875,64 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: color.withValues(alpha: .28)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: color.withValues(alpha: .16),
-            ),
-            child: Icon(_shippingIcon(status), color: color, size: 24),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'حالة الشحنة',
-                  style: TextStyle(color: VColors.muted, fontSize: 11.5),
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withValues(alpha: .16),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
+                child: Icon(_shippingIcon(status), color: color, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'حالة الشحنة',
+                      style: TextStyle(color: VColors.muted, fontSize: 11.5),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (status != null && !verified) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: VColors.muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'حالة موثقة من بوابة الشركة، ولم تُؤكَّد بعد برد API مباشر.',
+                    style: TextStyle(
+                      color: VColors.muted,
+                      fontSize: 11,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1012,7 +1050,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
 
   /// Compact visual track for the four genuine forward stages. Special states
   /// (partial delivery, deferred, cancelled) never masquerade as a linear step.
-  Widget _trackingVisual(ShippingStatus? status) {
+  Widget _trackingVisual(ShippingStatus? status, {bool hasRawStatus = false}) {
     if (status == null) {
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1020,26 +1058,27 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
           color: VColors.softBlue,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.inventory_2_outlined, color: VColors.muted, size: 18),
-            SizedBox(width: 8),
+            Icon(
+              hasRawStatus ? Icons.help_outline : Icons.inventory_2_outlined,
+              color: VColors.muted,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'لم تُرسل إلى شركة التوصيل بعد.',
-                style: TextStyle(color: VColors.muted, fontSize: 12.5),
+                hasRawStatus
+                    ? 'لا يمكن عرض مسار الشحنة حتى تُوثَّق الحالة القادمة من الشركة.'
+                    : 'لم تُرسل إلى شركة التوصيل بعد.',
+                style: const TextStyle(color: VColors.muted, fontSize: 12.5),
               ),
             ),
           ],
         ),
       );
     }
-    const special = {
-      ShippingStatus.partiallyDelivered,
-      ShippingStatus.deferred,
-      ShippingStatus.cancelled,
-    };
-    if (special.contains(status)) {
+    if (status.isException) {
       final color = _shippingColor(status);
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1057,7 +1096,9 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'حالة خاصة: ${status.label}',
+                    status.isReturn
+                        ? 'حالة مرتجعة: ${status.label}'
+                        : 'حالة خاصة: ${status.label}',
                     style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.w900,
@@ -1065,9 +1106,11 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'لا تُعرض كمسار خطي حتى لا تُفهم بشكل خاطئ.',
-                    style: TextStyle(color: VColors.muted, fontSize: 11),
+                  Text(
+                    status.isReturn
+                        ? 'الشحنة في مسار الإرجاع وليست في طريقها للتسليم.'
+                        : 'لا تُعرض كمسار خطي حتى لا تُفهم بشكل خاطئ.',
+                    style: const TextStyle(color: VColors.muted, fontSize: 11),
                   ),
                 ],
               ),
@@ -1076,12 +1119,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         ),
       );
     }
-    const steps = [
-      ShippingStatus.awaitingPickup,
-      ShippingStatus.carrierWarehouse,
-      ShippingStatus.outForDelivery,
-      ShippingStatus.delivered,
-    ];
+    const steps = ShippingStatus.track;
     const shortLabels = ['بالانتظار', 'المخزن', 'في الشحن', 'تم التسليم'];
     final current = steps.indexOf(status);
     if (current < 0) return const SizedBox.shrink();
@@ -1297,7 +1335,16 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             : primaryTimeline.take(4).toList();
         final isClick = o['companyProvider'] == 'click_delivery_v1';
         final shippingState = ShippingStatus.parse(o['shippingStatus']);
-        final shippingLabel = shippingState?.label ?? 'لم تُرسل بعد';
+        final rawClickStatus = o['clickStatusRaw']?.toString().trim();
+        // A raw Click value that did not match a documented label is surfaced
+        // verbatim as needing verification — never guessed into another state.
+        final unknownClickStatus =
+            shippingState == null &&
+            rawClickStatus != null &&
+            rawClickStatus.isNotEmpty;
+        final shippingLabel =
+            shippingState?.label ??
+            (unknownClickStatus ? 'حالة غير معروفة لدى Click' : 'لم تُرسل بعد');
         final canSync =
             widget.policy.can('sendToDelivery') &&
             o['clickOrderRef'] != null &&
@@ -1724,8 +1771,13 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _sectionTitle('تتبع الشحنة', Icons.local_shipping_outlined),
-                    if (company != null) ...[
+                    _sectionTitle(
+                      isClick
+                          ? 'حالة الشحنة لدى Click Delivery'
+                          : 'تتبع الشحنة',
+                      Icons.local_shipping_outlined,
+                    ),
+                    if (company != null && !isClick) ...[
                       Row(
                         children: [
                           const Icon(
@@ -1749,9 +1801,50 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                       ),
                       const SizedBox(height: 10),
                     ],
-                    _shippingStatusBanner(shippingState, shippingLabel),
+                    _shippingStatusBanner(
+                      shippingState,
+                      shippingLabel,
+                      verified: o['clickStatusVerified'] == true,
+                    ),
+                    if (unknownClickStatus) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: VColors.warning.withValues(alpha: .08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: VColors.warning.withValues(alpha: .25),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.help_outline,
+                              size: 18,
+                              color: VColors.warning,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'وصلت حالة غير معروفة من شركة التوصيل ('
+                                '$rawClickStatus) وتحتاج تحققًا. لم تُخمَّن أو تُحوَّل.',
+                                style: const TextStyle(
+                                  color: VColors.ink,
+                                  fontSize: 11.5,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
-                    _trackingVisual(shippingState),
+                    _trackingVisual(
+                      shippingState,
+                      hasRawStatus: unknownClickStatus,
+                    ),
                     const SizedBox(height: 14),
                     if (policyNumber != null && policyNumber.isNotEmpty)
                       _trackingRow(
