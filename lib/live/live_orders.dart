@@ -1548,7 +1548,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
           more.add(
             const PopupMenuItem(
               value: 'resolve',
-              child: Text('مراجعة إرسال غير مؤكد'),
+              child: Text('التحقق من نتيجة الإرسال'),
             ),
           );
         }
@@ -1692,7 +1692,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 const Padding(
                   padding: EdgeInsets.only(top: 10),
                   child: Text(
-                    'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.',
+                    'تمت محاولة إرسال الطلب، لكن لم يصل تأكيد نهائي. يجري التحقق من النتيجة، ولا يلزم إعادة الإرسال.',
                     style: TextStyle(
                       color: VColors.danger,
                       fontWeight: FontWeight.w800,

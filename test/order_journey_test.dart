@@ -185,7 +185,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('needs_review offers reconciliation and never a resend button', (
+  testWidgets('needs_review shows one simple waiting card, no resend', (
     tester,
   ) async {
     await pump(
@@ -196,9 +196,46 @@ void main() {
         dispatchState: 'needs_review',
       ),
     );
-    expect(find.text('مراجعة نتيجة الإرسال'), findsOneWidget);
-    expect(find.textContaining('لا يلزم إعادة الإرسال'), findsOneWidget);
+    // The normal user sees one calm waiting card.
+    expect(find.text('بانتظار تأكيد شركة التوصيل'), findsWidgets);
+    expect(find.textContaining('لا يلزم إعادة الإرسال'), findsWidgets);
+    expect(find.text('الطلب محمي من الإرسال المكرر.'), findsOneWidget);
     expect(find.textContaining('تأكيد وإرسال'), findsNothing);
+    // A general manager also gets the advanced verification entry.
+    expect(find.text('التحقق من نتيجة الإرسال'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a non-admin never sees the advanced verification entry', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      if (name == 'getOrder') {
+        return {
+          'order': order(
+            status: 'ready',
+            companyId: 'click_delivery_1603',
+            dispatchState: 'needs_review',
+          ),
+          'events': <dynamic>[],
+        };
+      }
+      throw StateError(name);
+    });
+    await tester.pumpWidget(
+      app(
+        LiveOrderJourney(
+          orderId: 'journey_order',
+          policy: gm(
+            role: 'warehouse',
+            permissions: const ['updateOrderStatus'],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('بانتظار تأكيد شركة التوصيل'), findsWidgets);
+    expect(find.text('التحقق من نتيجة الإرسال'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

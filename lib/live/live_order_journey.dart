@@ -305,28 +305,92 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
       ];
     }
     if (plan.action == _JourneyAction.reviewDispatch) {
+      final canResolve = widget.policy.role == 'generalManager';
       return [
-        FilledButton.icon(
-          onPressed: busy
-              ? null
-              : () => _run(() async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          _DispatchReviewSheet(orderId: widget.orderId),
+        // One simple waiting card for everyone.
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: VColors.warning.withValues(alpha: .08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: VColors.warning.withValues(alpha: .28)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.hourglass_top_outlined,
+                    color: VColors.warning,
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'بانتظار تأكيد شركة التوصيل',
+                      style: TextStyle(
+                        color: VColors.warning,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
-                  );
-                  reload();
-                }, success: 'تمت المراجعة.'),
-          icon: const Icon(Icons.fact_check_outlined),
-          label: const Text('مراجعة نتيجة الإرسال'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'تمت محاولة إرسال الطلب، لكن لم يصل تأكيد نهائي من شركة التوصيل. '
+                'يجري التحقق من النتيجة، ولا يلزم إعادة الإرسال.',
+                style: TextStyle(
+                  color: VColors.ink.withValues(alpha: .8),
+                  fontSize: 12.5,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.verified_user_outlined,
+                    size: 16,
+                    color: VColors.aqua,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'الطلب محمي من الإرسال المكرر.',
+                      style: TextStyle(
+                        color: VColors.aqua,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'لن تُعاد الشحنة تلقائيًا. تحقق من بوابة شركة التوصيل ثم اربط الشحنة الموجودة أو أكّد عدم إنشائها.',
-          style: TextStyle(color: VColors.muted, fontSize: 12),
-        ),
+        if (canResolve) ...[
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: busy
+                ? null
+                : () => _run(() async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            _DispatchReviewSheet(orderId: widget.orderId),
+                      ),
+                    );
+                    reload();
+                  }, success: 'تمت المراجعة.'),
+            icon: const Icon(Icons.fact_check_outlined),
+            label: const Text('التحقق من نتيجة الإرسال'),
+          ),
+        ],
       ];
     }
     if (plan.action == _JourneyAction.track) {
@@ -374,18 +438,19 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
         o['companyProvider'] == 'click_delivery_v1' || companyId != null;
     if (dispatchState == 'needs_review') {
       return const _JourneyPlan(
-        stageLabel: 'تحقق مطلوب',
-        nextStep: 'نتيجة الإرسال غير مؤكدة',
+        stageLabel: 'بانتظار تأكيد شركة التوصيل',
+        nextStep: 'جارٍ التحقق من نتيجة الإرسال',
         detail:
-            'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.',
+            'تمت محاولة إرسال الطلب، لكن لم يصل تأكيد نهائي من شركة التوصيل. '
+            'يجري التحقق من النتيجة، ولا يلزم إعادة الإرسال.',
         action: _JourneyAction.reviewDispatch,
         buttonLabel: '',
-        icon: Icons.fact_check_outlined,
+        icon: Icons.hourglass_top_outlined,
       );
     }
     if (dispatchState == 'sending') {
       return const _JourneyPlan(
-        stageLabel: 'جارٍ الإرسال',
+        stageLabel: 'جاري إرسال الطلب إلى شركة التوصيل',
         nextStep: 'إرسال قيد التنفيذ',
         detail: 'لا تُعِد الإرسال؛ سيُحدّث النظام حالة الطلب تلقائيًا.',
         action: _JourneyAction.open,
@@ -395,7 +460,7 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
     }
     if (dispatchState == 'sent' || state == 'dispatched') {
       return const _JourneyPlan(
-        stageLabel: 'تم الإرسال',
+        stageLabel: 'تم إرسال الشحنة بنجاح',
         nextStep: 'تتبع الشحنة',
         detail: 'تم إرسال الشحنة؛ لا يمكن إعادة الإرسال أو تغيير الشركة.',
         action: _JourneyAction.track,
@@ -690,7 +755,7 @@ class _DispatchReviewSheetState extends State<_DispatchReviewSheet> {
   bool busy = false;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('مراجعة نتيجة الإرسال')),
+    appBar: AppBar(title: const Text('التحقق من نتيجة الإرسال')),
     body: SingleChildScrollView(
       child: LiveContent(
         child: Center(
@@ -700,22 +765,28 @@ class _DispatchReviewSheetState extends State<_DispatchReviewSheet> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const VFeedbackPanel(
-                  title: 'تحقق قبل أي إعادة إرسال',
+                  title: 'تحقق من بوابة شركة التوصيل فقط',
                   message:
-                      'افتح بوابة شركة التوصيل. إن كانت الشحنة موجودة اربطها؛ وإلا أكّد عدم إنشائها لتعود الخطوة إلى «جاهز للتسليم».',
+                      'افتح بوابة شركة التوصيل. إن كانت الشحنة موجودة اربط رقم بوليصة؛ '
+                      'وإن ثبت أنها لم تُنشأ فأكّد ذلك لإعادة تهيئة المحاولة. لا تُعِد الإرسال من هنا.',
                   icon: Icons.warning_amber_outlined,
                 ),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: busy ? null : () => _resolve('not_created'),
-                  icon: const Icon(Icons.undo),
-                  label: const Text('لم تُنشأ الشحنة — إعادة الخطوة'),
+                  onPressed: busy ? null : () => _resolve('shipment_exists'),
+                  icon: const Icon(Icons.link),
+                  label: const Text('ربط البوليصة الموجودة'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
-                  onPressed: busy ? null : () => _resolve('shipment_exists'),
-                  icon: const Icon(Icons.link),
-                  label: const Text('الشحنة موجودة — ربطها'),
+                  onPressed: busy ? null : () => _resolve('not_created'),
+                  icon: const Icon(Icons.undo),
+                  label: const Text('تأكيد عدم إنشاء الشحنة'),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'إن بقيت النتيجة غير محسومة، اترك الحالة كما هي؛ الطلب محمي من الإرسال المكرر.',
+                  style: TextStyle(color: VColors.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -732,7 +803,9 @@ class _DispatchReviewSheetState extends State<_DispatchReviewSheet> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          outcome == 'shipment_exists' ? 'ربط الشحنة الموجودة' : 'إعادة الخطوة',
+          outcome == 'shipment_exists'
+              ? 'ربط البوليصة الموجودة'
+              : 'تأكيد عدم إنشاء الشحنة',
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
