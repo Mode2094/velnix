@@ -30,6 +30,16 @@ part 'live_admin.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
 
+/// Decides whether an authenticated workspace should end the Firebase session.
+///
+/// The `unauthenticated` callable code covers both a genuinely invalid session
+/// and a transient App Check/transport rejection. Ending the session is only
+/// correct when Firebase Auth no longer holds a user; a transient failure must
+/// keep the valid session so the employee can retry. Pure so it is unit-tested.
+bool shouldEndSession({required String? errorCode, required bool hasAuthUser}) {
+  return errorCode == 'unauthenticated' && !hasAuthUser;
+}
+
 final statusLabels = <String, String>{
   for (final status in OrderStatus.values) status.name: status.label,
 };
@@ -540,9 +550,18 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
       };
     } on VelnixException catch (e) {
       if (e.code == 'unauthenticated') {
-        VelnixGateway.instance.clearCache();
-        await VelnixGateway.instance.auth.signOut();
-        return {'status': 'signed_out'};
+        // A cached/transient App Check or transport failure also surfaces as
+        // 'unauthenticated'. Only end the session when Firebase Auth itself no
+        // longer has a user; otherwise keep the valid session and let the user
+        // retry instead of being forced back to the login screen.
+        if (shouldEndSession(
+          errorCode: e.code,
+          hasAuthUser: VelnixGateway.instance.auth.currentUser != null,
+        )) {
+          VelnixGateway.instance.clearCache();
+          return {'status': 'signed_out'};
+        }
+        rethrow;
       }
       rethrow;
     }
