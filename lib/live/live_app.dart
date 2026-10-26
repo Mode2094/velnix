@@ -8,7 +8,6 @@ import 'push_routing.dart';
 import 'order_filters.dart';
 import 'directory_panel.dart';
 import 'jordan_locations.dart';
-import 'live_settings.dart';
 import 'live_stores.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -897,16 +896,7 @@ class _LiveShellState extends State<LiveShell> {
     );
   }
 
-  void _openSettings({bool fromDrawer = false}) {
-    if (fromDrawer) Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => const LiveSettings()),
-    );
-  }
-
   Widget _accountPanel({required bool expanded, bool drawer = false}) {
-    final canSettings = widget.policy.can('manageSettings');
     if (!expanded) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -925,12 +915,6 @@ class _LiveShellState extends State<LiveShell> {
               ),
             ),
             const SizedBox(height: 4),
-            if (canSettings)
-              IconButton(
-                tooltip: 'إعدادات المؤسسة',
-                onPressed: () => _openSettings(fromDrawer: drawer),
-                icon: const Icon(Icons.tune_outlined),
-              ),
             IconButton(
               tooltip: 'تسجيل الخروج',
               onPressed: () {
@@ -984,17 +968,6 @@ class _LiveShellState extends State<LiveShell> {
             ],
           ),
           const SizedBox(height: 4),
-          if (canSettings)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.tune_outlined, size: 20),
-              title: const Text(
-                'إعدادات المؤسسة',
-                style: TextStyle(fontSize: 12.5),
-              ),
-              onTap: () => _openSettings(fromDrawer: drawer),
-            ),
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
