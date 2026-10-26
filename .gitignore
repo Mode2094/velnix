@@ -49,3 +49,6 @@ test/failures/
 # macOS
 .DS_Store
 **/.DS_Store
+
+# Android signing
+android/key.properties
