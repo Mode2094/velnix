@@ -9,6 +9,7 @@ class LiveOrders extends StatefulWidget {
     this.companyId,
     this.initialFilters = const {},
     this.onFiltersChanged,
+    this.autoSearchFocus = false,
   });
   final SessionPolicy policy;
   final String bucket;
@@ -16,6 +17,10 @@ class LiveOrders extends StatefulWidget {
   final String? companyId;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
+
+  /// When true the search field is focused on open, so the phone bar's search
+  /// shortcut lands directly in the query box.
+  final bool autoSearchFocus;
   @override
   State<LiveOrders> createState() => _LiveOrdersState();
 }
@@ -23,6 +28,7 @@ class LiveOrders extends StatefulWidget {
 class _LiveOrdersState extends State<LiveOrders> {
   final gateway = VelnixGateway.instance;
   final search = TextEditingController();
+  final searchFocus = FocusNode();
   List<Map<String, dynamic>> rows = [];
   Map<String, dynamic> filters = {};
   String sort = 'desc';
@@ -39,11 +45,17 @@ class _LiveOrdersState extends State<LiveOrders> {
     status = widget.status;
     bucket = widget.bucket;
     load(reset: true);
+    if (widget.autoSearchFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) searchFocus.requestFocus();
+      });
+    }
   }
 
   @override
   void dispose() {
     search.dispose();
+    searchFocus.dispose();
     super.dispose();
   }
 
@@ -163,6 +175,7 @@ class _LiveOrdersState extends State<LiveOrders> {
 
   Widget _searchField() => TextField(
     controller: search,
+    focusNode: searchFocus,
     textInputAction: TextInputAction.search,
     onChanged: (_) => setState(() {}),
     onSubmitted: (_) => load(reset: true),

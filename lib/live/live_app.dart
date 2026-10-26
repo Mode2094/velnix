@@ -809,6 +809,18 @@ class _LiveShellState extends State<LiveShell> {
     });
   }
 
+  /// Opens the order search page, reusing LiveOrders' existing searchOrders
+  /// flow with the query field focused. The full orders list remains available
+  /// from the sidebar/drawer and the dashboard cards.
+  void _openSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => LiveOrderSearchPage(policy: widget.policy),
+      ),
+    );
+  }
+
   void go(int index) {
     if (!permittedEntries.contains(index)) return;
     // Re-tapping the create slot must never rebuild the form: that would drop
@@ -1112,6 +1124,7 @@ class _LiveShellState extends State<LiveShell> {
               onSelect: go,
               onCreateOrder: () => go(2),
               onOpenMenu: () => scaffoldKey.currentState?.openDrawer(),
+              onSearch: _openSearch,
             )
           : null,
       appBar: AppBar(
@@ -1201,6 +1214,7 @@ class VelnixBottomBar extends StatelessWidget {
     required this.onSelect,
     required this.onCreateOrder,
     required this.onOpenMenu,
+    required this.onSearch,
   });
   final int selectedIndex;
   final List<int?> slots;
@@ -1209,6 +1223,7 @@ class VelnixBottomBar extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback onCreateOrder;
   final VoidCallback onOpenMenu;
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -1230,6 +1245,8 @@ class VelnixBottomBar extends StatelessWidget {
                   Expanded(
                     child: slot == null
                         ? _createButton()
+                        : slot == 1
+                        ? _searchButton(selected: selectedIndex == slot)
                         : _destination(slot, selected: selectedIndex == slot),
                   ),
                 Expanded(child: _menuButton()),
@@ -1260,6 +1277,43 @@ class VelnixBottomBar extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               titles[index],
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected ? VColors.brand : VColors.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  /// The second phone slot opens order search directly instead of the orders
+  /// list. It reuses the existing LiveOrders search flow; the full orders list
+  /// stays reachable from the sidebar/drawer and the dashboard cards.
+  Widget _searchButton({required bool selected}) => Semantics(
+    container: true,
+    button: true,
+    label: 'بحث',
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onSearch,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.search,
+              size: 24,
+              color: selected ? VColors.brand : VColors.muted,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'بحث',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(

@@ -29,6 +29,7 @@ VelnixBottomBar bar({
   required List<int> selectedCalls,
   VoidCallback? onCreate,
   VoidCallback? onMenu,
+  VoidCallback? onSearch,
 }) => VelnixBottomBar(
   selectedIndex: selected,
   slots: slots,
@@ -53,6 +54,7 @@ VelnixBottomBar bar({
   onSelect: selectedCalls.add,
   onCreateOrder: () => onCreate?.call(),
   onOpenMenu: () => onMenu?.call(),
+  onSearch: () => onSearch?.call(),
 );
 
 void main() {
@@ -68,6 +70,7 @@ void main() {
     final selectedCalls = <int>[];
     int? created;
     var menus = 0;
+    var searches = 0;
     await tester.pumpWidget(
       app(
         bar(
@@ -75,32 +78,36 @@ void main() {
           selectedCalls: selectedCalls,
           onCreate: () => created = 1,
           onMenu: () => menus++,
+          onSearch: () => searches++,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    for (final label in ['الرئيسية', 'الطلبات', 'الإشعارات', 'القائمة']) {
+    for (final label in ['الرئيسية', 'بحث', 'الإشعارات', 'القائمة']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
+    expect(find.text('الطلبات'), findsNothing);
     expect(find.bySemanticsLabel('طلب جديد'), findsOneWidget);
     expect(find.byIcon(Icons.add), findsOneWidget);
+    expect(find.byIcon(Icons.search), findsOneWidget);
 
     // RTL: home sits at the right edge, the menu at the left edge.
     final home = tester.getRect(find.text('الرئيسية'));
     final menu = tester.getRect(find.text('القائمة'));
-    final orders = tester.getRect(find.text('الطلبات'));
+    final search = tester.getRect(find.text('بحث'));
     final notifications = tester.getRect(find.text('الإشعارات'));
     final create = tester.getRect(find.bySemanticsLabel('طلب جديد'));
     expect(home.right, greaterThan(menu.right));
-    expect(home.right, greaterThan(orders.right));
-    expect(orders.right, greaterThan(create.right));
+    expect(home.right, greaterThan(search.right));
+    expect(search.right, greaterThan(create.right));
     expect(create.right, greaterThan(notifications.right));
     expect(notifications.right, greaterThan(menu.right));
 
-    await tester.tap(find.text('الطلبات'));
+    await tester.tap(find.text('بحث'));
     await tester.pumpAndSettle();
-    expect(selectedCalls, [1]);
+    expect(searches, 1);
+    expect(selectedCalls, isEmpty);
 
     await tester.tap(find.bySemanticsLabel('طلب جديد'));
     await tester.pumpAndSettle();
@@ -180,7 +187,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: '${size.width}px');
       // Every destination keeps a comfortable touch target.
-      for (final label in ['الرئيسية', 'الطلبات', 'الإشعارات', 'القائمة']) {
+      for (final label in ['الرئيسية', 'بحث', 'الإشعارات', 'القائمة']) {
         final rect = tester.getRect(find.text(label));
         final target = tester.getRect(
           find
@@ -217,7 +224,7 @@ void main() {
       expect(find.bySemanticsLabel('طلب جديد'), findsNothing);
       expect(find.byIcon(Icons.add), findsNothing);
       expect(find.text('الرئيسية'), findsOneWidget);
-      expect(find.text('الطلبات'), findsOneWidget);
+      expect(find.text('بحث'), findsOneWidget);
       expect(find.text('الإشعارات'), findsOneWidget);
       expect(find.text('القائمة'), findsOneWidget);
       // The four remaining slots still split the bar evenly.
@@ -242,13 +249,13 @@ void main() {
     await tester.pumpWidget(app(bar(selected: 2, selectedCalls: <int>[])));
     await tester.pumpAndSettle();
     // The create slot is active, so every other destination stays muted.
-    expect(iconOf(Icons.receipt_long_outlined).color, VColors.muted);
+    expect(iconOf(Icons.search).color, VColors.muted);
     expect(iconOf(Icons.notifications_none_outlined).color, VColors.muted);
     expect(iconOf(Icons.menu).color, VColors.muted);
 
     await tester.pumpWidget(app(bar(selected: 1, selectedCalls: <int>[])));
     await tester.pumpAndSettle();
-    expect(iconOf(Icons.receipt_long_outlined).color, VColors.brand);
+    expect(iconOf(Icons.search).color, VColors.brand);
     expect(iconOf(Icons.notifications_none_outlined).color, VColors.muted);
     expect(iconOf(Icons.menu).color, VColors.muted);
     expect(tester.takeException(), isNull);

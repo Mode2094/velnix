@@ -242,3 +242,16 @@ class LiveOrdersPage extends StatelessWidget {
     body: LiveOrders(policy: policy, bucket: bucket, status: status),
   );
 }
+
+/// Order search opened from the phone bottom bar. Reuses [LiveOrders] with the
+/// existing searchOrders flow and the query field focused on open; results open
+/// order details and the AppBar back button returns to the previous screen.
+class LiveOrderSearchPage extends StatelessWidget {
+  const LiveOrderSearchPage({super.key, required this.policy});
+  final SessionPolicy policy;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('بحث عن طلب')),
+    body: LiveOrders(policy: policy, autoSearchFocus: true),
+  );
+}
