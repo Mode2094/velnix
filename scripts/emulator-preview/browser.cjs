@@ -12,6 +12,8 @@ const frame=p=>p.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAn
 const selectAll=p=>p.keyboard.press(process.platform==='darwin'?'Meta+A':'Control+A');
 async function activate(p,locator){await p.bringToFront();await p.waitForTimeout(60);await locator.evaluate(el=>(el.closest('[flt-tappable]')||el).click());await frame(p);}
 async function click(p,name){await activate(p,p.getByRole('button',{name,exact:true}).first());}
+// The redesigned order actions keep status changes in the "إجراءات أخرى" menu.
+async function moreAction(p,label){await click(p,'إجراءات أخرى');const item=p.getByText(label,{exact:true}).last();await item.waitFor({timeout:15000});await activate(p,item);await frame(p);}
 async function back(p){await activate(p,p.getByRole('button',{name:/رجوع|Back/}).first());}
 async function callable(p,name,data={}){return p.evaluate(async({name,data})=>{const {getApp}=await import('/firebase-sdk/12.19.0/firebase-app.js');const {getFunctions,httpsCallable}=await import('/firebase-sdk/12.19.0/firebase-functions.js');try{return {ok:true,data:(await httpsCallable(getFunctions(getApp(),'europe-west1'),name)(data)).data};}catch(e){return{ok:false,code:e.code};}},{name,data});}
 async function okay(p,name,data){const r=await callable(p,name,data);assert.equal(r.ok,true,`${name}: ${r.code}`);return r.data;}
@@ -64,15 +66,15 @@ async function main(){
   const own=await okay(p,'getOrder',{id:orders[role].id});assert.equal(own.order.actions.edit,true);assert.equal(own.order.actions.statuses.length>0,['generalManager','manager','warehouse'].includes(role));
   if(role==='warehouse'){const other=await okay(p,'getOrder',{id:orders.generalManager.id});assert.equal(Object.hasOwn(other.order,'amount'),false);}
   if(!['generalManager','manager'].includes(role)){for(const endpoint of ['listMembers','listAudit','listSyncEvents'])await denied(p,endpoint,{});}
-  await openOrder(p,orders[role]);assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),1);
-  assert.equal(await p.getByRole('button',{name:'تحويل إلى قيد المراجعة',exact:true}).count(),['generalManager','manager','warehouse'].includes(role)?1:0);
+  await openOrder(p,orders[role]);assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),1);
+  await click(p,'إجراءات أخرى');assert.equal(await p.getByText('تحويل إلى قيد المراجعة',{exact:true}).count(),['generalManager','manager','warehouse'].includes(role)?1:0);await p.keyboard.press('Escape');
   assert.equal(await p.getByText(/حذف الطلب|حذف نهائي/).count(),0);await p.screenshot({path:path.join(out,role+'-permissions.png')});
   await back(p); // Detail app-bar back in RTL.
  });
  await scenario('UI hides out-of-scope search results, other amounts and administration',async()=>{
   for(const role of ['sales','dataEntry']){const p=sessions[role].p;const hidden=await okay(p,'searchOrders',{query:orders.generalManager.customer});assert.equal(hidden.items.length,0);
    await nav(p,'more');assert.equal(await p.getByText('فريق العمل والصلاحيات',{exact:true}).count(),0);assert.equal(await p.getByText('سجل العمليات',{exact:true}).count(),0);await p.mouse.click(600,200);}
-  for(const [role,target] of [['warehouse','generalManager'],['sales','dataEntry']]){const p=sessions[role].p;await openOrder(p,orders[target]);assert.equal((await p.locator('body').innerText()).includes(orders[target].amount),false);assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),0);await p.screenshot({path:path.join(out,role+'-other-amount-hidden.png')});await back(p);}
+  for(const [role,target] of [['warehouse','generalManager'],['sales','dataEntry']]){const p=sessions[role].p;await openOrder(p,orders[target]);assert.equal((await p.locator('body').innerText()).includes(orders[target].amount),false);assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),0);await p.screenshot({path:path.join(out,role+'-other-amount-hidden.png')});await back(p);}
   for(const role of ['sales','dataEntry']){const r=await callable(sessions[role].p,'changeOrderStatus',{id:orders[role].id,status:'review'});assert.equal(r.ok,false);assert.equal(r.code,'functions/failed-precondition');}
  });
  await scenario('pending and disabled accounts cannot enter workspace',async()=>{for(const role of ['pending','disabled']){const p=await login(role);await denied(p,'dashboardStats',{});assert.equal(await p.getByText('إضافة طلب جديد',{exact:true}).count(),0);await p.screenshot({path:path.join(out,role+'-blocked.png')});}});
@@ -87,14 +89,14 @@ async function main(){
  });
  await scenario('UI edit, stale revision protection, internal transitions and terminal lock',async()=>{
   const p=sessions.generalManager.p,o=orders.generalManager;
-  await openOrder(p,o);await click(p,'تعديل');await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).waitFor();
+  await openOrder(p,o);await click(p,'تعديل الطلب');await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).waitFor();
   await p.screenshot({path:path.join(out,'editing.png')});
   // Full-screen edit route has a 56px app bar and no navigation rail.
   const noteBox=await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).boundingBox();await p.mouse.click(300,noteBox.y+noteBox.height/2);await frame(p);await selectAll(p);await p.keyboard.insertText('تم تعديل الطلب عبر الواجهة');await frame(p);
   let changed=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/updateOrder')&&r.request().method()==='POST');await click(p,'حفظ الطلب');assert.equal((await changed).status(),200);
   let latest=await okay(p,'getOrder',{id:o.id});assert.equal(latest.order.note,'تم تعديل الطلب عبر الواجهة');
   await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();
-  await click(p,'تعديل');await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).waitFor();
+  await click(p,'تعديل الطلب');await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).waitFor();
   const current=(await okay(sessions.manager.p,'getOrder',{id:o.id})).order;
   await okay(sessions.manager.p,'updateOrder',{...current,id:o.id,note:'تعديل متزامن معتمد'});
   changed=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/updateOrder')&&r.request().method()==='POST');await click(p,'حفظ الطلب');assert.equal((await changed).status(),409);
@@ -103,10 +105,10 @@ async function main(){
   await back(p);await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();await click(p,'تحديث');
   for(const [label,status] of [['تحويل إلى قيد المراجعة','review'],['تحويل إلى قيد التجهيز','preparing'],['تحويل إلى جاهز للتسليم','ready'],['إكمال الطلب الداخلي','delivered']]){
    const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/changeOrderStatus')&&r.request().method()==='POST');
-   await click(p,label);if(status==='delivered')await click(p,'تأكيد الإكمال');assert.equal((await response).status(),200);
+   await moreAction(p,label);if(status==='delivered')await click(p,'تأكيد الإكمال');assert.equal((await response).status(),200);
    await p.getByText(({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).first().waitFor();
   }
-  assert.equal(await p.getByRole('button',{name:'تعديل',exact:true}).count(),0);
+  assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),0);
   const closed=await okay(p,'getOrder',{id:o.id});assert.equal(closed.order.completionSource,'internal');assert.deepEqual(closed.order.actions.statuses,[]);
   assert.ok(closed.events.some(e=>e.action==='edited'));assert.equal(closed.events.filter(e=>e.action==='status_changed').length,4);
   await p.screenshot({path:path.join(out,'completed-order.png')});await back(p);
@@ -114,7 +116,7 @@ async function main(){
  await scenario('UI cancellation retains order and history',async()=>{
   const p=sessions.manager.p,o=orders.manager;await openOrder(p,o);
   const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/changeOrderStatus')&&r.request().method()==='POST');
-  await click(p,'تحويل إلى ملغي');await click(p,'تأكيد الإلغاء');assert.equal((await response).status(),200);
+  await moreAction(p,'تحويل إلى ملغي');await click(p,'تأكيد الإلغاء');assert.equal((await response).status(),200);
   const r=await okay(p,'getOrder',{id:o.id});assert.equal(r.order.status,'cancelled');assert.ok(r.events.some(e=>e.action==='status_changed'));await p.screenshot({path:path.join(out,'cancelled-order.png')});await back(p);
  });
  await scenario('Firestore denies direct order reads, deletes and profile escalation for every role',async()=>{

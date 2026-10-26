@@ -57,6 +57,14 @@ async function activate(p, locator) {
 }
 const click = (p, name) => activate(p, p.getByRole('button', { name, exact: true }).first());
 const back = (p) => activate(p, p.getByRole('button', { name: /رجوع|Back/ }).first());
+// Status changes now live in the redesigned "إجراءات أخرى" menu.
+async function moreAction(p, label) {
+  await click(p, 'إجراءات أخرى');
+  const item = p.getByText(label, { exact: true }).last();
+  await item.waitFor({ timeout: 15000 });
+  await activate(p, item);
+  await frame(p);
+}
 
 async function nav(p, kind) {
   const label = { home: 'الرئيسية', orders: 'الطلبات', create: 'طلب جديد', notices: 'الإشعارات', more: 'المزيد' }[kind];
@@ -251,7 +259,7 @@ async function editNotes(p, id, evidence) {
   const before = current.revision;
   const storedNote = current.note;
   await openTagged(p);
-  await click(p, 'تعديل');
+  await click(p, 'تعديل الطلب');
   const notes = p.getByRole('textbox', { name: 'ملاحظات (اختياري)', exact: true });
   await notes.waitFor();
   // The field must hold the real stored note before it is replaced, and the
@@ -286,7 +294,7 @@ async function fourInternalTransitions(p, id, evidence) {
   await openTagged(p);
   for (const [label, status] of [['تحويل إلى قيد المراجعة', 'review'], ['تحويل إلى قيد التجهيز', 'preparing'], ['تحويل إلى جاهز للتسليم', 'ready'], ['إكمال الطلب الداخلي', 'delivered']]) {
     const response = p.waitForResponse(r => new URL(r.url()).pathname.endsWith('/changeOrderStatus') && r.request().method() === 'POST');
-    await click(p, label);
+    await moreAction(p, label);
     if (status === 'delivered') {
       // The internal completion is a two-step confirmation, not a silent write.
       await p.getByText('تأكيد إكمال الطلب الداخلي', { exact: true }).waitFor({ timeout: 15000 });
@@ -295,7 +303,7 @@ async function fourInternalTransitions(p, id, evidence) {
     assert.equal((await response).status(), 200);
     await p.getByText({ review: 'قيد المراجعة', preparing: 'قيد التجهيز', ready: 'جاهز للتسليم', delivered: 'تم التسليم' }[status], { exact: true }).first().waitFor();
   }
-  assert.equal(await p.getByRole('button', { name: 'تعديل', exact: true }).count(), 0, 'a delivered order must be locked');
+  assert.equal(await p.getByRole('button', { name: 'تعديل الطلب', exact: true }).count(), 0, 'a delivered order must be locked');
   const closed = await okay(p, 'getOrder', { id });
   assert.equal(closed.order.status, 'delivered');
   assert.equal(closed.order.completionSource, 'internal');
