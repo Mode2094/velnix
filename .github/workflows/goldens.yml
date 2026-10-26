@@ -6,6 +6,10 @@ name: Regenerate Golden Baselines
 # refreshed baselines back to the branch.
 on:
   workflow_dispatch:
+  push:
+    branches: [audit/production-readiness]
+    paths:
+      - '.github/workflows/goldens.yml'
 
 permissions:
   contents: write
