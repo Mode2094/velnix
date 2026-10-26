@@ -1,6 +1,6 @@
 'use strict';
 const {can,canEditOrder,allowedTransition,STATUSES,dispatchBlocked,canResolveDispatch}=require('./policy');
-const {shippingStatus}=require('./shipping_status');
+const {shippingStatus,isApiConfirmed,isExceptionStatus}=require('./shipping_status');
 const safeDate=v=>v?.toDate?.()?.toISOString?.() ?? null;
 function publicOrder(d) {
   const o=d.data();
@@ -9,7 +9,8 @@ function publicOrder(d) {
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
     companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,
     clickOrderRef:o.clickOrderRef||null,clickClientSerial:o.clickClientSerial||null,clickStatusRaw:o.clickStatusRaw||null,clickStatusDate:o.clickStatusDate||null,
-    clickStatusNote:o.clickStatusNote||null,clickAmounts:o.clickAmounts||null,shippingStatus:shippingStatus(o.shippingStatus),shippingStatusSource:o.shippingStatusSource||null,shippingStatusUpdatedAt:safeDate(o.shippingStatusUpdatedAt),completionSource:o.completionSource||null,
+    clickStatusNote:o.clickStatusNote||null,clickAmounts:o.clickAmounts||null,shippingStatus:shippingStatus(o.shippingStatus),shippingStatusSource:o.shippingStatusSource||null,shippingStatusUpdatedAt:safeDate(o.shippingStatusUpdatedAt),
+    clickStatusVerified:o.clickStatusVerified===true||isApiConfirmed(o.shippingStatus),shippingStatusIsException:isExceptionStatus(o.shippingStatus),completionSource:o.completionSource||null,
     syncError:o.syncError||null,lastSyncAt:safeDate(o.lastSyncAt),lastSyncAttemptAt:safeDate(o.lastSyncAttemptAt),dispatchState:o.dispatchState||'idle',revision:o.revision||0,
     createdAt:safeDate(o.createdAt),updatedAt:safeDate(o.updatedAt)};
 }

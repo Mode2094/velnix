@@ -149,7 +149,7 @@ test('the real verified getorder response maps its exact Arabic label and keeps 
   assert.deepEqual(parsed.amounts,{orderAmountDuo:0,shippingDiscount:0,willPay:1});
   assert.equal('Ord_Amt' in parsed,false,'no financial meaning is invented');
 });
-test('all seven owner-confirmed labels map to the internal business states',()=>{
+test('all documented labels map to the internal business states',()=>{
   for(const [label,key] of [
     ['قيد انتظار الموافقة','awaitingPickup'],
     ['مخزن الشحن','carrierWarehouse'],
@@ -159,11 +159,21 @@ test('all seven owner-confirmed labels map to the internal business states',()=>
     ['تسليم جزئي','partiallyDelivered'],
     ['مؤجل','deferred'],
     ['ملغي','cancelled'],
+    ['مرتجع','returned'],
+    ['مرتجع جزئي','partiallyReturned'],
+    ['في مخزن المرتجعات','returnedWarehouse'],
+    ['في الشحن للراسل','inShippingToSender'],
+    ['تم استلام المرتجع','clientReceivedReturn'],
   ]){
     const parsed=parseClickOrderResponse({result:{Stat_App_Nm:label,Status_Date:'2026-10-19T00:00:00'}});
     assert.equal(parsed.ok,true,label);assert.equal(parsed.shippingStatus,key,label);
+    // The raw label is always preserved for diagnostics.
+    assert.equal(parsed.rawStatus,label,label);
   }
   assert.equal(Object.isFrozen(CLICK_STATUS_LABELS),true);
+  // Every documented label belongs to a documented internal state.
+  const {SHIPPING_STATUSES}=require('../src/shipping_status');
+  for(const key of Object.values(CLICK_STATUS_LABELS))assert.ok(SHIPPING_STATUSES.includes(key),key);
 });
 test('an unknown label, missing result/status, error envelope and malformed payload are never guessed as success',()=>{
   assert.equal(parseClickOrderResponse({result:{Stat_App_Nm:'حالة جديدة',Status_Date:'2026-10-19T00:00:00'}}).reason,'unknown_status');

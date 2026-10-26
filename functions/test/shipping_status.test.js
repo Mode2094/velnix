@@ -3,8 +3,8 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {SHIPPING_STATUSES,shippingStatus}=require('../src/shipping_status');
 const {orderForUser}=require('../src/order_view');
 const {allowedTransition}=require('../src/policy');
-test('seven client business states stay separate from preparation and never manufacture carrier money',()=>{
-  assert.equal(SHIPPING_STATUSES.length,7);
+test('twelve client business states stay separate from preparation and never manufacture carrier money',()=>{
+  assert.equal(SHIPPING_STATUSES.length,12);
   const user={id:'gm',active:true,role:'generalManager',permissions:[]};
   for(const state of SHIPPING_STATUSES){
     const source={createdBy:'owner',status:'dispatched',dispatchState:'sent',companyId:'click',shippingStatus:state,shippingStatusSource:'manual',clickAmounts:{orderAmountDuo:0,shippingDiscount:0,willPay:1},amountMinor:12345,collectedAmount:999,deliveryFee:12,refundAmount:5};

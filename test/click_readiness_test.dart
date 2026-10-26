@@ -22,17 +22,30 @@ void main() {
   final previous = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = previous);
   test(
-    'seven client labels are business vocabulary and numeric API codes stay unknown',
+    'the twelve documented client labels are business vocabulary and numeric API codes stay unknown',
     () {
       expect(ShippingStatus.values.map((v) => v.label), [
         'قيد انتظار الموافقة',
-        'مخزن الشحن',
+        'في مخزن الشحن',
         'في الشحن',
         'تم التسليم',
         'تسليم جزئي',
         'مؤجل',
         'ملغي',
+        'مرتجع',
+        'مرتجع جزئي',
+        'في مخزن المرتجعات',
+        'في الشحن للراسل',
+        'تم استلام المرتجع',
       ]);
+      expect(ShippingStatus.values.length, 12);
+      // Only the one label seen in a real Click API response is API-confirmed.
+      expect(ShippingStatus.awaitingPickup.isApiConfirmed, isTrue);
+      expect(ShippingStatus.returned.isApiConfirmed, isFalse);
+      // Returns and exceptions never count as forward progress.
+      expect(ShippingStatus.returned.isReturn, isTrue);
+      expect(ShippingStatus.returned.isException, isTrue);
+      expect(ShippingStatus.delivered.isException, isFalse);
       expect(ShippingStatus.parse('1'), isNull);
       expect(ShippingStatus.parse(1), isNull);
     },

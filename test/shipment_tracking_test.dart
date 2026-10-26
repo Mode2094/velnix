@@ -78,7 +78,7 @@ void main() {
       ..['shippingStatus'] = null;
     await tester.pumpWidget(app(detail(order)));
     await tester.pumpAndSettle();
-    expect(find.text('تتبع الشحنة'), findsOneWidget);
+    expect(find.text('حالة الشحنة لدى Click Delivery'), findsOneWidget);
     expect(find.text('لم تُرسل إلى شركة التوصيل بعد.'), findsOneWidget);
     // No invented visual track for an unshipped order.
     expect(find.text('في الشحن'), findsNothing);
@@ -112,15 +112,51 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an unknown carrier state falls back to raw-safe text', (
+  testWidgets('an unknown carrier state is surfaced raw and never guessed', (
     tester,
   ) async {
-    final order = baseOrder()..['shippingStatus'] = 'somethingNew';
+    final order = baseOrder()
+      ..['shippingStatus'] = null
+      ..['clickStatusRaw'] = 'حالة جديدة غير موثقة';
     await tester.pumpWidget(app(detail(order)));
     await tester.pumpAndSettle();
-    // ShippingStatus.parse returns null for unknown values, so the card shows
-    // the neutral not-sent banner instead of inventing a stage.
-    expect(find.text('لم تُرسل إلى شركة التوصيل بعد.'), findsOneWidget);
+    // The unknown raw value is shown verbatim and flagged for verification.
+    expect(find.text('حالة غير معروفة لدى Click'), findsOneWidget);
+    expect(find.textContaining('حالة جديدة غير موثقة'), findsOneWidget);
+    expect(find.textContaining('لم تُخمَّن'), findsOneWidget);
+    // It is never rendered as the neutral not-sent state.
+    expect(find.text('لم تُرسل إلى شركة التوصيل بعد.'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a return state is never shown as progress toward delivery', (
+    tester,
+  ) async {
+    final order = baseOrder()
+      ..['shippingStatus'] = 'inShippingToSender'
+      ..['clickStatusVerified'] = false;
+    await tester.pumpWidget(app(detail(order)));
+    await tester.pumpAndSettle();
+    expect(find.text('حالة مرتجعة: في الشحن للراسل'), findsOneWidget);
+    expect(
+      find.text('الشحنة في مسار الإرجاع وليست في طريقها للتسليم.'),
+      findsOneWidget,
+    );
+    // No linear four-stage track for a return.
+    expect(find.text('تم التسليم'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a documented but unconfirmed state is labelled as such', (
+    tester,
+  ) async {
+    final order = baseOrder()
+      ..['shippingStatus'] = 'partiallyReturned'
+      ..['clickStatusVerified'] = false;
+    await tester.pumpWidget(app(detail(order)));
+    await tester.pumpAndSettle();
+    expect(find.text('مرتجع جزئي'), findsWidgets);
+    expect(find.textContaining('لم تُؤكَّد بعد برد API مباشر'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

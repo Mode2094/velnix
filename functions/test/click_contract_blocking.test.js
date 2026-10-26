@@ -64,8 +64,8 @@ test('carrier status codes are never invented and stay separate from Velnix stat
   for(const raw of [1,2,3,'1','2','3','','DELIVERED','delivered_by_click','تم التسليم'])
     assert.equal(shippingStatus(raw),null,`${String(raw)} must not map silently`);
   for(const raw of [null,undefined,{},[],true])assert.equal(shippingStatus(raw),null);
-  // The vocabulary itself is the client-supplied business set, unchanged.
-  assert.deepEqual([...SHIPPING_STATUSES],['awaitingPickup','carrierWarehouse','outForDelivery','delivered','partiallyDelivered','deferred','cancelled']);
+  // The vocabulary itself is the client-supplied business set (twelve states).
+  assert.deepEqual([...SHIPPING_STATUSES],['awaitingPickup','carrierWarehouse','outForDelivery','delivered','partiallyDelivered','deferred','cancelled','returned','partiallyReturned','returnedWarehouse','inShippingToSender','clientReceivedReturn']);
   assert.equal(shippingStatus('delivered'),'delivered');
 });
 
