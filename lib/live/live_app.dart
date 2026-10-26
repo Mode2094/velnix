@@ -24,6 +24,7 @@ import 'gateway.dart';
 
 part 'live_dashboard.dart';
 part 'live_orders.dart';
+part 'live_order_journey.dart';
 part 'live_bucket_status.dart';
 part 'live_admin.dart';
 part 'live_notices.dart';

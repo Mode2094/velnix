@@ -306,6 +306,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // Internal completion now lives in the "إجراءات أخرى" menu.
+      await tester.ensureVisible(find.text('إجراءات أخرى'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إجراءات أخرى'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('إكمال الطلب الداخلي'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('إكمال الطلب الداخلي'));
@@ -869,10 +874,17 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('اختيار شركة توصيل'));
-      await tester.tap(find.text('اختيار شركة توصيل'));
+      // Company selection now happens inside the guided journey.
+      await tester.ensureVisible(find.text('متابعة وتجهيز الطلب'));
+      await tester.tap(find.text('متابعة وتجهيز الطلب'));
       await tester.pumpAndSettle();
-      expect(find.text('اختيار شركة التوصيل'), findsOneWidget);
+      await tester.ensureVisible(
+        find.widgetWithText(FilledButton, 'اختيار شركة التوصيل'),
+      );
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'اختيار شركة التوصيل'),
+      );
+      await tester.pumpAndSettle();
       expect(find.text('Click Delivery'), findsOneWidget);
       expect(find.text('شركة معطلة'), findsNothing);
       await tester.tap(find.text('Click Delivery'));

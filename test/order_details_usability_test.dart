@@ -121,16 +121,17 @@ void main() {
     expect(actions.dy, lessThan(customer.dy));
     expect(customer.dy, lessThan(timeline.dy));
 
-    // The most useful next step is the single filled action.
+    // The single filled action leads into the guided journey.
     expect(
-      find.widgetWithText(FilledButton, 'اختيار شركة توصيل'),
+      find.widgetWithText(FilledButton, 'متابعة وتجهيز الطلب'),
       findsOneWidget,
     );
     expect(
       find.widgetWithText(OutlinedButton, 'طباعة / PDF / باركود'),
       findsOneWidget,
     );
-    expect(find.widgetWithText(OutlinedButton, 'تعديل'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'تعديل الطلب'), findsOneWidget);
+    expect(find.text('إجراءات أخرى'), findsOneWidget);
     expect(find.text('إرسال إلى Click'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -166,10 +167,12 @@ void main() {
     expect(find.text('حالة الشحنة'), findsOneWidget);
     expect(find.text('قيد انتظار الموافقة'), findsWidgets);
     expect(find.text('مزامنة الحالة'), findsOneWidget);
+    // Dispatch now happens inside the guided journey, not on the card.
     expect(
-      find.widgetWithText(FilledButton, 'إرسال إلى Click'),
+      find.widgetWithText(FilledButton, 'متابعة وتجهيز الطلب'),
       findsOneWidget,
     );
+    expect(find.text('إرسال إلى Click'), findsNothing);
     expect(find.text('تفاصيل تقنية'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

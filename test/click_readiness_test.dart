@@ -270,7 +270,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('ربط شحنة Click موجودة'), findsOneWidget);
+      // Reconcile now lives inside the "إجراءات أخرى" menu.
+      expect(find.text('إجراءات أخرى'), findsOneWidget);
+      await tester.ensureVisible(find.text('إجراءات أخرى'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('إجراءات أخرى'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ربط شحنة'), findsWidgets);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },
@@ -378,8 +384,17 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('إرسال إلى Click'), findsOneWidget);
+    // The card shows one guided action; the Click send label lives in the
+    // journey, opened by the primary button.
+    expect(
+      find.widgetWithText(FilledButton, 'متابعة وتجهيز الطلب'),
+      findsOneWidget,
+    );
+    expect(find.text('إرسال إلى Click'), findsNothing);
     expect(find.text('إرسال لشركة التوصيل'), findsNothing);
+    await tester.tap(find.text('متابعة وتجهيز الطلب'));
+    await tester.pumpAndSettle();
+    expect(find.text('تأكيد وإرسال إلى Click'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

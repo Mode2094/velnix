@@ -751,25 +751,79 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     );
   }
 
-  String? _actionHint(Map<String, dynamic> o, Map<String, dynamic> actions) {
-    final state = o['status']?.toString() ?? '';
-    final dispatchState = o['dispatchState']?.toString() ?? 'idle';
+  /// Full-width secondary action whose label wraps instead of overflowing at
+  /// large text scales.
+  Widget _secondaryButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) => OutlinedButton(
+    onPressed: onPressed,
+    child: Row(
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  /// Opens the guided fulfilment journey and refreshes this screen when the
+  /// employee returns, so the card reflects the latest server state.
+  void _openJourney() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            LiveOrderJourney(orderId: widget.id, policy: widget.policy),
+      ),
+    ).then((_) {
+      if (mounted) refresh();
+    });
+  }
+
+  /// Short, always-correct summary of the current stage and the next step shown
+  /// on the actions card (the detailed flow lives in the guided journey).
+  _StageSummary _stageInfo(
+    Map<String, dynamic> o,
+    String state,
+    String dispatchState,
+    Map<String, dynamic> actions,
+  ) {
+    final label = statusLabels[state] ?? state;
     if (dispatchState == 'needs_review') {
-      return 'نتيجة الإرسال السابقة تحتاج مراجعة قبل أي إعادة إرسال.';
+      return _StageSummary(stage: label, next: 'تحقق من نتيجة الإرسال');
+    }
+    if (dispatchState == 'sending') {
+      return _StageSummary(stage: label, next: 'انتظار اكتمال الإرسال');
     }
     if (dispatchState == 'sent' || state == 'dispatched') {
-      return 'تم إرسال الشحنة؛ لا يمكن تغيير شركة التوصيل أو إعادة الإرسال.';
+      return _StageSummary(stage: label, next: 'تتبع الشحنة');
     }
     if (['delivered', 'returned', 'cancelled'].contains(state)) {
-      return 'الطلب مغلق؛ لا توجد إجراءات تغيير متاحة.';
+      return _StageSummary(stage: label, next: 'لا توجد خطوة متاحة');
     }
-    if (!widget.policy.can('sendToDelivery')) {
-      return 'إسناد الشركة والإرسال يحتاجان صلاحية إرسال لشركة التوصيل.';
+    switch (state) {
+      case 'created':
+        return _StageSummary(stage: label, next: 'مراجعة بيانات الطلب');
+      case 'review':
+        return _StageSummary(stage: label, next: 'تجهيز الطلب');
+      case 'preparing':
+        return _StageSummary(stage: label, next: 'تأكيد الجاهزية');
+      case 'ready':
+        return o['companyId'] == null
+            ? _StageSummary(stage: label, next: 'اختيار شركة التوصيل')
+            : _StageSummary(stage: label, next: 'مراجعة وتأكيد الإرسال');
+      default:
+        return _StageSummary(stage: label, next: 'لا توجد خطوة متاحة');
     }
-    if (state == 'ready' && o['companyId'] == null) {
-      return 'اختر شركة توصيل قبل إرسال الطلب.';
-    }
-    return null;
   }
 
   /// Colour and icon for each confirmed carrier state. Colour alone never
@@ -1254,7 +1308,6 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         final company = o['companyName']?.toString();
         final policyNumber = o['providerOrderId']?.toString();
         final clickRef = o['clickOrderRef']?.toString();
-        final hint = _actionHint(o, actions);
 
         final orderNumber = o['orderNumber']?.toString();
         final dispatchState = o['dispatchState']?.toString() ?? 'idle';
@@ -1424,174 +1477,222 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         final statuses = actions['statuses'] is List
             ? (actions['statuses'] as List).cast<String>()
             : const <String>[];
-        String? primaryKey;
-        if (actions['dispatch'] == true) {
-          primaryKey = 'dispatch';
-        } else if (actions['resolve'] == true) {
-          primaryKey = 'resolve';
-        } else if (actions['assign'] == true) {
-          primaryKey = 'assign';
-        } else if (actions['edit'] == true) {
-          primaryKey = 'edit';
-        } else if (statuses.isNotEmpty) {
-          primaryKey = 'status';
-        }
-        Widget primaryAction = const SizedBox.shrink();
-        var primaryUsed = false;
-        final secondaryActions = <Widget>[];
-        void addAction({
-          required String key,
-          required String label,
-          required IconData icon,
-          required VoidCallback onPressed,
-        }) {
-          final button = primaryKey == key
-              ? FilledButton.icon(
-                  onPressed: onPressed,
-                  icon: Icon(icon),
-                  label: Text(label),
-                )
-              : OutlinedButton.icon(
-                  onPressed: onPressed,
-                  icon: Icon(icon),
-                  label: Text(label),
-                );
-          if (primaryKey == key && !primaryUsed) {
-            primaryUsed = true;
-            primaryAction = button;
-          } else {
-            secondaryActions.add(button);
-          }
-        }
+        final stage = _stageInfo(o, state, dispatchState, actions);
 
-        if (actions['dispatch'] == true) {
-          addAction(
-            key: 'dispatch',
-            label: isClick ? 'إرسال إلى Click' : 'إرسال لشركة التوصيل',
-            icon: Icons.send,
-            onPressed: _confirmDispatch,
-          );
-        }
-        if (actions['resolve'] == true) {
-          addAction(
-            key: 'resolve',
-            label: 'مراجعة إرسال غير مؤكد',
-            icon: Icons.fact_check_outlined,
-            onPressed: _resolveDispatch,
-          );
-        }
-        if (actions['assign'] == true) {
-          addAction(
-            key: 'assign',
-            label: 'اختيار شركة توصيل',
-            icon: Icons.local_shipping_outlined,
-            onPressed: () => _chooseCompany(o),
-          );
-        }
+        // One guided primary action; everything else is secondary or in the
+        // "اجراءات اخرى" menu. Assign/dispatch happen inside the journey.
+        final secondary = <Widget>[];
         if (actions['edit'] == true) {
-          addAction(
-            key: 'edit',
-            label: 'تعديل',
-            icon: Icons.edit_outlined,
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => LiveOrderForm(
-                  policy: widget.policy,
-                  initial: o,
-                  onSaved: (_) {
-                    Navigator.pop(context);
-                    refresh();
-                  },
+          secondary.add(
+            _secondaryButton(
+              icon: Icons.edit_outlined,
+              label: 'تعديل الطلب',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => LiveOrderForm(
+                    policy: widget.policy,
+                    initial: o,
+                    onSaved: (_) {
+                      Navigator.pop(context);
+                      refresh();
+                    },
+                  ),
                 ),
               ),
             ),
           );
         }
-        addAction(
-          key: 'print',
-          label: 'طباعة / PDF / باركود',
-          icon: Icons.print_outlined,
-          onPressed: () async {
-            try {
-              final latest = await VelnixGateway.instance.order(widget.id);
-              final branding = await VelnixGateway.instance.call('getSettings');
-              if (!context.mounted) return;
-              Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => OrderPrintScreen(
-                    order: Map<String, dynamic>.from(latest['order'] as Map)
-                      ..addAll(branding),
+        secondary.add(
+          _secondaryButton(
+            icon: Icons.print_outlined,
+            label: 'طباعة / PDF / باركود',
+            onPressed: () async {
+              try {
+                final latest = await VelnixGateway.instance.order(widget.id);
+                final branding = await VelnixGateway.instance.call(
+                  'getSettings',
+                );
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => OrderPrintScreen(
+                      order: Map<String, dynamic>.from(latest['order'] as Map)
+                        ..addAll(branding),
+                    ),
                   ),
-                ),
-              );
-            } catch (e) {
-              if (context.mounted) showError(context, e);
-            }
-          },
+                );
+              } catch (e) {
+                if (context.mounted) showError(context, e);
+              }
+            },
+          ),
         );
+
+        final more = <PopupMenuEntry<String>>[];
+        for (var i = 0; i < statuses.length; i++) {
+          final target = statuses[i];
+          more.add(
+            PopupMenuItem(
+              value: 'status:$i',
+              child: Text(
+                target == 'delivered'
+                    ? 'إكمال الطلب الداخلي'
+                    : 'تحويل إلى ${statusLabels[target]}',
+              ),
+            ),
+          );
+        }
+        if (actions['resolve'] == true) {
+          more.add(
+            const PopupMenuItem(
+              value: 'resolve',
+              child: Text('مراجعة إرسال غير مؤكد'),
+            ),
+          );
+        }
         if (isClick &&
             o['providerOrderId'] == null &&
             widget.policy.can('sendToDelivery')) {
-          addAction(
-            key: 'reconcile',
-            label: 'ربط شحنة Click موجودة',
-            icon: Icons.link,
-            onPressed: _reconcileClick,
+          more.add(
+            const PopupMenuItem(
+              value: 'reconcile',
+              child: Text('ربط شحنة Click موجودة'),
+            ),
           );
         }
-        for (var i = 0; i < statuses.length; i++) {
-          final target = statuses[i];
-          addAction(
-            key: i == 0 ? 'status' : 'status$i',
-            label: target == 'delivered'
-                ? 'إكمال الطلب الداخلي'
-                : 'تحويل إلى ${statusLabels[target]}',
-            icon: Icons.swap_horiz,
-            onPressed: () => _changeStatus(target),
-          );
-        }
+
         final actionsCard = VLivePanel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _sectionTitle('الإجراءات', Icons.bolt_outlined),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: VColors.softBlue,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.timeline_outlined,
+                      color: VColors.brand,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'الحالة الحالية: ${stage.stage}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'الخطوة التالية: ${stage.next}',
+                            style: const TextStyle(
+                              color: VColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               AbsorbPointer(
                 absorbing: actionBusy,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (primaryUsed) primaryAction,
-                    if (secondaryActions.isNotEmpty) ...[
-                      if (primaryUsed) const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: secondaryActions,
+                    FilledButton(
+                      onPressed: () => _openJourney(),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.play_arrow, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              'متابعة وتجهيز الطلب',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (secondary.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      for (final button in secondary) ...[
+                        button,
+                        const SizedBox(height: 8),
+                      ],
+                    ],
+                    if (more.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: PopupMenuButton<String>(
+                          tooltip: 'إجراءات أخرى',
+                          onSelected: (value) {
+                            if (value == 'resolve') {
+                              _resolveDispatch();
+                            } else if (value == 'reconcile') {
+                              _reconcileClick();
+                            } else if (value.startsWith('status:')) {
+                              final idx =
+                                  int.tryParse(value.split(':')[1]) ?? 0;
+                              if (idx < statuses.length) {
+                                _changeStatus(statuses[idx]);
+                              }
+                            }
+                          },
+                          itemBuilder: (_) => more,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: VColors.line),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.more_horiz, size: 18),
+                                SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    'إجراءات أخرى',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
               if (actionBusy) const LinearProgressIndicator(),
-              if (hint != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(
-                    hint,
-                    style: const TextStyle(
-                      color: VColors.muted,
-                      fontSize: 11.5,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
               if (o['dispatchState'] == 'needs_review')
                 const Padding(
-                  padding: EdgeInsets.only(top: 8),
+                  padding: EdgeInsets.only(top: 10),
                   child: Text(
-                    'تحذير: يجب التحقق من شركة التوصيل قبل إعادة إرسال الشحنة لمنع الازدواج.',
+                    'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.',
                     style: TextStyle(
                       color: VColors.danger,
                       fontWeight: FontWeight.w800,
@@ -1610,7 +1711,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Text(
                 'الحالات القادمة من شركة التوصيل تُحدّث في الخادم، ولا يُسمح بتزويرها يدوياً.',
                 style: TextStyle(color: VColors.muted, fontSize: 11),
@@ -2127,67 +2228,13 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     }
     await action(() => VelnixGateway.instance.updateStatus(widget.id, target));
   }
+}
 
-  Future<void> _confirmDispatch() async {
-    final approved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الإرسال'),
-        content: const Text(
-          'سيتم إرسال الطلب فعلياً إلى API الشركة. لا تعِد الإرسال إذا كان الطلب قيد المعالجة.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('رجوع'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('تأكيد'),
-          ),
-        ],
-      ),
-    );
-    if (approved == true) {
-      await action(() => VelnixGateway.instance.dispatch(widget.id));
-    }
-  }
-
-  Future<void> _chooseCompany(Map<String, dynamic> o) async {
-    try {
-      final companies = await VelnixGateway.instance.companies();
-      if (!mounted) return;
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (ctx) => SimpleDialog(
-          title: const Text('اختيار شركة التوصيل'),
-          children: [
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, '__none__'),
-              child: const Text('بدون شركة'),
-            ),
-            for (final c in companies.where(
-              (e) => e['enabled'] == true && e['archived'] != true,
-            ))
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, c['id'].toString()),
-                child: Text(c['name']?.toString() ?? ''),
-              ),
-          ],
-        ),
-      );
-      if (selected != null) {
-        await action(
-          () => VelnixGateway.instance.assignCompany(
-            widget.id,
-            selected == '__none__' ? null : selected,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
+/// Compact stage/next-step summary rendered on the actions card.
+class _StageSummary {
+  const _StageSummary({required this.stage, required this.next});
+  final String stage;
+  final String next;
 }
 
 class _OrderDetailSkeleton extends StatelessWidget {
