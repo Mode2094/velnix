@@ -33,14 +33,19 @@ test('unknown shipping states cannot be mapped',()=>{
   assert.throws(()=>safeStatusMap({'delivered':'super-admin'}));
 });
 test('disabled member loses all permissions',()=>assert.equal(can({...users.gm,active:false},'manageEmployees'),false));
-test('Arabic numeral input is normalized for Jordanian phone and amounts',()=>{
+test('Arabic numeral input is normalized for amounts and quantity, while phones require 10 English digits',()=>{
   const {validateOrderFields}=require('../src/policy');
-  const entry={customer:'محمد',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط البلد',address:'شارع',
+  const entry={customer:'محمد',phone:'0791234567',city:'عمان',area:'وسط البلد',address:'شارع',
     description:'طرد',quantity:'٢',amount:'١٢٫٥٠٠',paymentMethod:'عند الاستلام'};
   const order=validateOrderFields(entry);
   assert.equal(order.phone,'0791234567');
   assert.equal(order.quantity,2);
   assert.equal(order.amountMinor,12500);
+  // Arabic-digit phones are rejected: exactly 10 English digits are required.
+  assert.throws(()=>validateOrderFields({...entry,phone:'٠٧٩١٢٣٤٥٦٧'}),/invalid_phone/);
+  assert.throws(()=>validateOrderFields({...entry,phone:'079123456'}),/invalid_phone/);
+  assert.throws(()=>validateOrderFields({...entry,phone:'07912345678'}),/invalid_phone/);
+  assert.throws(()=>validateOrderFields({...entry,phone:'0791234567',extraPhone:'٠٧٩١٢٣٤٥٦٧'}),/invalid_phone/);
 });
 
 test('internal completion is ready-only and never bypasses carrier or terminal states',()=>{

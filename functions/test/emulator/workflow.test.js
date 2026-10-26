@@ -9,7 +9,7 @@ const {getFirestore,Timestamp}=require('firebase-admin/firestore');
 const {getAuth}=require('firebase-admin/auth');
 const db=getFirestore();
 const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id,token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}}:null,data});
-const payload={customer:'عميل عربي',phone:'٠٧٩١٢٣٤٥٦٧',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
+const payload={customer:'عميل عربي',phone:'0791234567',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
 const users={generalManager:'gm',manager:'manager',warehouse:'warehouse',sales:'sales',dataEntry:'entry'};
 let orderId;
 test('disabled carrier and unconfirmed Click fail before claiming a shipment lock',async()=>{

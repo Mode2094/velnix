@@ -47,17 +47,22 @@ function validateOrderFields(data, {legacyCity=null} = {}) {
     if (v.length > max || (required && !v)) throw new Error(`invalid_${key}`);
     return v;
   };
-  const customer=text('customer',120), phone=arabicDigits(text('phone',30)), city=text('city',80),
+  const customer=text('customer',120), phone=text('phone',30), city=text('city',80),
     area=text('area',120), address=text('address',240), description=text('description',500);
   if(!JORDAN_CITIES.has(city) && city!==legacyCity) throw new Error('invalid_city');
-  const extraPhone=arabicDigits(text('extraPhone',30,false)), note=text('note',600,false);
+  const extraPhone=text('extraPhone',30,false), note=text('note',600,false);
   if (!['string','number'].includes(typeof data.quantity)) throw new Error('invalid_quantity');
   const quantity = Number(arabicDigits(data.quantity));
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) throw new Error('invalid_quantity');
-  const phonePattern=/^\+?[0-9]{7,15}$/;
-  const cleanPhone=phone.replace(/[ ()\-]/g,'');
-  const cleanExtra=extraPhone.replace(/[ ()\-]/g,'');
-  if (!phonePattern.test(cleanPhone) || (cleanExtra && !phonePattern.test(cleanExtra))) throw new Error('invalid_phone');
+  // English digits only, exactly 10, for both the primary and the optional phone.
+  const phonePattern=/^[0-9]{10}$/;
+  const cleanPhone=phone.replace(/[^0-9]/g,'');
+  const cleanExtra=extraPhone.replace(/[^0-9]/g,'');
+  // Reject any non-English/extra characters so the stored value is exactly 10 English digits.
+  if (phone.replace(/[ ()-]/g,'') !== cleanPhone || !phonePattern.test(cleanPhone)) throw new Error('invalid_phone');
+  // An empty extra phone is allowed; anything else must be 10 English digits.
+  const extraRaw=extraPhone.replace(/[ ()-]/g,'');
+  if (extraRaw !== '' && (extraRaw !== cleanExtra || !phonePattern.test(cleanExtra))) throw new Error('invalid_phone');
   const paymentMethod=text('paymentMethod',40,false)||'عند الاستلام';
   if (!['عند الاستلام','مدفوع مسبقاً'].includes(paymentMethod)) throw new Error('invalid_paymentMethod');
   return {customer,phone:cleanPhone,city,area,address,description,extraPhone:cleanExtra,note,quantity,amountMinor:moneyMinor(data.amount),paymentMethod};

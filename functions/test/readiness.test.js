@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {ROLES,STATUSES,canEditOrder,allowedTransition,validateOrderFields,canResolveDispatch,documentId,safeStatusMap}=require('../src/policy');
 const {searchDigits,parseFilters,matchingFilters,normalizeCustomer}=require('../src/query');
 const gm={id:'gm',role:'generalManager',active:true};
-const fields={customer:'محمد',phone:'+962 (79) 123-4567',extraPhone:'٠٧٩١٢٣٤٥٦٧',city:'عمّان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
+const fields={customer:'محمد',phone:'0791234567',extraPhone:'0799999999',city:'عمّان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
 test('shipment data is frozen during dispatch, uncertain dispatch and after sending',()=>{
   for(const state of ['sending','needs_review','sent'])for(const status of STATUSES){
     const order={createdBy:'gm',status,dispatchState:state};
@@ -27,11 +27,15 @@ test('invalid money values cannot silently become zero or lose precision',()=>{
   assert.equal(validateOrderFields({...fields,amount:'٠٫١٢٣'}).amountMinor,123);
   assert.equal(validateOrderFields({...fields,amount:0}).amountMinor,0);
 });
-test('phone fields require digits and normalize both Arabic and Persian',()=>{
+test('phone fields require exactly 10 English digits for primary and extra',()=>{
   const out=validateOrderFields(fields);
-  assert.equal(out.phone,'+962791234567');assert.equal(out.extraPhone,'0791234567');
-  for(const phone of ['+++++++','-------','123456','1234567890123456','+12+345678'])
+  assert.equal(out.phone,'0791234567');assert.equal(out.extraPhone,'0799999999');
+  // Arabic/Persian digits, country codes, spaces and wrong lengths are refused.
+  for(const phone of ['٠٧٩١٢٣٤٥٦٧','۰۷۹۱۲۳۴۵۶۷','+962791234567','079123456','07912345678','+12+345678','123456'])
     assert.throws(()=>validateOrderFields({...fields,phone}),/invalid_phone/);
+  assert.throws(()=>validateOrderFields({...fields,extraPhone:'٠٧٩١٢٣٤٥٦٧'}),/invalid_phone/);
+  assert.throws(()=>validateOrderFields({...fields,extraPhone:'079123'}),/invalid_phone/);
+  assert.equal(validateOrderFields({...fields,extraPhone:''}).extraPhone,'');
   assert.throws(()=>validateOrderFields({...fields,extraPhone:'oops'}),/invalid_phone/);
   assert.throws(()=>validateOrderFields({...fields,quantity:true}),/invalid_quantity/);
 });

@@ -23,7 +23,7 @@ Widget app(Widget child) => MaterialApp(
 Future<void> fill(WidgetTester tester) async {
   const values = {
     'اسم المستلم': 'عميل اختبار',
-    'رقم الهاتف': '٠٧٩١٢٣٤٥٦٧',
+    'رقم الهاتف': '0791234567',
     'المنطقة': 'وسط',
     'العنوان التفصيلي': 'شارع الاختبار',
     'وصف محتويات الطلب': 'طرد',

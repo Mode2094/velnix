@@ -2534,8 +2534,9 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                           entry.key == 'extraPhone'
                                       ? [
                                           FilteringTextInputFormatter.allow(
-                                            RegExp(r'[0-9٠-٩۰-۹+\- ()]'),
+                                            RegExp(r'[0-9]'),
                                           ),
+                                          LengthLimitingTextInputFormatter(10),
                                         ]
                                       : entry.key == 'quantity'
                                       ? [
@@ -2552,6 +2553,11 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                       : null,
                                   decoration: InputDecoration(
                                     labelText: _label(entry.key),
+                                    hintText:
+                                        entry.key == 'phone' ||
+                                            entry.key == 'extraPhone'
+                                        ? '10 أرقام إنجليزية'
+                                        : null,
                                   ),
                                   maxLines:
                                       entry.key == 'note' ||
@@ -2568,14 +2574,15 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                     }
                                     if (entry.key == 'phone' ||
                                         entry.key == 'extraPhone') {
-                                      final phone = normalizedNumber(
-                                        v ?? '',
-                                      ).replaceAll(RegExp(r'[ ()\-]'), '');
+                                      final phone = (v ?? '').replaceAll(
+                                        RegExp(r'[^0-9]'),
+                                        '',
+                                      );
                                       if (phone.isNotEmpty &&
                                           !RegExp(
-                                            r'^\+?[0-9]{7,15}$',
+                                            r'^[0-9]{10}$',
                                           ).hasMatch(phone)) {
-                                        return 'أدخل 7 إلى 15 رقماً مع رمز الدولة إن وجد';
+                                        return 'أدخل 10 أرقام إنجليزية فقط';
                                       }
                                     }
                                     if (entry.key == 'quantity') {
