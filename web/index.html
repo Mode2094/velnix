@@ -35,7 +35,8 @@
   <link rel="preload" href="main.dart.js" as="script" fetchpriority="high">
   <style>
     #velnix-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f6f7fb;color:#182033;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;transition:opacity .2s ease}
-    #velnix-splash .mark{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#495bee;color:#fff;font-size:30px;font-weight:800;box-shadow:0 10px 30px rgba(73,91,238,.25)}
+    #velnix-splash .mark{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#fff;border:1px solid #e4e7f0;overflow:hidden;box-shadow:0 10px 30px rgba(73,91,238,.25)}
+    #velnix-splash .mark img{width:100%;height:100%;object-fit:contain;padding:7px;box-sizing:border-box}
     #velnix-splash .name{font-size:28px;font-weight:800;letter-spacing:-.5px}
     #velnix-splash .hint{color:#667085;font-size:13px}
     #velnix-splash .bar{width:148px;height:3px;border-radius:999px;background:#e4e7f0;overflow:hidden;margin-top:4px}
@@ -46,7 +47,7 @@
 </head>
 <body>
   <div id="velnix-splash" role="status" aria-live="polite">
-    <div class="mark">V</div>
+    <div class="mark"><img src="icons/Icon-192.png" alt="Velnix" width="64" height="64"/></div>
     <div class="name">Velnix</div>
     <div class="hint">جارٍ تجهيز مساحة العمل…</div>
     <div class="bar"><span></span></div>
