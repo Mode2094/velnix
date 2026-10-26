@@ -59,7 +59,9 @@ const click = (p, name) => activate(p, p.getByRole('button', { name, exact: true
 const back = (p) => activate(p, p.getByRole('button', { name: /رجوع|Back/ }).first());
 // Status changes now live in the redesigned "إجراءات أخرى" menu.
 async function moreAction(p, label) {
-  await click(p, 'إجراءات أخرى');
+  const chip = p.getByText('إجراءات أخرى', { exact: true }).first();
+  await chip.waitFor({ timeout: 15000 });
+  await activate(p, chip);
   const item = p.getByText(label, { exact: true }).last();
   await item.waitFor({ timeout: 15000 });
   await activate(p, item);
