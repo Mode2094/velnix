@@ -943,32 +943,46 @@ class _LiveMembersState extends State<LiveMembers> {
                           fontSize: 11,
                         ),
                       ),
-                      IconButton(
-                        tooltip: 'إعدادات الموظف',
-                        onPressed:
-                            (operating ||
-                                m['id'] == widget.policy.id ||
-                                !widget.policy.canGrantRole(
-                                  m['role'].toString(),
-                                ))
-                            ? null
-                            : () => guard(() => _edit(m, items)),
-                        icon: const Icon(Icons.settings_outlined),
-                      ),
-                      IconButton(
-                        tooltip: 'حذف الموظف',
-                        onPressed:
-                            (operating ||
-                                m['id'] == widget.policy.id ||
-                                !widget.policy.canGrantRole(
-                                  m['role'].toString(),
-                                ))
-                            ? null
-                            : () => _confirmDelete(m),
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: VColors.danger,
-                        ),
+                      PopupMenuButton<String>(
+                        tooltip: 'خيارات الموظف',
+                        enabled:
+                            !operating &&
+                            m['id'] != widget.policy.id &&
+                            widget.policy.canGrantRole(m['role'].toString()),
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            guard(() => _edit(m, items));
+                          } else if (value == 'delete') {
+                            _confirmDelete(m);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'edit',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(Icons.settings_outlined),
+                              title: Text('تعديل الموظف'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                Icons.delete_outline,
+                                color: VColors.danger,
+                              ),
+                              title: Text(
+                                'حذف الموظف',
+                                style: TextStyle(color: VColors.danger),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

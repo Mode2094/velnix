@@ -63,11 +63,13 @@ void main() {
     await tester.pumpWidget(app(LiveMembers(policy: gm())));
     await tester.pumpAndSettle();
     expect(find.text('موظف تجريبي'), findsOneWidget);
-    expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-    // Tapping opens a confirmation and does not delete yet.
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    expect(find.byType(PopupMenuButton<String>), findsOneWidget);
+    // Open the row menu and choose delete.
+    await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
-    expect(find.text('حذف الموظف'), findsOneWidget);
+    await tester.tap(find.text('حذف الموظف'));
+    await tester.pumpAndSettle();
+    expect(find.text('حذف الموظف'), findsWidgets);
     expect(
       find.textContaining('لا تُحذف الطلبات أو سجل التدقيق'),
       findsOneWidget,
@@ -86,7 +88,9 @@ void main() {
     mockMembers([member()]);
     await tester.pumpWidget(app(LiveMembers(policy: gm())));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('حذف الموظف'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('إلغاء'));
     await tester.pumpAndSettle();
@@ -103,9 +107,10 @@ void main() {
     ]);
     await tester.pumpWidget(app(LiveMembers(policy: gm())));
     await tester.pumpAndSettle();
-    final button = find.widgetWithIcon(IconButton, Icons.delete_outline);
-    final iconButton = tester.widget<IconButton>(button);
-    expect(iconButton.onPressed, isNull);
+    final menu = tester.widget<PopupMenuButton<String>>(
+      find.byType(PopupMenuButton<String>),
+    );
+    expect(menu.enabled, isFalse);
     expect(tester.takeException(), isNull);
   });
 }
