@@ -9,6 +9,7 @@ import 'order_filters.dart';
 import 'directory_panel.dart';
 import 'jordan_locations.dart';
 import 'live_settings.dart';
+import 'live_stores.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -1056,6 +1057,10 @@ class _LiveShellState extends State<LiveShell> {
         key: ValueKey('dash$refreshVersion'),
         policy: widget.policy,
         onNavigate: toOrders,
+        onOpenStores: () => Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const LiveStores()),
+        ),
         initialFilters: selectedFilters,
         onFiltersChanged: (value) => selectedFilters = value,
       ),

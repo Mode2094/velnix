@@ -6,11 +6,13 @@ class LiveDashboard extends StatefulWidget {
     super.key,
     required this.policy,
     required this.onNavigate,
+    this.onOpenStores,
     this.initialFilters = const {},
     this.onFiltersChanged,
   });
   final SessionPolicy policy;
   final void Function(String, String?) onNavigate;
+  final VoidCallback? onOpenStores;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
   @override
@@ -235,21 +237,38 @@ class _LiveDashboardState extends State<LiveDashboard> {
           ? 'كل الطلبات مسندة إلى شركات التوصيل.'
           : 'طلبات بانتظار المتابعة: $newCreated',
     );
+    final storesCard = _storesCard();
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
         if (width >= 1100) {
-          return IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(flex: 2, child: allCard),
-                const SizedBox(width: 14),
-                Expanded(child: deliveryCard),
-                const SizedBox(width: 14),
-                Expanded(child: internalCard),
-              ],
-            ),
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 2, child: allCard),
+                    const SizedBox(width: 14),
+                    Expanded(child: deliveryCard),
+                    const SizedBox(width: 14),
+                    Expanded(child: internalCard),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: storesCard),
+                    const SizedBox(width: 14),
+                    const Expanded(flex: 3, child: SizedBox()),
+                  ],
+                ),
+              ),
+            ],
           );
         }
         if (width >= 480) {
@@ -266,6 +285,8 @@ class _LiveDashboardState extends State<LiveDashboard> {
                   Expanded(child: internalCard),
                 ],
               ),
+              const SizedBox(height: 14),
+              storesCard,
             ],
           );
         }
@@ -277,11 +298,50 @@ class _LiveDashboardState extends State<LiveDashboard> {
             deliveryCard,
             const SizedBox(height: 12),
             internalCard,
+            const SizedBox(height: 12),
+            storesCard,
           ],
         );
       },
     );
   }
+
+  Widget _storesCard() => _cardShell(
+    onTap: widget.onOpenStores ?? () {},
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.storefront_outlined,
+              color: VColors.brand,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'المتاجر',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              ),
+            ),
+            const Icon(Icons.arrow_back, color: VColors.muted, size: 18),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'قريبًا...',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: VColors.muted,
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _allCard(_ScopeTotals data) => _cardShell(
     onTap: () => widget.onNavigate('all', null),
