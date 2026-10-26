@@ -72,7 +72,9 @@ async function main(){
   await openOrder(p,orders[role]);
   const editBtn=p.getByRole('button',{name:'تعديل الطلب',exact:true});
   await editBtn.waitFor({timeout:15000});assert.equal(await editBtn.count(),1);
-  await openMore(p);await p.keyboard.press('Escape');
+  // The "إجراءات أخرى" menu appears only when the role has a status/review
+  // action; roles without one correctly show no menu.
+  if(['generalManager','manager','warehouse'].includes(role)){await openMore(p);await p.keyboard.press('Escape');}
   assert.equal(await p.getByText(/حذف الطلب|حذف نهائي/).count(),0);await p.screenshot({path:path.join(out,role+'-permissions.png')});
   await back(p); // Detail app-bar back in RTL.
  });
