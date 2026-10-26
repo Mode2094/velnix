@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'gateway.dart';
+import 'date_range_field.dart';
 
 class OrderFilters extends StatefulWidget {
   const OrderFilters({
@@ -18,7 +19,7 @@ class OrderFilters extends StatefulWidget {
 class _OrderFiltersState extends State<OrderFilters> {
   List<Map<String, dynamic>> companies = [], creators = [];
   String? company, creator, error;
-  DateTimeRange? dates;
+  DateTime? from, to;
   @override
   void initState() {
     super.initState();
@@ -36,10 +37,8 @@ class _OrderFiltersState extends State<OrderFilters> {
               .toUtc()
               .add(const Duration(hours: 3))
               .subtract(const Duration(days: 1));
-      dates = DateTimeRange(
-        start: DateTime(a.year, a.month, a.day),
-        end: DateTime(b.year, b.month, b.day),
-      );
+      from = DateTime(a.year, a.month, a.day);
+      to = DateTime(b.year, b.month, b.day);
     }
     load();
   }
@@ -84,57 +83,43 @@ class _OrderFiltersState extends State<OrderFilters> {
     widget.onChanged({
       'companyId': ?validCompany,
       'createdBy': ?validCreator,
-      if (dates != null) 'from': boundary(dates!.start).toIso8601String(),
-      if (dates != null)
-        'to': boundary(
-          dates!.end.add(const Duration(days: 1)),
-        ).toIso8601String(),
+      if (from != null && to != null) 'from': boundary(from!).toIso8601String(),
+      if (from != null && to != null)
+        'to': boundary(to!.add(const Duration(days: 1))).toIso8601String(),
     });
   }
 
-  String day(DateTime value) => '${value.day}/${value.month}/${value.year}';
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          OutlinedButton.icon(
-            icon: const Icon(Icons.date_range_outlined),
-            label: Text(
-              dates == null
-                  ? 'الفترة الزمنية'
-                  : '${day(dates!.start)} – ${day(dates!.end)}',
-            ),
-            onPressed: () async {
-              final selected = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 1)),
-                initialDateRange: dates,
-              );
-              if (selected != null && mounted) {
-                setState(() => dates = selected);
-                emit();
-              }
-            },
-          ),
-          if (dates != null || company != null || creator != null)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  dates = null;
-                  company = null;
-                  creator = null;
-                });
-                emit();
-              },
-              child: const Text('مسح الفلاتر'),
-            ),
-        ],
+      VDateRangeField(
+        from: from,
+        to: to,
+        onChanged: (a, b) {
+          setState(() {
+            from = a;
+            to = b;
+          });
+          emit();
+        },
       ),
+      if (from != null || to != null || company != null || creator != null)
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton(
+            onPressed: () {
+              setState(() {
+                from = null;
+                to = null;
+                company = null;
+                creator = null;
+              });
+              emit();
+            },
+            child: const Text('مسح الفلاتر'),
+          ),
+        ),
       if (error != null)
         TextButton(onPressed: load, child: Text('${error!} • إعادة المحاولة')),
       if (widget.fixedCompanyId == null && companies.isNotEmpty)
