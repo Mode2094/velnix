@@ -45,3 +45,7 @@ __pycache__/
 android/.kotlin/
 
 test/failures/
+
+# macOS
+.DS_Store
+**/.DS_Store

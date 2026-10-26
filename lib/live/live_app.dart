@@ -333,10 +333,12 @@ class _LiveLoginState extends State<LiveLogin> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(
-                Icons.all_inbox_rounded,
-                size: 65,
-                color: VColors.brand,
+              Image.asset(
+                'assets/images/logo.png',
+                width: 96,
+                height: 96,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
               ),
               const SizedBox(height: 15),
               const Text(
@@ -1017,11 +1019,7 @@ class _LiveShellState extends State<LiveShell> {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
             child: Row(
               children: [
-                const Icon(
-                  Icons.all_inbox_rounded,
-                  color: VColors.brand,
-                  size: 28,
-                ),
+                const VBrandMark(size: 30),
                 const SizedBox(width: 9),
                 const Text(
                   'Velnix',
@@ -1151,7 +1149,7 @@ class _LiveShellState extends State<LiveShell> {
         automaticallyImplyLeading: !isPhoneShellWidth(w),
         title: Row(
           children: [
-            const Icon(Icons.all_inbox_rounded, color: VColors.brand, size: 30),
+            const VBrandMark(size: 34),
             const SizedBox(width: 9),
             const Text(
               'Velnix',

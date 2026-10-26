@@ -14,28 +14,24 @@ class VLogo extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF7686FF), VColors.brand, VColors.navy],
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
-          ),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(size * .29),
+          border: Border.all(color: VColors.line),
           boxShadow: [
             BoxShadow(
-              color: VColors.brand.withValues(alpha: .21),
+              color: VColors.brand.withValues(alpha: .18),
               blurRadius: 18,
               offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Center(
-          child: Text(
-            'V',
-            style: TextStyle(
-              fontSize: size * .54,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: EdgeInsets.all(size * .12),
+          child: Image.asset(
+            'assets/images/logo.png',
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
           ),
         ),
       ),
@@ -67,6 +63,32 @@ class VLogo extends StatelessWidget {
         ),
       ],
     ],
+  );
+}
+
+/// Compact, self-contained brand tile: the Velnix logo on a white rounded
+/// surface, suitable for app bars, drawers and login headers.
+class VBrandMark extends StatelessWidget {
+  const VBrandMark({super.key, this.size = 32});
+  final double size;
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(size * .28),
+      border: Border.all(color: VColors.line),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Padding(
+      padding: EdgeInsets.all(size * .12),
+      child: Image.asset(
+        'assets/images/logo.png',
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
+    ),
   );
 }
 

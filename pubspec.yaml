@@ -28,6 +28,7 @@ flutter:
   assets:
     - assets/fonts/Cairo-Regular.ttf
     - assets/fonts/Cairo-Bold.ttf
+    - assets/images/logo.png
   fonts:
     - family: Cairo
       fonts:
