@@ -13,7 +13,7 @@ const selectAll=p=>p.keyboard.press(process.platform==='darwin'?'Meta+A':'Contro
 async function activate(p,locator){await p.bringToFront();await p.waitForTimeout(60);await locator.evaluate(el=>(el.closest('[flt-tappable]')||el).click());await frame(p);}
 async function click(p,name){await activate(p,p.getByRole('button',{name,exact:true}).first());}
 // The redesigned order actions keep status changes in the "إجراءات أخرى" menu.
-async function openMore(p){const chip=p.getByText('إجراءات أخرى',{exact:true}).first();await chip.waitFor({timeout:15000});await activate(p,chip);await frame(p);}
+async function openMore(p){const chip=p.getByText('إجراءات أخرى',{exact:true}).first();await chip.waitFor({state:'attached',timeout:15000});await chip.scrollIntoViewIfNeeded().catch(()=>{});await activate(p,chip);await frame(p);}
 async function moreAction(p,label){await openMore(p);const item=p.getByText(label,{exact:true}).last();await item.waitFor({timeout:15000});await activate(p,item);await frame(p);}
 async function back(p){await activate(p,p.getByRole('button',{name:/رجوع|Back/}).first());}
 async function callable(p,name,data={}){return p.evaluate(async({name,data})=>{const {getApp}=await import('/firebase-sdk/12.19.0/firebase-app.js');const {getFunctions,httpsCallable}=await import('/firebase-sdk/12.19.0/firebase-functions.js');try{return {ok:true,data:(await httpsCallable(getFunctions(getApp(),'europe-west1'),name)(data)).data};}catch(e){return{ok:false,code:e.code};}},{name,data});}
@@ -67,7 +67,9 @@ async function main(){
   const own=await okay(p,'getOrder',{id:orders[role].id});assert.equal(own.order.actions.edit,true);assert.equal(own.order.actions.statuses.length>0,['generalManager','manager','warehouse'].includes(role));
   if(role==='warehouse'){const other=await okay(p,'getOrder',{id:orders.generalManager.id});assert.equal(Object.hasOwn(other.order,'amount'),false);}
   if(!['generalManager','manager'].includes(role)){for(const endpoint of ['listMembers','listAudit','listSyncEvents'])await denied(p,endpoint,{});}
-  await openOrder(p,orders[role]);assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),1);
+  await openOrder(p,orders[role]);
+  const editBtn=p.getByRole('button',{name:'تعديل الطلب',exact:true});
+  await editBtn.waitFor({timeout:15000});assert.equal(await editBtn.count(),1);
   await openMore(p);assert.equal(await p.getByText('تحويل إلى قيد المراجعة',{exact:true}).count(),['generalManager','manager','warehouse'].includes(role)?1:0);await p.keyboard.press('Escape');
   assert.equal(await p.getByText(/حذف الطلب|حذف نهائي/).count(),0);await p.screenshot({path:path.join(out,role+'-permissions.png')});
   await back(p); // Detail app-bar back in RTL.
