@@ -77,6 +77,46 @@ test('an ambiguous Click create keeps needs_review, stores the exact merchant re
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_attempt_failed').get()).size,1);
   clickSendError=null;
 });
+test('a non-ambiguous dispatch failure still persists the deterministic merchant reference',async()=>{
+  clickSendCalls=0;clickReadCalls=0;
+  // A transport-style rejection (not the Int64 ambiguous case) must still keep
+  // VNX-<docId> so the shipment can be verified later with a read-only getorder.
+  clickSendError=Object.assign(new Error('click_send_rejected'),{code:'click_send_rejected',httpStatus:503});
+  const ref=await clickOrder('click_rejected_ref');
+  await assert.rejects(dispatch(ref.id),{code:'unavailable'});
+  const data=(await ref.get()).data();
+  assert.equal(data.dispatchState,'needs_review');
+  assert.equal(data.clickOrderRef,'VNX-'+ref.id,'the deterministic reference is persisted before any read');
+  assert.ok(data.nextClickSyncAt,'the failed dispatch is scheduled for automatic verification');
+});
+test('a confirmed read auto-resolves an uncertain dispatch without creating a shipment',async()=>{
+  clickSendCalls=0;clickReadCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};
+  const ref=await clickOrder('click_auto_resolve',{status:'ready',dispatchState:'needs_review',clickOrderRef:'VNX-click_auto_resolve',syncError:'نتيجة إرسال غير مؤكدة'});
+  const result=await sync(ref.id);
+  assert.equal(result.shippingStatus,'awaitingPickup');
+  const data=(await ref.get()).data();
+  // The shipment demonstrably exists (the read used our unique reference), so the
+  // uncertain dispatch is resolved to sent — and no shipment was created here.
+  assert.equal(data.dispatchState,'sent');
+  assert.equal(data.status,'dispatched');
+  assert.equal(data.syncError,null);
+  assert.equal(data.shippingStatusSource,'click_api');
+  assert.equal(clickSendCalls,0,'auto-resolution never creates a shipment');
+  assert.equal(clickReadCalls,1,'exactly one read call is used');
+  assert.equal((await ref.collection('events').where('action','==','dispatch_exception_resolved').get()).size,1);
+  assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.dispatch_review_auto_resolved').get()).size,1);
+  // Once resolved, a second dispatch is refused.
+  await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
+});
+test('a failed verification read keeps the uncertain dispatch protected',async()=>{
+  clickSendCalls=0;clickReadCalls=0;
+  clickReadError=Object.assign(new Error('timeout'),{name:'AbortError'});
+  const ref=await clickOrder('click_review_unresolved',{status:'ready',dispatchState:'needs_review',clickOrderRef:'VNX-review-unresolved'});
+  await assert.rejects(sync(ref.id),{code:'unavailable'});
+  const data=(await ref.get()).data();
+  assert.equal(data.dispatchState,'needs_review','an inconclusive read never clears the review state');
+  assert.equal(clickSendCalls,0);
+});
 test('the server-side Click send flag keeps the path blocked before any carrier call',async()=>{
   clickSendCalls=0;
   await db.doc('companies/click_fixture').update({clickSendEnabled:false});

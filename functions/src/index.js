@@ -476,7 +476,16 @@ exports.sendOrderToDelivery=callable(async req=>{
       requireOperationalProvider(c);
     }
     snapshot={...o,id:ref.id};
-    tx.update(ref,{dispatchState:'sending',dispatchLockId:lockId,dispatchLockUntil:Timestamp.fromMillis(Date.now()+90000)});
+    // Persist the deterministic Click merchant reference BEFORE the vendor call
+    // so any outcome (transport error, timeout, ambiguous/rejected response) can
+    // still be reconciled with a read-only getorder later. Click's Client_Serial
+    // is `VNX-<docId>` by default (see clickClientSerial), so it is known up
+    // front and never depends on the response.
+    const preRef=c.provider===CLICK_PROVIDER
+      ? (typeof o.clickOrderRef==='string'&&o.clickOrderRef.trim()?o.clickOrderRef.trim():`VNX-${ref.id}`)
+      : null;
+    tx.update(ref,{dispatchState:'sending',dispatchLockId:lockId,dispatchLockUntil:Timestamp.fromMillis(Date.now()+90000),
+      ...(preRef?{clickOrderRef:preRef}:{})});
   });
   let vendorAttempted=false;
   try {
@@ -502,7 +511,7 @@ exports.sendOrderToDelivery=callable(async req=>{
         const clickAmbiguous=vendorAttempted&&e?.code==='click_ambiguous_creation';
         const clickRef=typeof e?.clickOrderRef==='string'?e.clickOrderRef:null;
         const clickSerial=typeof e?.clickClientSerial==='string'?e.clickClientSerial:null;
-        const failure=vendorAttempted?{dispatchState:'needs_review',...(clickRef?{clickOrderRef:clickRef}:{}),...(clickSerial?{clickClientSerial:clickSerial}:{}),syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
+        const failure=vendorAttempted?{dispatchState:'needs_review',nextClickSyncAt:Timestamp.now(),...(clickRef?{clickOrderRef:clickRef}:{}),...(clickSerial?{clickClientSerial:clickSerial}:{}),syncError:clickAmbiguous?'Click قد يكون أنشأ الشحنة رغم رد غير محسوم. تحقق من البوابة أولاً واربط رقم الشحنة الموجود قبل أي إعادة إرسال.':'نتيجة إرسال الشحنة غير مؤكدة. تحقق من شركة التوصيل قبل أي محاولة أخرى، فقد تكون الشحنة قد أُنشئت.'}:{dispatchState:'idle',syncError:'تعذر تجهيز الاتصال بشركة التوصيل؛ لم يبدأ إرسال الشحنة.'};
         tx.update(ref,{...failure,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete()});
         const action=vendorAttempted?'dispatch_attempt_failed':'dispatch_preparation_failed';
         await addEvent(ref.id,action,user,{},tx);await audit('order.'+action,user,ref.id,{},tx);
@@ -667,8 +676,24 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
     const patch={...clearLock,nextClickSyncAt:terminal?null:next,shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',
       shippingStatusUpdatedAt:parsed.statusDateMs!==null?Timestamp.fromMillis(parsed.statusDateMs):now,
       clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,updatedAt:now};
-    if(!unchanged){patch.revision=FieldValue.increment(1);applied=true;}
+    // A read-only getorder that returns a known status for THIS order proves the
+    // shipment exists at Click (the read used our unique merchant reference).
+    // That resolves an uncertain dispatch without ever creating a second
+    // shipment and without inventing a policy number we did not receive.
+    const resolvingReview=o.dispatchState==='needs_review';
+    if(resolvingReview){
+      patch.dispatchState='sent';
+      patch.dispatchLockId=FieldValue.delete();
+      patch.dispatchLockUntil=FieldValue.delete();
+      patch.syncError=null;
+      if(o.status==='ready')patch.status='dispatched';
+    }
+    if(!unchanged||resolvingReview){patch.revision=FieldValue.increment(1);applied=true;}
     tx.update(ref,patch);
+    if(resolvingReview){
+      await addEvent(ref.id,'dispatch_exception_resolved',actor,{outcome:'shipment_exists',rawStatus:parsed.rawStatus,statusDate:parsed.statusDate,source},tx);
+      await audit('order.dispatch_review_auto_resolved',actor,ref.id,{rawStatus:parsed.rawStatus,source},tx);
+    }
     if(!unchanged){
       await addEvent(ref.id,'click_status_synced',actor,{rawStatus:parsed.rawStatus,shippingStatus:parsed.shippingStatus,statusDate:parsed.statusDate,source},tx);
       await audit('order.click_status_synced',actor,ref.id,{rawStatus:parsed.rawStatus,shippingStatus:parsed.shippingStatus,statusDate:parsed.statusDate,source},tx);
