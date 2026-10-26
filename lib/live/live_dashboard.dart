@@ -6,12 +6,14 @@ class LiveDashboard extends StatefulWidget {
     super.key,
     required this.policy,
     required this.onNavigate,
+    this.onOpenBucket,
     this.onOpenStores,
     this.initialFilters = const {},
     this.onFiltersChanged,
   });
   final SessionPolicy policy;
   final void Function(String, String?) onNavigate;
+  final void Function(String bucket)? onOpenBucket;
   final VoidCallback? onOpenStores;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
@@ -212,6 +214,16 @@ class _LiveDashboardState extends State<LiveDashboard> {
     return (count: count, amountMinor: amountMinor, ranked: ranked);
   }
 
+  void _openBucket(String bucket) {
+    final handler = widget.onOpenBucket;
+    if (handler != null) {
+      handler(bucket);
+      return;
+    }
+    // Fallback for embeds without the push handler: keep the filter behaviour.
+    widget.onNavigate(bucket, null);
+  }
+
   Widget _cards(Map<String, dynamic> counters, _ScopeTotals all) {
     final delivery = _scopeTotals(counters['delivery']);
     final internal = _scopeTotals(counters['internal']);
@@ -221,85 +233,32 @@ class _LiveDashboardState extends State<LiveDashboard> {
       icon: Icons.local_shipping_outlined,
       data: delivery,
       bucket: 'delivery',
-      hint: delivery.ranked.isEmpty
-          ? null
-          : '${statusLabels[delivery.ranked.first.key]}: ${delivery.ranked.first.value}',
     );
-    final newCreated = internal.ranked
-        .where((entry) => entry.key == 'created')
-        .fold<int>(0, (total, entry) => total + entry.value);
     final internalCard = _scopeCard(
       title: 'الطلبات غير المسندة لشركة',
       icon: Icons.inventory_2_outlined,
       data: internal,
       bucket: 'internal',
-      hint: internal.count == 0
-          ? 'كل الطلبات مسندة إلى شركات التوصيل.'
-          : 'طلبات بانتظار المتابعة: $newCreated',
     );
     final storesCard = _storesCard();
+    final cards = [allCard, deliveryCard, internalCard, storesCard];
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
-        if (width >= 1100) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(flex: 2, child: allCard),
-                    const SizedBox(width: 14),
-                    Expanded(child: deliveryCard),
-                    const SizedBox(width: 14),
-                    Expanded(child: internalCard),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: storesCard),
-                    const SizedBox(width: 14),
-                    const Expanded(flex: 3, child: SizedBox()),
-                  ],
-                ),
-              ),
-            ],
-          );
-        }
-        if (width >= 480) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              allCard,
-              const SizedBox(height: 14),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: deliveryCard),
-                  const SizedBox(width: 12),
-                  Expanded(child: internalCard),
-                ],
-              ),
-              const SizedBox(height: 14),
-              storesCard,
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        // Desktop: all four in one consistent row. Tablet: two per row.
+        // Mobile: a comfortable two-column grid.
+        final columns = width >= 1100
+            ? 4
+            : width >= 560
+            ? 2
+            : 2;
+        const spacing = 14.0;
+        final tileWidth = (width - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
           children: [
-            allCard,
-            const SizedBox(height: 12),
-            deliveryCard,
-            const SizedBox(height: 12),
-            internalCard,
-            const SizedBox(height: 12),
-            storesCard,
+            for (final card in cards) SizedBox(width: tileWidth, child: card),
           ],
         );
       },
@@ -344,7 +303,7 @@ class _LiveDashboardState extends State<LiveDashboard> {
   );
 
   Widget _allCard(_ScopeTotals data) => _cardShell(
-    onTap: () => widget.onNavigate('all', null),
+    onTap: () => _openBucket('all'),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -399,8 +358,8 @@ class _LiveDashboardState extends State<LiveDashboard> {
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
           ),
         ],
-        const SizedBox(height: 14),
-        _miniStatuses('all', data.ranked.take(3)),
+        const SizedBox(height: 12),
+        _cardSummary(data),
       ],
     ),
   );
@@ -410,9 +369,8 @@ class _LiveDashboardState extends State<LiveDashboard> {
     required IconData icon,
     required _ScopeTotals data,
     required String bucket,
-    String? hint,
   }) => _cardShell(
-    onTap: () => widget.onNavigate(bucket, null),
+    onTap: () => _openBucket(bucket),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -470,15 +428,8 @@ class _LiveDashboardState extends State<LiveDashboard> {
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
           ),
         ],
-        if (hint != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            hint,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: VColors.muted),
-          ),
-        ],
+        const SizedBox(height: 12),
+        _cardSummary(data),
       ],
     ),
   );
@@ -508,44 +459,44 @@ class _LiveDashboardState extends State<LiveDashboard> {
         ),
       );
 
-  Widget _miniStatuses(String bucket, Iterable<MapEntry<String, int>> entries) {
-    if (entries.isEmpty) {
+  /// Concise, non-crowded summary for a dashboard card: the two busiest
+  /// statuses, or a clear empty note. The full breakdown lives on the status
+  /// grid opened by tapping the card.
+  Widget _cardSummary(_ScopeTotals data) {
+    if (data.ranked.isEmpty) {
       return const Text(
         'لا توجد طلبات في هذا النطاق.',
         style: TextStyle(fontSize: 12, color: VColors.muted),
       );
     }
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: [for (final entry in entries) _statusChip(bucket, entry)],
-    );
-  }
-
-  Widget _statusChip(String bucket, MapEntry<String, int> entry) {
-    final color = statusColors[entry.key] ?? VColors.brand;
-    return Semantics(
-      button: true,
-      child: Material(
-        color: color.withValues(alpha: .08),
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: color.withValues(alpha: .16)),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          mouseCursor: SystemMouseCursors.click,
-          onTap: () => widget.onNavigate(bucket, entry.key),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            child: Text(
-              '${statusLabels[entry.key]}: ${entry.value}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+    final top = data.ranked.take(2).toList();
+    return Row(
+      children: [
+        for (final entry in top) ...[
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsetsDirectional.only(end: 6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: statusColors[entry.key] ?? VColors.brand,
             ),
           ),
-        ),
-      ),
+          Flexible(
+            child: Text(
+              '${statusLabels[entry.key]}: ${entry.value}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: VColors.muted,
+              ),
+            ),
+          ),
+          if (entry != top.last) const SizedBox(width: 12),
+        ],
+      ],
     );
   }
 

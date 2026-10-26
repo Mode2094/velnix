@@ -137,10 +137,10 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('status chip inside the total card drills into that status', (
+  testWidgets('tapping an order card opens its bucket status grid', (
     tester,
   ) async {
-    String? navigated;
+    String? openedBucket;
     VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
       if (name == 'dashboardStats') {
         return {
@@ -159,18 +159,69 @@ void main() {
       app(
         LiveDashboard(
           policy: policy(),
-          onNavigate: (bucket, status) =>
-              navigated = '$bucket:${status ?? 'all'}',
+          onNavigate: (_, _) {},
+          onOpenBucket: (bucket) => openedBucket = bucket,
         ),
       ),
     );
     await tester.pumpAndSettle();
-    final chip = find.textContaining('جديد').first;
-    await tester.ensureVisible(chip);
+    for (final entry in {
+      'كل الطلبات': 'all',
+      'طلبات شركات التوصيل': 'delivery',
+      'الطلبات غير المسندة لشركة': 'internal',
+    }.entries) {
+      final target = find.text(entry.key);
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+      expect(openedBucket, entry.value);
+      openedBucket = null;
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the bucket status grid opens orders with the composite filter', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      if (name == 'dashboardStats') {
+        return {
+          'counters': {
+            for (final bucket in ['all', 'delivery', 'internal'])
+              bucket: {
+                for (final status in statusLabels.keys)
+                  status: {
+                    'count': status == 'dispatched' && bucket == 'delivery'
+                        ? 4
+                        : 1,
+                    'amountMinor': 1000,
+                  },
+              },
+          },
+          'partial': false,
+        };
+      }
+      throw StateError(name);
+    });
+    String? opened;
+    await viewport(tester, 390);
+    await tester.pumpWidget(
+      app(
+        LiveBucketStatusGrid(
+          policy: policy(),
+          bucket: 'delivery',
+          onOpenOrders: (bucket, status) => opened = '$bucket:$status',
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(chip);
+    expect(find.text('طلبات شركات التوصيل'), findsWidgets);
+    expect(find.text('تم الإرسال'), findsOneWidget);
+    expect(find.text('4 طلب'), findsOneWidget);
+    await tester.tap(find.text('تم الإرسال'));
     await tester.pumpAndSettle();
-    expect(navigated, 'all:created');
+    expect(opened, 'delivery:dispatched');
     expect(tester.takeException(), isNull);
   });
 

@@ -85,17 +85,18 @@ void main() {
               onNavigate: (bucket, status) {
                 selected = '$bucket:${status ?? 'all'}';
               },
+              onOpenBucket: (bucket) => selected = bucket,
             ),
             scale,
           ),
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        final created = find.textContaining('جديد').first;
-        await tester.ensureVisible(created);
-        await tester.tap(created);
+        final allCard = find.text('كل الطلبات').first;
+        await tester.ensureVisible(allCard);
+        await tester.tap(allCard);
         await tester.pumpAndSettle();
-        expect(selected, 'all:created');
+        expect(selected, 'all');
         expect(tester.takeException(), isNull);
       });
     }

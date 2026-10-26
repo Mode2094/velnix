@@ -25,6 +25,7 @@ import 'gateway.dart';
 
 part 'live_dashboard.dart';
 part 'live_orders.dart';
+part 'live_bucket_status.dart';
 part 'live_admin.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
@@ -1057,6 +1058,25 @@ class _LiveShellState extends State<LiveShell> {
         key: ValueKey('dash$refreshVersion'),
         policy: widget.policy,
         onNavigate: toOrders,
+        onOpenBucket: (bucket) => Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => LiveBucketStatusGrid(
+              policy: widget.policy,
+              bucket: bucket,
+              onOpenOrders: (b, status) => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => LiveOrdersPage(
+                    policy: widget.policy,
+                    bucket: b,
+                    status: status,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         onOpenStores: () => Navigator.push(
           context,
           MaterialPageRoute<void>(builder: (_) => const LiveStores()),
