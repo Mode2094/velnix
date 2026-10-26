@@ -16,7 +16,20 @@ async function click(p,name){await activate(p,p.getByRole('button',{name,exact:t
 // Flutter web may expose the chip only via aria-label, so match either.
 function moreChip(p){return p.locator('[aria-label="إجراءات أخرى"], flt-semantics:has-text("إجراءات أخرى")').first();}
 async function openMore(p){const chip=moreChip(p);await chip.waitFor({state:'attached',timeout:15000});await activate(p,chip);await frame(p);}
-async function moreAction(p,label){await openMore(p);const item=p.locator(`[aria-label="${label}"], flt-semantics:has-text("${label}")`).last();await item.waitFor({state:'attached',timeout:15000});await activate(p,item);await frame(p);}
+async function moreAction(p,label){
+  await openMore(p);
+  await p.waitForTimeout(200);
+  const candidates=[
+    p.getByRole('menuitem',{name:label,exact:true}),
+    p.getByText(label,{exact:true}),
+    p.locator(`[aria-label="${label}"]`),
+    p.locator(`flt-semantics:has-text("${label}")`),
+  ];
+  for(const c of candidates){
+    if(await c.count()>0){await activate(p,c.last());await frame(p);return;}
+  }
+  throw new Error('menu item not found: '+label);
+}
 async function back(p){await activate(p,p.getByRole('button',{name:/رجوع|Back/}).first());}
 async function callable(p,name,data={}){return p.evaluate(async({name,data})=>{const {getApp}=await import('/firebase-sdk/12.19.0/firebase-app.js');const {getFunctions,httpsCallable}=await import('/firebase-sdk/12.19.0/firebase-functions.js');try{return {ok:true,data:(await httpsCallable(getFunctions(getApp(),'europe-west1'),name)(data)).data};}catch(e){return{ok:false,code:e.code};}},{name,data});}
 async function okay(p,name,data){const r=await callable(p,name,data);assert.equal(r.ok,true,`${name}: ${r.code}`);return r.data;}
