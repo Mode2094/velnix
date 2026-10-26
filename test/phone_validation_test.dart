@@ -55,6 +55,9 @@ void main() {
     await pumpForm(tester);
     final phone = find.widgetWithText(TextFormField, 'رقم الهاتف *');
     await tester.ensureVisible(phone);
+    // The counter reflects the 10-digit limit instead of the old 0/30 (both
+    // phone fields show 0/10).
+    expect(find.text('0/10'), findsNWidgets(2));
     // Arabic digits are refused by the input formatter.
     await tester.enterText(phone, '٠٧٩١٢٣٤٥٦٧');
     await tester.pumpAndSettle();
@@ -64,6 +67,7 @@ void main() {
     await tester.enterText(phone, '079123456789');
     await tester.pumpAndSettle();
     expect(controller.text.length, 10);
+    expect(find.text('10/10'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

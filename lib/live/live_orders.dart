@@ -2508,8 +2508,8 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                       : TextDirection.rtl,
                                   maxLength: const {
                                     'customer': 120,
-                                    'phone': 30,
-                                    'extraPhone': 30,
+                                    'phone': 10,
+                                    'extraPhone': 10,
                                     'city': 80,
                                     'area': 120,
                                     'address': 240,
