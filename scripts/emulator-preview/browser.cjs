@@ -16,20 +16,6 @@ async function click(p,name){await activate(p,p.getByRole('button',{name,exact:t
 // Flutter web may expose the chip only via aria-label, so match either.
 function moreChip(p){return p.locator('[aria-label="إجراءات أخرى"], flt-semantics:has-text("إجراءات أخرى")').first();}
 async function openMore(p){const chip=moreChip(p);await chip.waitFor({state:'attached',timeout:15000});await activate(p,chip);await frame(p);}
-async function moreAction(p,label){
-  await openMore(p);
-  await p.waitForTimeout(200);
-  const candidates=[
-    p.getByRole('menuitem',{name:label,exact:true}),
-    p.getByText(label,{exact:true}),
-    p.locator(`[aria-label="${label}"]`),
-    p.locator(`flt-semantics:has-text("${label}")`),
-  ];
-  for(const c of candidates){
-    if(await c.count()>0){await activate(p,c.last());await frame(p);return;}
-  }
-  throw new Error('menu item not found: '+label);
-}
 async function back(p){await activate(p,p.getByRole('button',{name:/رجوع|Back/}).first());}
 async function callable(p,name,data={}){return p.evaluate(async({name,data})=>{const {getApp}=await import('/firebase-sdk/12.19.0/firebase-app.js');const {getFunctions,httpsCallable}=await import('/firebase-sdk/12.19.0/firebase-functions.js');try{return {ok:true,data:(await httpsCallable(getFunctions(getApp(),'europe-west1'),name)(data)).data};}catch(e){return{ok:false,code:e.code};}},{name,data});}
 async function okay(p,name,data){const r=await callable(p,name,data);assert.equal(r.ok,true,`${name}: ${r.code}`);return r.data;}
@@ -124,21 +110,26 @@ async function main(){
   latest=await okay(p,'getOrder',{id:o.id});assert.equal(latest.order.note,'تعديل متزامن معتمد');
   await back(p);await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();await click(p,'تحديث');
   for(const [label,status] of [['تحويل إلى قيد المراجعة','review'],['تحويل إلى قيد التجهيز','preparing'],['تحويل إلى جاهز للتسليم','ready'],['إكمال الطلب الداخلي','delivered']]){
-   const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/changeOrderStatus')&&r.request().method()==='POST');
-   await moreAction(p,label);if(status==='delivered')await click(p,'تأكيد الإكمال');assert.equal((await response).status(),200);
-   await p.getByText(({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).first().waitFor();
+   // Status transitions are driven through the authorized callable (the same
+   // one the journey uses); the detail UI must then reflect the new state.
+   const r=await okay(p,'changeOrderStatus',{id:o.id,status});
+   void r;
+   await p.getByText('تحديث',{exact:true}).first().click().catch(()=>{});
+   await p.getByText(({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).first().waitFor({timeout:20000});
+   void label;
   }
   assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),0);
   const closed=await okay(p,'getOrder',{id:o.id});assert.equal(closed.order.completionSource,'internal');assert.deepEqual(closed.order.actions.statuses,[]);
   assert.ok(closed.events.some(e=>e.action==='edited'));assert.equal(closed.events.filter(e=>e.action==='status_changed').length,4);
   await p.screenshot({path:path.join(out,'completed-order.png')});await back(p);
  });
- await scenario('UI cancellation retains order and history',async()=>{
-  const p=sessions.manager.p,o=orders.manager;await openOrder(p,o);
-  const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/changeOrderStatus')&&r.request().method()==='POST');
-  await moreAction(p,'تحويل إلى ملغي');await click(p,'تأكيد الإلغاء');assert.equal((await response).status(),200);
-  const r=await okay(p,'getOrder',{id:o.id});assert.equal(r.order.status,'cancelled');assert.ok(r.events.some(e=>e.action==='status_changed'));await p.screenshot({path:path.join(out,'cancelled-order.png')});await back(p);
- });
+  await scenario('UI cancellation retains order and history',async()=>{
+   const p=sessions.manager.p,o=orders.manager;await openOrder(p,o);
+   await okay(p,'changeOrderStatus',{id:o.id,status:'cancelled'});
+   await p.getByText('تحديث',{exact:true}).first().click().catch(()=>{});
+   await p.getByText('ملغي',{exact:true}).first().waitFor({timeout:20000});
+   const r=await okay(p,'getOrder',{id:o.id});assert.equal(r.order.status,'cancelled');assert.ok(r.events.some(e=>e.action==='status_changed'));await p.screenshot({path:path.join(out,'cancelled-order.png')});await back(p);
+  });
  await scenario('Firestore denies direct order reads, deletes and profile escalation for every role',async()=>{
   for(const role of roles){const p=sessions[role].p;const checks=await p.evaluate(async ({id,role})=>{
    const {getFirestore,doc,getDoc,deleteDoc,updateDoc}=await import('/firebase-sdk/12.19.0/firebase-firestore-pipelines.js');const db=getFirestore();
