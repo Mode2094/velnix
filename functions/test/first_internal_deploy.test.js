@@ -14,12 +14,12 @@ test('actual SDK discovery sees only 23 internal endpoints and no Scheduler requ
  try{
   const dest=prepare(path.join(tmp,'bundle'));
   const full=manifest(path.join(root,'functions'),path.join(tmp,'full.json'));
-  assert.equal(Object.keys(full.endpoints).length,40);assert.ok(full.requiredAPIs.some(a=>a.api==='cloudscheduler.googleapis.com'));
+  assert.equal(Object.keys(full.endpoints).length,41);assert.ok(full.requiredAPIs.some(a=>a.api==='cloudscheduler.googleapis.com'));
   const m=manifest(path.join(dest,'functions'),path.join(tmp,'internal.json'));
-  assert.deepEqual(Object.keys(m.endpoints).sort(),[...plan.functions].sort());assert.equal(Object.keys(m.endpoints).length,23);
+  assert.deepEqual(Object.keys(m.endpoints).sort(),[...plan.functions].sort());assert.equal(Object.keys(m.endpoints).length,24);
   assert.ok((m.requiredAPIs||[]).every(a=>!['cloudscheduler.googleapis.com','fcm.googleapis.com','cloudkms.googleapis.com'].includes(a.api)));
   assert.ok(forbidden.every(n=>!m.endpoints[n]));
-  assert.equal(Object.values(m.endpoints).filter(e=>e.callableTrigger).length,22);
+  assert.equal(Object.values(m.endpoints).filter(e=>e.callableTrigger).length,23);
   assert.equal(Object.values(m.endpoints).filter(e=>e.eventTrigger).length,1);
   assert.equal(plan.firestoreLocation,'nam5');
   assert.deepEqual(m.endpoints.orderEventNotice.region,['us-central1']);

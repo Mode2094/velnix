@@ -955,6 +955,21 @@ class _LiveMembersState extends State<LiveMembers> {
                             : () => guard(() => _edit(m, items)),
                         icon: const Icon(Icons.settings_outlined),
                       ),
+                      IconButton(
+                        tooltip: 'حذف الموظف',
+                        onPressed:
+                            (operating ||
+                                m['id'] == widget.policy.id ||
+                                !widget.policy.canGrantRole(
+                                  m['role'].toString(),
+                                ))
+                            ? null
+                            : () => _confirmDelete(m),
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: VColors.danger,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -992,6 +1007,46 @@ class _LiveMembersState extends State<LiveMembers> {
       ),
     );
     if (done == true) refresh();
+  }
+
+  Future<void> _confirmDelete(Map<String, dynamic> m) async {
+    final label = '${m['name'] ?? ''} (${m['email'] ?? ''})'.trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف الموظف'),
+        content: Text(
+          'سيتم إزالة «$label» من فريق العمل وتعطيل حساب الدخول.\n\n'
+          'لا تُحذف الطلبات أو سجل التدقيق المرتبط به؛ تبقى محفوظة في النظام.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: VColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+    await guard(() async {
+      try {
+        await VelnixGateway.instance.call('deleteMember', {'id': m['id']});
+        VelnixGateway.instance.invalidate('listMembers');
+        VelnixGateway.instance.invalidate('listOrderCreators');
+        if (mounted) {
+          showSuccess(context, 'تم حذف الموظف');
+          refresh();
+        }
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
+    });
   }
 }
 

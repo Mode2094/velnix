@@ -6,7 +6,7 @@ const plan=JSON.parse(fs.readFileSync(path.join(root,'config/first-internal-depl
 const forbidden=['deliveryWebhook','reconcileDeliveryStatuses','pushNotice','registerDevice','unregisterDevice','assignCompany','saveCompany','archiveCompany','restoreCompany','testCompanyConnection','sendOrderToDelivery','resolveDispatchException','reconcileClickShipment','syncClickOrder','syncClickStatuses'];
 function prepare(destination=path.join(root,'build/first-internal')){
  assert.equal(plan.projectId,'velnix-6c1a2');assert.equal(plan.cloudChangesAuthorized,false);
- assert.equal(plan.functions.length,23);assert.equal(new Set(plan.functions).size,23);
+  assert.equal(plan.functions.length,24);assert.equal(new Set(plan.functions).size,24);
  assert.ok(forbidden.every(n=>!plan.functions.includes(n)));
  assert.ok(plan.functions.every(n=>/^[A-Za-z][A-Za-z0-9]+$/.test(n)));
  if(fs.existsSync(destination))throw Error('destination_exists_refusing_overwrite');

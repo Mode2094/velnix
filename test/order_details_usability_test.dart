@@ -161,14 +161,16 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('تتبع الشحنة'), findsOneWidget);
-    expect(find.text('رقم البوليصة: 1318368'), findsOneWidget);
-    expect(find.text('حالة الشحنة: قيد انتظار الموافقة'), findsOneWidget);
+    expect(find.text('رقم البوليصة'), findsOneWidget);
+    expect(find.text('1318368'), findsOneWidget);
+    expect(find.text('حالة الشحنة'), findsOneWidget);
+    expect(find.text('قيد انتظار الموافقة'), findsWidgets);
     expect(find.text('مزامنة الحالة'), findsOneWidget);
     expect(
       find.widgetWithText(FilledButton, 'إرسال إلى Click'),
       findsOneWidget,
     );
-    expect(find.text('تفاصيل تقنية'), findsNothing);
+    expect(find.text('تفاصيل تقنية'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

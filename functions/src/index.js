@@ -706,8 +706,24 @@ exports.syncClickStatuses=onSchedule({schedule:'every 15 minutes',region:REGION,
 });
 exports.listMembers=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
-  const collection=db.collection('members');const page=await directoryPage(collection,collection,req.data);
-  return {more:page.more,afterId:page.afterId,items:page.docs.map(d=>({id:d.id,name:d.data().name,email:d.data().email,role:d.data().role,active:d.data().active,
+  const data=req.data||{};
+  if(typeof data!=='object'||Array.isArray(data))fail('invalid-argument','طلب غير صالح');
+  const size=data.pageSize??30;
+  if(!Number.isSafeInteger(size)||size<1||size>100)fail('invalid-argument','حجم الصفحة غير صالح');
+  // Soft-deleted (archived) members stay in Firestore for order/audit integrity
+  // but never appear in the team list. Filtering is in-memory because a
+  // Firestore inequality on `archived` cannot combine with the name orderBy
+  // without a new composite index, and the team collection stays small.
+  const snap=await db.collection('members').orderBy('name').get();
+  if(data.query!=null&&typeof data.query!=='string')fail('invalid-argument','طلب غير صالح');
+  const term=(data.query||'').trim();
+  if(term.length>80)fail('invalid-argument','نص بحث طويل');
+  let rows=snap.docs.filter(d=>d.data().archived!==true);
+  if(term)rows=rows.filter(d=>String(d.data().name||'').includes(term));
+  let start=0;
+  if(data.afterId){const id=documentId(data.afterId);const at=rows.findIndex(d=>d.id===id);start=at<0?0:at+1;}
+  const page=rows.slice(start,start+size);
+  return {more:rows.length>start+size,afterId:page.at(-1)?.id||null,items:page.map(d=>({id:d.id,name:d.data().name,email:d.data().email,role:d.data().role,active:d.data().active,
     permissions:d.data().permissions||[],salesSupervisorId:d.data().salesSupervisorId||null}))};
 });
 exports.saveMember=callable(async req=>{
@@ -754,6 +770,39 @@ exports.saveMember=callable(async req=>{
     return {id};
   }
   fail('failed-precondition','إضافة الموظف تتطلب طلب انضمام Google وموافقة المدير العام');
+});
+// Soft-delete a member: archive the profile and disable the Auth account so
+// the employee disappears from the team list without destroying orders or
+// audit history. Orders store createdByName/createdByRole denormalised, so
+// they still render, and the archived doc keeps createdBy references valid.
+exports.deleteMember=callable(async req=>{
+  const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
+  const id=idValue(req.data?.id);
+  if(id===user.id)fail('permission-denied','لا يمكنك حذف حسابك');
+  const target=await db.doc('members/'+id).get();
+  if(!target.exists)fail('not-found','الموظف غير موجود');
+  const role=target.data().role;
+  // A general manager may delete anyone but the last active general manager.
+  // Everyone else may only remove staff ranked below them.
+  if(user.role!=='generalManager'&&['manager','generalManager'].includes(role))fail('permission-denied','لا يمكنك حذف هذا الحساب');
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const latest=await tx.get(target.ref);
+    if(!latest.exists)fail('not-found','الموظف غير موجود');
+    if(latest.data().archived===true)fail('failed-precondition','الموظف محذوف بالفعل');
+    if(id===user.id)fail('permission-denied','لا يمكنك حذف حسابك');
+    if(user.role!=='generalManager'&&['manager','generalManager'].includes(latest.data().role))fail('permission-denied','لا يمكنك حذف الإدارة');
+    if(latest.data().role==='generalManager'&&latest.data().active===true){
+      const managers=await tx.get(db.collection('members').where('role','==','generalManager').where('active','==',true));
+      const others=managers.docs.filter(d=>d.id!==id&&d.data().archived!==true);
+      if(others.length===0)fail('failed-precondition','لا يمكن حذف آخر مدير عام فعال');
+    }
+    tx.update(target.ref,{active:false,archived:true,deletedAt:FieldValue.serverTimestamp(),deletedBy:user.id,updatedAt:FieldValue.serverTimestamp()});
+    await audit('member.deleted',user,id,{role},tx);
+  });
+  await getAuth().updateUser(id,{disabled:true}).catch(e=>{if(e.code!=='auth/user-not-found')throw e;});
+  await getAuth().revokeRefreshTokens(id).catch(()=>{});
+  return {ok:true};
 });
 
 function employeePassword(value){
@@ -964,11 +1013,24 @@ exports.listOrderCreators=callable(async req=>{
     if(user.role==='sales')query=query.where('salesSupervisorId','==',user.id).where('role','==','dataEntry');
     else query=query.where(FieldPath.documentId(),'==',user.id);
   }
-  const page=await directoryPage(collection,query,req.data);
-  const items=page.docs.map(d=>({id:d.id,name:d.data().name}));
+  // Fetch and filter archived in-memory alongside the existing in-memory cursor
+  // semantics; the members collection is small. A Firestore `archived != true`
+  // would silently drop members whose field is absent, so filter locally.
+  const snap=await query.get();
+  let rows=snap.docs.filter(d=>d.data().archived!==true);
+  if(req.data?.query!=null&&typeof req.data.query!=='string')fail('invalid-argument','طلب غير صالح');
+  const term=(req.data?.query||'').trim();
+  if(term)rows=rows.filter(d=>(d.data().name||'').includes(term));
+  rows.sort((a,b)=>String(a.data().name||'').localeCompare(String(b.data().name||''),'ar'));
+  let start=0;
+  if(req.data?.afterId){const id=documentId(req.data.afterId);const at=rows.findIndex(d=>d.id===id);start=at<0?0:at+1;}
+  const size=req.data?.pageSize??30;
+  if(!Number.isSafeInteger(size)||size<1||size>100)fail('invalid-argument','حجم الصفحة غير صالح');
+  const page=rows.slice(start,start+size);
+  const items=page.map(d=>({id:d.id,name:d.data().name}));
   // A sales supervisor's own name is available on page one without duplicating team cursors.
-  if(user.role==='sales'&&!req.data?.afterId&&!(req.data?.query||'').trim()&& !items.some(m=>m.id===user.id))items.unshift({id:user.id,name:user.name});
-  return {items,more:page.more,afterId:page.afterId};
+  if(user.role==='sales'&&!req.data?.afterId&&!term&&!items.some(m=>m.id===user.id))items.unshift({id:user.id,name:user.name});
+  return {items,more:rows.length>start+size,afterId:page.at(-1)?.id||null};
 });
 
 exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();return {organizationName:snap.data()?.organizationName||'Velnix',receiptFooter:snap.data()?.receiptFooter||'',supportPhone:snap.data()?.supportPhone||''};});

@@ -108,35 +108,25 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          expect(find.text('حالة الشحنة: ${state.label}'), findsOneWidget);
-          expect(
-            find.text('مصدر حالة الشحنة: إدخال يدوي بعد التحقق من بوابة Click'),
-            findsOneWidget,
-          );
-          expect(find.text('رقم البوليصة: 1318368'), findsAtLeastNWidgets(1));
-          expect(
-            find.text('مرجع Click (Order_ID): VNX-CLICK-TEST-20261019-d'),
-            findsOneWidget,
-          );
-          // The technical panel is removed from the client order details;
-          // Firebase ids and raw provider payloads never reach this screen.
-          expect(find.text('تفاصيل تقنية'), findsNothing);
+          expect(find.text('حالة الشحنة'), findsOneWidget);
+          expect(find.text(state.label), findsWidgets);
+          expect(find.text('رقم البوليصة'), findsOneWidget);
+          expect(find.text('1318368'), findsAtLeastNWidgets(1));
+          // Technical identifiers live behind the collapsed "تفاصيل تقنية"
+          // panel rather than the primary tracking view.
+          expect(find.text('تفاصيل تقنية'), findsOneWidget);
           expect(
             find.textContaining('المرجع الأصلي لكود التاجر'),
             findsNothing,
           );
           expect(find.textContaining('رقم الطلب الداخلي'), findsNothing);
 
-          expect(
-            find.text('ملاحظة شركة التوصيل: شحنة قيد انتظار الموافقة'),
-            findsOneWidget,
-          );
+          expect(find.text('ملاحظة شركة التوصيل'), findsOneWidget);
           expect(find.text('تم الإرسال'), findsAtLeastNWidgets(1));
           expect(find.textContaining('987.654'), findsNothing);
           expect(find.textContaining('543.210'), findsNothing);
           expect(find.textContaining('876.543'), findsNothing);
           if (role == 'generalManager') {
-            expect(find.textContaining('ليست مبلغ التحصيل'), findsOneWidget);
             expect(find.textContaining('12.345'), findsOneWidget);
           } else {
             expect(find.textContaining('12.345'), findsNothing);
@@ -337,10 +327,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('مزامنة الحالة'), findsOneWidget);
-      expect(
-        find.text('مصدر حالة الشحنة: تحديث تلقائي مؤكد من Click API'),
-        findsOneWidget,
-      );
+      expect(find.text('تفاصيل تقنية'), findsOneWidget);
       expect(find.text('ربط شحنة Click موجودة'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

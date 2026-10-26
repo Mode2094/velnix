@@ -258,6 +258,45 @@ test('password employee creation is refused and delegated managers cannot escala
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'warehouse-escalation@velnix.test',password:'LocalTestingOnly123!',role:'warehouse',active:true,permissions:[]}),{code:'permission-denied'});
   await assert.rejects(invoke('saveMember','manager',{name:'Escalation',email:'escalation@velnix.test',password:'LocalTestingOnly123!',role:'dataEntry',active:true,permissions:['manageCompanies']}),{code:'permission-denied'});
 });
+test('deleteMember archives the profile, disables the account, keeps orders and audit, and enforces rank guards',async()=>{
+  await db.doc('members/manager').update({permissions:['manageEmployees']});
+  // A removable target ranked below the operator.
+  await db.doc('members/delete_target').set({name:'حذف الهدف',role:'dataEntry',active:true,permissions:[],salesSupervisorId:null});
+  const order=db.doc('orders/delete_target_order');
+  await order.set({...payload,createdBy:'delete_target',createdByName:'حذف الهدف',createdByRole:'dataEntry',status:'created',companyId:null,hasDelivery:false,amountMinor:1000});
+  // Ordinary staff without manageEmployees cannot delete at all.
+  await assert.rejects(invoke('deleteMember','entry',{id:'delete_target'}),{code:'permission-denied'});
+  // A manager cannot remove a general manager.
+  await assert.rejects(invoke('deleteMember','manager',{id:'gm'}),{code:'permission-denied'});
+  // Nobody can delete themselves.
+  await assert.rejects(invoke('deleteMember','gm',{id:'gm'}),{code:'permission-denied'});
+  // The general manager removes the employee.
+  await invoke('deleteMember','gm',{id:'delete_target'});
+  const archived=(await db.doc('members/delete_target').get()).data();
+  assert.equal(archived.archived,true);
+  assert.equal(archived.active,false);
+  assert.equal(archived.deletedBy,'gm');
+  // The order and its audit entry survive; the archived profile keeps the
+  // createdBy reference resolvable.
+  assert.ok((await order.get()).exists);
+  assert.equal((await db.collection('auditEvents').where('entityId','==','delete_target').where('action','==','member.deleted').get()).size,1);
+  // Archived members never appear in the team list or the creator directory.
+  const listed=await invoke('listMembers','gm',{pageSize:100});
+  assert.ok(!listed.items.some(m=>m.id==='delete_target'));
+  const creators=await invoke('listOrderCreators','gm',{pageSize:100});
+  assert.ok(!creators.items.some(m=>m.id==='delete_target'));
+  // Deleting twice is refused.
+  await assert.rejects(invoke('deleteMember','gm',{id:'delete_target'}),{code:'failed-precondition'});
+  // The last active general manager cannot be removed.
+  await db.doc('members/gm_only').set({name:'المدير الوحيد',role:'generalManager',active:true,permissions:[]});
+  await db.doc('members/gm').update({active:false});
+  await assert.rejects(invoke('deleteMember','gm',{id:'gm_only'}),{code:'permission-denied'}); // demoted cannot operate
+  await db.doc('members/gm').update({active:true});
+  await invoke('deleteMember','gm',{id:'gm_only'});
+  // The operator (gm) is now the only active general manager and is protected.
+  await assert.rejects(invoke('deleteMember','gm',{id:'gm'}),{code:'permission-denied'});
+  await db.doc('members/manager').update({permissions:[]});
+});
 test('durable notices survive duplicate event delivery without resetting read state or leaking scope',async()=>{
   await db.doc('members/manager').update({permissions:[]});
   const snap=await db.collection('orders/'+orderId+'/events').limit(1).get();

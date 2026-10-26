@@ -759,11 +759,212 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     return null;
   }
 
+  /// Colour and icon for each confirmed carrier state. Colour alone never
+  /// carries meaning: the icon and the Arabic label always accompany it.
+  Color _shippingColor(ShippingStatus? status) => switch (status) {
+    ShippingStatus.awaitingPickup => const Color(0xFFB26A00),
+    ShippingStatus.carrierWarehouse => const Color(0xFF5B4BC4),
+    ShippingStatus.outForDelivery => const Color(0xFF176391),
+    ShippingStatus.delivered => const Color(0xFF006D55),
+    ShippingStatus.partiallyDelivered => const Color(0xFF00756F),
+    ShippingStatus.deferred => const Color(0xFF965B10),
+    ShippingStatus.cancelled => VColors.danger,
+    null => VColors.muted,
+  };
+
+  IconData _shippingIcon(ShippingStatus? status) => switch (status) {
+    ShippingStatus.awaitingPickup => Icons.hourglass_top_outlined,
+    ShippingStatus.carrierWarehouse => Icons.warehouse_outlined,
+    ShippingStatus.outForDelivery => Icons.local_shipping_outlined,
+    ShippingStatus.delivered => Icons.check_circle_outline,
+    ShippingStatus.partiallyDelivered => Icons.rule_outlined,
+    ShippingStatus.deferred => Icons.schedule_outlined,
+    ShippingStatus.cancelled => Icons.cancel_outlined,
+    null => Icons.help_outline,
+  };
+
+  /// Prominent current shipment state: large label with a matching icon and
+  /// colour, plus the source in a quiet sub-line.
+  Widget _shippingStatusBanner(ShippingStatus? status, String label) {
+    final color = _shippingColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: .28)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color.withValues(alpha: .16),
+            ),
+            child: Icon(_shippingIcon(status), color: color, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'حالة الشحنة',
+                  style: TextStyle(color: VColors.muted, fontSize: 11.5),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A single compact, tappable-when-copyable tracking row.
+  Widget _trackingRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    VoidCallback? onCopy,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Row(
+      children: [
+        Icon(icon, size: 16, color: VColors.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(color: VColors.muted, fontSize: 11.5),
+              ),
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (onCopy != null)
+          IconButton(
+            tooltip: 'نسخ',
+            visualDensity: VisualDensity.compact,
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy_outlined, size: 18),
+          ),
+      ],
+    ),
+  );
+
+  /// Collapsed technical diagnostics. Data stays in Firestore; it is simply
+  /// kept out of the primary view.
+  Widget _technicalDetails(
+    Map<String, dynamic> o,
+    String? policyNumber,
+    String? clickRef,
+  ) {
+    final rows = <MapEntry<String, String>>[
+      if (clickRef != null && clickRef.isNotEmpty)
+        MapEntry('مرجع Click', clickRef),
+      if (o['clickClientSerial']?.toString().isNotEmpty == true)
+        MapEntry('كود التاجر', o['clickClientSerial'].toString()),
+      if (o['providerOrderId'] != null)
+        MapEntry('Order_ID', o['providerOrderId'].toString()),
+      if (o['revision'] != null) MapEntry('مراجعة الطلب', '${o['revision']}'),
+      if (o['shippingStatusSource'] != null)
+        MapEntry('مصدر الحالة', _sourceLabel(o['shippingStatusSource'])),
+      if (o['clickStatusRaw'] != null)
+        MapEntry('الحالة الخام من Click', o['clickStatusRaw'].toString()),
+      if (o['syncError'] != null)
+        MapEntry('تشخيص المزامنة', '${o['syncError']}'),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 4),
+          leading: const Icon(Icons.tune, size: 18, color: VColors.muted),
+          title: const Text(
+            'تفاصيل تقنية',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+          children: [
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 140,
+                      child: Text(
+                        row.key,
+                        style: const TextStyle(
+                          color: VColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SelectableText(
+                        row.value,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Compact visual track for the four genuine forward stages. Special states
+  /// (partial delivery, deferred, cancelled) never masquerade as a linear step.
   Widget _trackingVisual(ShippingStatus? status) {
     if (status == null) {
-      return const Text(
-        'لم تُرسل الشحنة بعد.',
-        style: TextStyle(color: VColors.muted, fontSize: 12),
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: VColors.softBlue,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.inventory_2_outlined, color: VColors.muted, size: 18),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'لم تُرسل إلى شركة التوصيل بعد.',
+                style: TextStyle(color: VColors.muted, fontSize: 12.5),
+              ),
+            ),
+          ],
+        ),
       );
     }
     const special = {
@@ -772,11 +973,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
       ShippingStatus.cancelled,
     };
     if (special.contains(status)) {
-      final color = status == ShippingStatus.cancelled
-          ? VColors.danger
-          : status == ShippingStatus.deferred
-          ? VColors.warning
-          : VColors.aqua;
+      final color = _shippingColor(status);
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -786,15 +983,8 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         ),
         child: Row(
           children: [
-            Icon(
-              status == ShippingStatus.cancelled
-                  ? Icons.cancel_outlined
-                  : status == ShippingStatus.deferred
-                  ? Icons.schedule_outlined
-                  : Icons.rule_outlined,
-              color: color,
-            ),
-            const SizedBox(width: 8),
+            Icon(_shippingIcon(status), color: color, size: 20),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -804,12 +994,12 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                     style: TextStyle(
                       color: color,
                       fontWeight: FontWeight.w900,
-                      fontSize: 12.5,
+                      fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 2),
                   const Text(
-                    'هذه الحالة لا تُعرض كمسار خطي حتى لا تُفهم بشكل خاطئ.',
+                    'لا تُعرض كمسار خطي حتى لا تُفهم بشكل خاطئ.',
                     style: TextStyle(color: VColors.muted, fontSize: 11),
                   ),
                 ],
@@ -825,70 +1015,68 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
       ShippingStatus.outForDelivery,
       ShippingStatus.delivered,
     ];
-    const labels = ['بانتظار الموافقة', 'مخزن الشحن', 'في الشحن', 'تم التسليم'];
+    const shortLabels = ['بالانتظار', 'المخزن', 'في الشحن', 'تم التسليم'];
     final current = steps.indexOf(status);
     if (current < 0) return const SizedBox.shrink();
+    final activeColor = _shippingColor(status);
+    // RTL-aware: index 0 renders on the right because the Row is inside an
+    // Arabic Directionality, which already mirrors the visual order.
     return Column(
       children: [
         Row(
           children: [
-            for (var i = 0; i < steps.length; i++)
-              Expanded(
-                child: Row(
-                  children: [
-                    if (i > 0)
-                      Expanded(
-                        child: Container(
-                          height: 3,
-                          color: i <= current ? VColors.aqua : VColors.line,
-                        ),
-                      ),
-                    Container(
-                      width: 22,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i <= current ? VColors.aqua : VColors.softBlue,
-                      ),
-                      child: Icon(
-                        i < current
-                            ? Icons.check
-                            : i == current
-                            ? Icons.circle
-                            : Icons.circle_outlined,
-                        size: i == current ? 9 : 13,
-                        color: i <= current ? Colors.white : VColors.muted,
-                      ),
-                    ),
-                    if (i < steps.length - 1)
-                      Expanded(
-                        child: Container(
-                          height: 3,
-                          color: i < current ? VColors.aqua : VColors.line,
-                        ),
-                      ),
-                  ],
+            for (var i = 0; i < steps.length; i++) ...[
+              if (i > 0)
+                Expanded(
+                  child: Container(
+                    height: 3,
+                    color: i <= current ? activeColor : VColors.line,
+                  ),
+                ),
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i < current
+                      ? activeColor
+                      : i == current
+                      ? activeColor
+                      : VColors.softBlue,
+                  border: i == current
+                      ? Border.all(color: Colors.white, width: 2)
+                      : null,
+                ),
+                child: Icon(
+                  i < current
+                      ? Icons.check
+                      : i == current
+                      ? _shippingIcon(status)
+                      : Icons.circle_outlined,
+                  size: i == current ? 12 : 14,
+                  color: i <= current ? Colors.white : VColors.muted,
                 ),
               ),
+            ],
           ],
         ),
         const SizedBox(height: 6),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (var i = 0; i < labels.length; i++)
+            for (var i = 0; i < shortLabels.length; i++)
               Expanded(
                 child: Text(
-                  labels[i],
+                  shortLabels[i],
                   textAlign: TextAlign.center,
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: i == current ? VColors.brand : VColors.muted,
+                    color: i == current ? activeColor : VColors.muted,
                     fontWeight: i == current
-                        ? FontWeight.w800
+                        ? FontWeight.w900
                         : FontWeight.w500,
-                    fontSize: 10,
+                    fontSize: 10.5,
                   ),
                 ),
               ),
@@ -1423,45 +1611,70 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _sectionTitle('تتبع الشحنة', Icons.local_shipping_outlined),
+                    if (company != null) ...[
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.business_outlined,
+                            size: 16,
+                            color: VColors.muted,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              company,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    _shippingStatusBanner(shippingState, shippingLabel),
+                    const SizedBox(height: 12),
                     _trackingVisual(shippingState),
-                    const SizedBox(height: 8),
-                    _infoLine('حالة الشحنة', shippingLabel),
-                    _infoLine(
-                      'رقم البوليصة',
-                      policyNumber,
-                      copy: policyNumber != null,
-                      copyMessage: 'تم نسخ رقم البوليصة',
-                    ),
-                    _infoLine(
-                      'مرجع Click (Order_ID)',
-                      clickRef,
-                      copy: clickRef != null,
-                      copyMessage: 'تم نسخ مرجع Click',
-                    ),
-                    _infoLine(
-                      'آخر تحديث مؤكد من Click',
-                      businessDate(
+                    const SizedBox(height: 14),
+                    if (policyNumber != null && policyNumber.isNotEmpty)
+                      _trackingRow(
+                        icon: Icons.confirmation_number_outlined,
+                        label: 'رقم البوليصة',
+                        value: policyNumber,
+                        onCopy: () =>
+                            _copy(policyNumber, 'تم نسخ رقم البوليصة'),
+                      ),
+                    _trackingRow(
+                      icon: Icons.cloud_sync_outlined,
+                      label: 'آخر تحديث من شركة التوصيل',
+                      value: businessDate(
                         o['shippingStatusUpdatedAt'] ?? o['clickStatusDate'],
                       ),
                     ),
-                    _infoLine('آخر مزامنة', businessDate(o['lastSyncAt'])),
-                    _infoLine(
-                      'مصدر حالة الشحنة',
-                      _sourceLabel(o['shippingStatusSource']),
+                    _trackingRow(
+                      icon: Icons.sync,
+                      label: 'آخر مزامنة',
+                      value: businessDate(o['lastSyncAt']),
                     ),
-                    _infoLine('ملاحظة شركة التوصيل', o['clickStatusNote']),
-                    if (isClick && o['amount'] != null)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          'قيمة الطلب المسجلة ليست مبلغ التحصيل أو صافي التسوية.',
-                          style: TextStyle(color: VColors.muted, fontSize: 11),
-                        ),
+                    if (o['clickStatusNote'] != null &&
+                        o['clickStatusNote'].toString().trim().isNotEmpty)
+                      _trackingRow(
+                        icon: Icons.sticky_note_2_outlined,
+                        label: 'ملاحظة شركة التوصيل',
+                        value: o['clickStatusNote'].toString(),
                       ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 12),
                     FilledButton.tonalIcon(
                       onPressed: canSync && !actionBusy ? _syncClick : null,
-                      icon: const Icon(Icons.sync),
+                      icon: actionBusy
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
                       label: const Text('مزامنة الحالة'),
                     ),
                     if (!canSync)
@@ -1475,17 +1688,43 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                     if (_syncFeedback != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          _syncFeedback!,
-                          style: TextStyle(
-                            color: _syncFeedbackOk
-                                ? VColors.aqua
-                                : VColors.danger,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _syncFeedbackOk
+                                  ? Icons.check_circle_outline
+                                  : Icons.error_outline,
+                              size: 16,
+                              color: _syncFeedbackOk
+                                  ? VColors.aqua
+                                  : VColors.danger,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _syncFeedback!,
+                                style: TextStyle(
+                                  color: _syncFeedbackOk
+                                      ? VColors.aqua
+                                      : VColors.danger,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
+                    if (_syncFeedback != null && !_syncFeedbackOk)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton.icon(
+                          onPressed: actionBusy ? null : _syncClick,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('إعادة المحاولة'),
+                        ),
+                      ),
+                    _technicalDetails(o, policyNumber, clickRef),
                   ],
                 ),
               )
