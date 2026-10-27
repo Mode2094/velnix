@@ -219,7 +219,10 @@ async function resolveOrderPage(user,pageIdRaw){
   const page=snap.data();
   if(page.archived===true)fail('failed-precondition','لا يمكن استخدام صفحة مؤرشفة لإنشاء طلب');
   if(page.active===false)fail('failed-precondition','لا يمكن استخدام صفحة معطلة لإنشاء طلب');
-  if(user.role!=='generalManager'&&!can(user,'managePages')){
+  // Only the general manager is exempt. Holding managePages grants administration
+  // of pages, NOT the right to create orders for a page that is not on the
+  // employee's allowed list. This is enforced server-side.
+  if(user.role!=='generalManager'){
     const allowed=Array.isArray(user.allowedPageIds)?user.allowedPageIds:[];
     if(!allowed.includes(pageId))fail('permission-denied','هذه الصفحة الإلكترونية غير مصرح لك بها');
   }
@@ -267,7 +270,15 @@ exports.createOrder=callable(async req=>{
   if(!/^[a-zA-Z0-9_-]{16,80}$/.test(requestKey))fail('invalid-argument','مفتاح إنشاء الطلب غير صالح');
   const uniqueId=crypto.createHash('sha256').update(`${user.id}:${requestKey}`).digest('hex');
   const idemRef=db.doc(`idempotency/${uniqueId}`);
-  const payloadHash=crypto.createHash('sha256').update(JSON.stringify(fields)).digest('hex');
+  // The idempotency hash must cover every field that defines the order's
+  // identity/content, including the electronic page, the delivery company and
+  // the order type. Reusing the same requestKey with a different page/company/
+  // type is a genuine conflict, never a silent return of the old order.
+  const payloadHash=crypto.createHash('sha256').update(JSON.stringify({
+    ...fields,
+    pageId:pageSnapshot.pageId,
+    companyId:companyId||null,
+  })).digest('hex');
   const ref=db.collection('orders').doc();
   let resolvedId=ref.id, created=false;
   await db.runTransaction(async tx=>{
@@ -546,6 +557,9 @@ exports.sendOrderToDelivery=callable(async req=>{
       ? (typeof o.clickOrderRef==='string'&&o.clickOrderRef.trim()?o.clickOrderRef.trim():`VNX-${ref.id}`)
       : null;
     tx.update(ref,{dispatchState:'sending',dispatchLockId:lockId,dispatchLockUntil:Timestamp.fromMillis(Date.now()+90000),
+      // Schedule a verification pass shortly after the lock expires so the
+      // scheduler can recover an interrupted send even if this instance dies.
+      nextClickSyncAt:Timestamp.fromMillis(Date.now()+95000),
       ...(preRef?{clickOrderRef:preRef}:{})});
   });
   let vendorAttempted=false;
@@ -774,10 +788,73 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
   });
   return {ok:true,applied,ignored,shippingStatus:parsed.shippingStatus,rawStatus:parsed.rawStatus,statusDate:parsed.statusDate,note:parsed.note,amounts:parsed.amounts};
 }
+// Recovers a dispatch that was interrupted after the vendor call may have
+// started (the function timed out, the instance died, or the client gave up).
+// It NEVER re-sends: it only tries a read-only getorder using the reference
+// persisted before the send, and falls back to a clear needs_review state.
+// Returns 'resolved', 'needs_review' or 'skipped' (lock still live / not Click).
+async function recoverStuckDispatch(ref,actor,{source='scheduled'}={}){
+  const doc=await ref.get();const o=doc.data();
+  if(!o)return 'skipped';
+  if(o.dispatchState!=='sending')return 'skipped';
+  const lockUntil=o.dispatchLockUntil?.toMillis?.()??0;
+  // The lock (90s) must have expired before we touch an in-flight send.
+  if(lockUntil>Date.now())return 'skipped';
+  if(!o.companyId)return 'skipped';
+  const company=await db.doc('companies/'+o.companyId).get();const c=company.data();
+  if(!company.exists||!c)return 'skipped';
+  const ref25=typeof o.clickOrderRef==='string'?o.clickOrderRef.trim():'';
+  // For a Click order we can try a safe read-only verification when the exact
+  // reference is known. Otherwise (or on any failure) we convert to a clear
+  // review state so the UI is never stuck and no duplicate can be sent.
+  if(c.provider===CLICK_PROVIDER&&ref25&&ref25.length<=25){
+    const clickUserId=Number(c.clickUserId);
+    if(Number.isSafeInteger(clickUserId)&&clickUserId>=1){
+      try{
+        const {status,json}=await readClickOrder({...c,id:o.companyId},ref25,clickUserId);
+        if(status===200){
+          const parsed=parseClickOrderResponse(json);
+          if(parsed.ok){
+            // The shipment exists at Click for our reference: resolve to sent.
+            await db.runTransaction(async tx=>{
+              const cur=await tx.get(ref);if(cur.data()?.dispatchState!=='sending')return;
+              tx.update(ref,{dispatchState:'sent',status:o.status==='ready'?'dispatched':o.status,revision:FieldValue.increment(1),
+                shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',shippingStatusUpdatedAt:Timestamp.now(),
+                clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,
+                clickStatusVerified:isApiConfirmed(parsed.shippingStatus),nextClickSyncAt:null,nextPollAt:Timestamp.now(),
+                dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
+              await addEvent(ref.id,'dispatch_exception_resolved',actor,{outcome:'shipment_exists',rawStatus:parsed.rawStatus,source},tx);
+              await audit('order.dispatch_review_auto_resolved',actor,ref.id,{rawStatus:parsed.rawStatus,source},tx);
+            });
+            return 'resolved';
+          }
+        }
+      }catch(e){logger.warn('stuck dispatch verify read failed',{id:ref.id,reason:typeof e?.reason==='string'?e.reason:'transport_error'});}
+    }
+  }
+  // Unknown result: hand it to a manager as an explicit review. Never resend.
+  await db.runTransaction(async tx=>{
+    const cur=await tx.get(ref);if(cur.data()?.dispatchState!=='sending')return;
+    tx.update(ref,{dispatchState:'needs_review',nextClickSyncAt:o.companyId?Timestamp.now():null,
+      syncError:'توقفت محاولة الإرسال قبل تأكيد النتيجة. لا تُعد الإرسال؛ تحقق من شركة التوصيل أولاً.',
+      dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp()});
+    await addEvent(ref.id,'dispatch_attempt_failed',actor,{reason:'interrupted_recovered',source},tx);
+    await audit('order.dispatch_attempt_failed',actor,ref.id,{reason:'interrupted_recovered',source},tx);
+  });
+  return 'needs_review';
+}
 exports.syncClickOrder=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
   const {ref}=await oneOrder(user,req.data?.id);
   return syncClickOrderForRef(ref,user,{source:'manual',checkActor:user});
+});
+// Audited recovery for an interrupted dispatch. Any user who may send orders can
+// trigger a safe recovery for one order; it never calls setorder.
+exports.recoverStuckDispatch=callable(async req=>{
+  const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
+  const {ref}=await oneOrder(user,req.data?.id);
+  const outcome=await recoverStuckDispatch(ref,user,{source:'manual'});
+  return {ok:true,outcome};
 });
 // Low-frequency automatic status polling. Conservative caps because Click's
 // rate-limit policy is not documented: every 15 minutes, at most 10 orders,
@@ -785,12 +862,18 @@ exports.syncClickOrder=callable(async req=>{
 exports.syncClickStatuses=onSchedule({schedule:'every 15 minutes',region:REGION,timeZone:'Etc/UTC',timeoutSeconds:180,maxInstances:1},async()=>{
   const deadline=Date.now()+150000;
   const actor={id:'scheduler:click',name:'مزامنة Click التلقائية'};
-  let checked=0,updated=0,failed=0,skipped=0,consecutiveFailures=0;
+  let checked=0,updated=0,failed=0,skipped=0,recovered=0,consecutiveFailures=0;
   const snap=await db.collection('orders').where('nextClickSyncAt','<=',Timestamp.now()).orderBy('nextClickSyncAt').limit(10).get();
   for(const doc of snap.docs){
     if(Date.now()>=deadline)break;
     const o=doc.data();
-    if(!o.clickOrderRef||o.dispatchState==='sending'||['delivered','cancelled'].includes(o.shippingStatus)){skipped++;continue;}
+    // Recover any interrupted send whose lock has expired before syncing, so a
+    // timed-out dispatch never leaves the order stuck in 'sending'.
+    if(o.dispatchState==='sending'){
+      try{const outcome=await recoverStuckDispatch(doc.ref,actor,{source:'scheduled'});if(outcome!=='skipped')recovered++;}catch(e){logger.warn('stuck dispatch recovery failed',{id:doc.id});}
+      continue;
+    }
+    if(!o.clickOrderRef||['delivered','cancelled'].includes(o.shippingStatus)){skipped++;continue;}
     try{
       const result=await syncClickOrderForRef(doc.ref,actor,{source:'scheduled'});
       checked++;if(result.applied)updated++;consecutiveFailures=0;
@@ -800,7 +883,7 @@ exports.syncClickStatuses=onSchedule({schedule:'every 15 minutes',region:REGION,
       if(consecutiveFailures>=5)break;
     }
   }
-  logger.info('click scheduled sync',{checked,updated,failed,skipped});
+  logger.info('click scheduled sync',{checked,updated,failed,skipped,recovered});
 });
 exports.listMembers=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
@@ -1135,12 +1218,22 @@ exports.listOrderCreators=callable(async req=>{
   return {items,more:rows.length>start+size,afterId:page.at(-1)?.id||null};
 });
 
-exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();return {organizationName:snap.data()?.organizationName||'Velnix',receiptFooter:snap.data()?.receiptFooter||'',supportPhone:snap.data()?.supportPhone||''};});
+exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();const d=snap.data()||{};return {organizationName:d.organizationName||'Velnix',receiptFooter:d.receiptFooter||'',supportPhone:d.supportPhone||'',defaultCompanyId:d.defaultCompanyId||null};});
 exports.saveSettings=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageSettings');
   const organizationName=str(req.data?.organizationName,120),receiptFooter=optional(req.data?.receiptFooter,200),supportPhone=arabicDigits(optional(req.data?.supportPhone,30)).replace(/[ ()-]/g,'');
   if(supportPhone&&!/^\+?[0-9]{7,15}$/.test(supportPhone))fail('invalid-argument','هاتف دعم غير صالح');
-  await db.runTransaction(async tx=>{await currentActor(tx,user);tx.set(db.doc('settings/system'),{organizationName,receiptFooter,supportPhone,updatedAt:FieldValue.serverTimestamp()});await audit('settings.updated',user,'system',{},tx);});return {ok:true};
+  // Optional default delivery company. Must reference an existing, enabled,
+  // non-archived company so the form can preselect it safely.
+  let defaultCompanyId=null;
+  if(req.data?.defaultCompanyId!=null&&req.data.defaultCompanyId!==''){
+    defaultCompanyId=idValue(req.data.defaultCompanyId);
+    const company=await db.doc('companies/'+defaultCompanyId).get();
+    if(!company.exists)fail('failed-precondition','شركة التوصيل الافتراضية غير موجودة');
+    const c=company.data();
+    if(c.enabled!==true||c.archived===true)fail('failed-precondition','الشركة الافتراضية يجب أن تكون مفعلة وغير مؤرشفة');
+  }
+  await db.runTransaction(async tx=>{await currentActor(tx,user);tx.set(db.doc('settings/system'),{organizationName,receiptFooter,supportPhone,defaultCompanyId,updatedAt:FieldValue.serverTimestamp()},{merge:true});await audit('settings.updated',user,'system',{defaultCompanyId},tx);});return {ok:true};
 });
 
 exports.orderEventNotice=onDocumentCreated({document:'orders/{orderId}/events/{eventId}',region:'us-central1',retry:true},async event=>{

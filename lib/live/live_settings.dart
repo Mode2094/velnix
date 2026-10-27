@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'gateway.dart';
 import 'live_app.dart';
 import '../core/widgets.dart';
+import '../core/theme.dart';
 
 class LiveSettings extends StatefulWidget {
   const LiveSettings({super.key});
@@ -16,6 +17,8 @@ class _LiveSettingsState extends State<LiveSettings> {
       footer = TextEditingController();
   bool loading = true, busy = false, _dirty = false;
   String? error;
+  String? defaultCompanyId;
+  List<Map<String, dynamic>> companies = [];
   @override
   void initState() {
     super.initState();
@@ -29,11 +32,19 @@ class _LiveSettingsState extends State<LiveSettings> {
     });
     try {
       final data = await VelnixGateway.instance.call('getSettings');
+      List<Map<String, dynamic>> comps = [];
+      try {
+        comps = (await VelnixGateway.instance.companies())
+            .where((c) => c['enabled'] == true && c['archived'] != true)
+            .toList();
+      } catch (_) {}
       if (mounted) {
         setState(() {
           name.text = data['organizationName']?.toString() ?? '';
           phone.text = data['supportPhone']?.toString() ?? '';
           footer.text = data['receiptFooter']?.toString() ?? '';
+          defaultCompanyId = data['defaultCompanyId']?.toString();
+          companies = comps;
           loading = false;
           error = null;
           _dirty = false;
@@ -65,7 +76,9 @@ class _LiveSettingsState extends State<LiveSettings> {
         'organizationName': name.text.trim(),
         'supportPhone': phone.text.trim(),
         'receiptFooter': footer.text.trim(),
+        'defaultCompanyId': defaultCompanyId,
       });
+      VelnixGateway.instance.invalidate('settings');
       _dirty = false;
       if (mounted) showSuccess(context, 'تم حفظ إعدادات المؤسسة');
     } catch (e) {
@@ -147,6 +160,45 @@ class _LiveSettingsState extends State<LiveSettings> {
                               maxLines: 3,
                               decoration: const InputDecoration(
                                 labelText: 'تذييل سند الطلب (اختياري)',
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'default-company-${defaultCompanyId ?? ''}',
+                              ),
+                              initialValue: defaultCompanyId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'شركة التوصيل الافتراضية (اختياري)',
+                              ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('بدون شركة افتراضية'),
+                                ),
+                                for (final c in companies)
+                                  DropdownMenuItem(
+                                    value: c['id']?.toString(),
+                                    child: Text(
+                                      c['name']?.toString() ?? '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (v) => setState(() {
+                                defaultCompanyId = v;
+                                _dirty = true;
+                              }),
+                            ),
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Text(
+                                'تُختار تلقائياً عند إنشاء طلب جديد، ولا تُرسل الشحنة تلقائياً.',
+                                style: TextStyle(
+                                  color: VColors.muted,
+                                  fontSize: 11.5,
+                                ),
                               ),
                             ),
                           ],

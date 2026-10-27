@@ -2484,6 +2484,16 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
     try {
       final pagesResult = await VelnixGateway.instance.allowedPages();
       final companiesResult = await VelnixGateway.instance.companies();
+      // Default delivery company for a new order (administration setting).
+      String? defaultCompanyId;
+      if (widget.initial == null) {
+        try {
+          final settings = await VelnixGateway.instance.settings(fresh: true);
+          defaultCompanyId = settings['defaultCompanyId']?.toString();
+        } catch (_) {
+          // Settings are optional; the form still works without a default.
+        }
+      }
       if (!mounted) return;
       final pages = (pagesResult['items'] as List? ?? [])
           .map((e) => Map<String, dynamic>.from(e as Map))
@@ -2494,6 +2504,15 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       setState(() {
         allowedPages = pages;
         companies = comps;
+        // Preselect the default company only when it is still enabled/available
+        // and the user did not already pick one.
+        if (widget.initial == null &&
+            (_companyId == null || _companyId!.isEmpty) &&
+            defaultCompanyId != null &&
+            defaultCompanyId.isNotEmpty &&
+            comps.any((c) => c['id']?.toString() == defaultCompanyId)) {
+          _companyId = defaultCompanyId;
+        }
         _optionsLoading = false;
         _optionsError = null;
         // Keep the edited order's page visible even if it is now archived.
@@ -2592,8 +2611,27 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       }
       if (mounted) {
         _dirty = false;
-        showSuccess(context, 'تم حفظ الطلب');
-        widget.onSaved(savedId);
+        // Show the real serial number in the success message when available.
+        String message = 'تم حفظ الطلب';
+        final newId = widget.initial == null ? savedId : null;
+        if (newId != null && newId.isNotEmpty) {
+          try {
+            final fetched = await VelnixGateway.instance.order(
+              newId,
+              fresh: true,
+            );
+            final number = fetched['order']?['orderNumber']?.toString();
+            if (number != null && number.isNotEmpty) {
+              message = 'تم حفظ الطلب — رقم الطلب $number';
+            }
+          } catch (_) {
+            // The number is a courtesy; saving already succeeded.
+          }
+        }
+        if (mounted) {
+          showSuccess(context, message);
+          widget.onSaved(savedId);
+        }
       }
     } catch (e) {
       if (mounted) showError(context, e);

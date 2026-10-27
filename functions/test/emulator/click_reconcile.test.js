@@ -310,3 +310,47 @@ test('the scheduled Click sync processes a due order and schedules the next chec
   assert.ok(data.nextClickSyncAt?.toMillis?.()>Date.now());
   assert.ok(clickReadCalls>=1);
 });
+
+// ---- Finding 7: interrupted sending is recovered without ever re-sending ----
+test('an interrupted send with a live lock is left untouched by recovery',async()=>{
+  clickReadCalls=0;clickSendCalls=0;clickReadError=null;
+  const ref=await clickOrder('click_sending_live',{status:'ready',dispatchState:'sending',clickOrderRef:'VNX-CLICK-SENDING-LIVE',dispatchLockId:'lock-1',dispatchLockUntil:Timestamp.fromMillis(Date.now()+60000)});
+  await functions.syncClickStatuses.run({});
+  const data=(await ref.get()).data();
+  assert.equal(data.dispatchState,'sending','a live lock must not be disturbed');
+  assert.equal(clickSendCalls,0,'recovery must never call setorder');
+});
+
+test('an interrupted send with an expired lock resolves via a read-only getorder',async()=>{
+  clickReadCalls=0;clickSendCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};
+  const ref=await clickOrder('click_sending_expired_ok',{status:'ready',dispatchState:'sending',clickOrderRef:'VNX-CLICK-SENDING-OK',dispatchLockId:'lock-2',dispatchLockUntil:Timestamp.fromMillis(Date.now()-5000),nextClickSyncAt:Timestamp.fromMillis(Date.now()-1000)});
+  await functions.syncClickStatuses.run({});
+  const data=(await ref.get()).data();
+  assert.equal(data.dispatchState,'sent','a confirmed read resolves the interrupted send');
+  assert.equal(data.trackingNumber||null,null,'no invented tracking number');
+  assert.equal(clickSendCalls,0,'recovery never re-sends');
+  assert.ok(clickReadCalls>=1);
+  assert.ok((await ref.collection('events').where('action','==','dispatch_exception_resolved').get()).size>=1);
+});
+
+test('an interrupted send that cannot be verified becomes a clear review, not a resend',async()=>{
+  clickReadCalls=0;clickSendCalls=0;clickReadError=Object.assign(new Error('down'),{reason:'AbortError'});
+  const ref=await clickOrder('click_sending_expired_bad',{status:'ready',dispatchState:'sending',clickOrderRef:'VNX-CLICK-SENDING-BAD',dispatchLockId:'lock-3',dispatchLockUntil:Timestamp.fromMillis(Date.now()-5000),nextClickSyncAt:Timestamp.fromMillis(Date.now()-1000)});
+  await functions.syncClickStatuses.run({});
+  const data=(await ref.get()).data();
+  assert.equal(data.dispatchState,'needs_review');
+  assert.match(data.syncError,/لا تُعد الإرسال/);
+  assert.equal(clickSendCalls,0,'recovery never re-sends');
+});
+
+test('recoverStuckDispatch callable resolves an expired sending order and never re-sends',async()=>{
+  clickReadCalls=0;clickSendCalls=0;clickReadError=null;clickReadResponse={status:200,json:REAL_CLICK_RESPONSE};
+  const ref=await clickOrder('click_sending_manual',{status:'ready',dispatchState:'sending',clickOrderRef:'VNX-CLICK-SENDING-MANUAL',dispatchLockId:'lock-4',dispatchLockUntil:Timestamp.fromMillis(Date.now()-5000)});
+  const out=await functions.recoverStuckDispatch.run({auth,data:{id:ref.id}});
+  assert.equal(out.outcome,'resolved');
+  assert.equal((await ref.get()).data().dispatchState,'sent');
+  assert.equal(clickSendCalls,0);
+  // A second call is a no-op (already resolved).
+  const again=await functions.recoverStuckDispatch.run({auth,data:{id:ref.id}});
+  assert.equal(again.outcome,'skipped');
+});

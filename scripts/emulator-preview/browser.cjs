@@ -48,12 +48,13 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
  await frame(p);await p.waitForTimeout(300);
  const pageOption=p.locator('[aria-label="صفحة الاختبار"]').last();await pageOption.waitFor({timeout:10000});await activate(p,pageOption);await frame(p);
  const city=p.getByRole('textbox',{name:'المحافظة *'});await activate(p,city);await selectAll(p);await p.keyboard.insertText('عمان');const cityOption=p.getByRole('button',{name:'عمان',exact:true}).last();await cityOption.waitFor({timeout:10000});await activate(p,cityOption);await frame(p);
- const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/createOrder')&&r.request().method()==='POST',{timeout:60000});await click(p,'حفظ الطلب');const res=await response,body=await res.json();assert.equal(res.status(),200);assert.ok(body.result?.id);
- const saved=await okay(p,'getOrder',{id:body.result.id});assert.match(saved.order.orderNumber,/^VNX-\d{6}$/);
- await p.getByText(customer,{exact:false}).first().waitFor({timeout:30000});
- orders[role]={id:body.result.id,orderNumber:saved.order.orderNumber,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
- // Saving now lands on the order details; return to the shell for the next scenario.
- await back(p);
+  const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/createOrder')&&r.request().method()==='POST',{timeout:60000});await click(p,'حفظ الطلب');const res=await response,body=await res.json();assert.equal(res.status(),200);assert.ok(body.result?.id);
+  const saved=await okay(p,'getOrder',{id:body.result.id});assert.match(saved.order.orderNumber,/^VNX-\d{6}$/);
+  // After a successful save the app returns to the dashboard (not the order
+  // details) and refreshes the home screen.
+  await p.getByText('أهلاً، '+names[role],{exact:true}).waitFor({timeout:30000});
+  await p.getByText('لوحة متابعة',{exact:false}).first().waitFor({timeout:15000});
+  orders[role]={id:body.result.id,orderNumber:saved.order.orderNumber,customer,amount,payload:res.request().postDataJSON().data};await p.screenshot({path:path.join(out,role+'-created.png')});
 }
 async function openOrder(p,o){
  await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());

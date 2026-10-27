@@ -47,6 +47,9 @@ module.exports = ({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail})
 
   async function listPages(req) {
     const user = await requireAuth(req);
+    // The administration view is restricted to page managers; ordinary users
+    // get their allowed subset from listAllowedPages instead.
+    manage(user);
     const size = req.data?.pageSize ?? 50;
     if (!Number.isSafeInteger(size) || size < 1 || size > 100) fail('invalid-argument', 'حجم صفحة غير صالح');
     const query = req.data?.query != null ? String(req.data.query).trim().slice(0, 80) : '';
@@ -68,7 +71,8 @@ module.exports = ({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail})
     };
   }
 
-  // Active pages the caller may create orders for. Used by the order form.
+  // Active pages the caller may create orders for. Ordinary employees receive
+  // only their allowed pages; the general manager receives all active pages.
   async function listAllowedPages(req) {
     const user = await requireAuth(req);
     const snap = await db.collection('pages').where('archived', '!=', true).get();
@@ -76,7 +80,7 @@ module.exports = ({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail})
     const allowed = user.role === 'generalManager'
       ? all
       : all.filter(p => (user.allowedPageIds || []).includes(p.id));
-    return {items: allowed, allPages: user.role === 'generalManager' || can(user, 'managePages') ? all : undefined};
+    return {items: allowed, canManage: can(user, 'managePages')};
   }
 
   async function savePage(req) {
@@ -162,10 +166,11 @@ module.exports = ({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail})
     return {ok: true};
   }
 
-  // Index-backed order counts per page (no client-side list scanning). Uses a
-  // small number of count aggregations, one per page, respecting order scope.
+  // Index-backed order counts per page (no client-side list scanning). Only page
+  // managers may read the administration counts.
   async function pageStats(req) {
     const user = await requireAuth(req);
+    manage(user);
     const ids = Array.isArray(req.data?.ids) ? req.data.ids.map(documentId).slice(0, 100) : [];
     const {AggregateField} = require('firebase-admin/firestore');
     const counts = {};

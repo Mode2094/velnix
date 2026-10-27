@@ -23,6 +23,8 @@ before(async()=>{
   await mk('generalManager','gm');
   await mk('dataEntry','entry',{allowedPageIds:['page_a']});
   await mk('dataEntry','entry2',{allowedPageIds:[]});
+  // A manager who may administer pages but is NOT the general manager.
+  await mk('manager','pageadmin',{permissions:['managePages'],allowedPageIds:[]});
 });
 after(async()=>{await db.terminate();await deleteApp(getApp());});
 
@@ -55,6 +57,9 @@ test('duplicate page names are refused and page administration needs the permiss
   await db.doc('members/entry').update({permissions:[]});
   await assert.rejects(invoke('savePage','entry',{name:'صفحة غير مصرح'}),{code:'permission-denied'});
   await assert.rejects(invoke('archivePage','entry',{id:'page_a'}),{code:'permission-denied'});
+  // The administration views are also gated server-side, not only in the UI.
+  await assert.rejects(invoke('listPages','entry',{}),{code:'permission-denied'});
+  await assert.rejects(invoke('pageStats','entry',{ids:['page_a']}),{code:'permission-denied'});
 });
 
 test('page logo uploads are validated (size and type)',async()=>{
@@ -148,4 +153,68 @@ test('non-normal order types are stored but blocked from a misleading Click send
   const doc=(await db.doc('orders/'+ret.id).get()).data();
   assert.equal(doc.dispatchState,'idle');
   assert.equal(doc.trackingNumber,null);
+});
+
+// ---- Finding 1: managePages does NOT bypass allowedPageIds for staff ----
+test('a page administrator without the page on their list cannot create an order for it',async()=>{
+  await db.doc('pages/page_a').set({name:'صفحة أ',nameLower:'صفحة أ',active:true,archived:false,status:'active'});
+  // pageadmin holds managePages but has no allowedPageIds.
+  await assert.rejects(
+    invoke('createOrder','pageadmin',{...orderBase,pageId:'page_a',requestKey:'pageadmin_denied_order'}),
+    {code:'permission-denied'});
+  // After granting the page on the membership, the same user succeeds.
+  await db.doc('members/pageadmin').update({allowedPageIds:['page_a'],authorizationVersion:2});
+  const ok=await invoke('createOrder','pageadmin',{...orderBase,pageId:'page_a',requestKey:'pageadmin_granted_order'});
+  assert.ok(ok.id);
+});
+
+// ---- Finding 2: administration reads are gated; allowed list is scoped ----
+test('page administration reads require managePages, allowed list stays scoped',async()=>{
+  await db.doc('members/entry').update({allowedPageIds:['page_a'],authorizationVersion:9});
+  await db.doc('pages/page_a').set({name:'صفحة أ',nameLower:'صفحة أ',active:true,archived:false,status:'active'});
+  await db.doc('pages/page_b').set({name:'صفحة ب',nameLower:'صفحة ب',active:true,archived:false,status:'active'});
+  // Entry holds no managePages: denied the admin list and stats.
+  await assert.rejects(invoke('listPages','entry',{}),{code:'permission-denied'});
+  await assert.rejects(invoke('pageStats','entry',{ids:['page_a']}),{code:'permission-denied'});
+  // The pageadmin (managePages) may read them.
+  assert.ok((await invoke('listPages','pageadmin',{})).items.length>=1);
+  assert.ok((await invoke('pageStats','pageadmin',{ids:['page_a']})).counts);
+  // The allowed list for entry exposes only its allowed pages, never page_b.
+  const allowed=await invoke('listAllowedPages','entry',{});
+  assert.ok(allowed.items.every(p=>p.id==='page_a'));
+  assert.equal(allowed.allPages,undefined);
+});
+
+// ---- Finding 3: default delivery company setting ----
+test('default delivery company is validated and surfaced by getSettings',async()=>{
+  await db.doc('companies/comp_default').set({name:'شركة افتراضية',enabled:true,archived:false,provider:'generic_v1',statusMap:{}});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'V',defaultCompanyId:'missing'}),{code:'failed-precondition'});
+  await db.doc('companies/comp_off').set({name:'معطلة',enabled:false,archived:false,provider:'generic_v1',statusMap:{}});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'V',defaultCompanyId:'comp_off'}),{code:'failed-precondition'});
+  await invoke('saveSettings','gm',{organizationName:'مؤسسة',defaultCompanyId:'comp_default'});
+  assert.equal((await invoke('getSettings','gm')).defaultCompanyId,'comp_default');
+  // A disabled/archived company can never be set as the default.
+  await db.doc('companies/comp_default').update({enabled:false});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'مؤسسة 2',defaultCompanyId:'comp_default'}),{code:'failed-precondition'});
+  // Clearing the default is always allowed.
+  await invoke('saveSettings','gm',{organizationName:'مؤسسة 3',defaultCompanyId:null});
+  assert.equal((await invoke('getSettings','gm')).defaultCompanyId,null);
+});
+
+// ---- Finding 6: idempotency covers page/company/type ----
+test('reusing a request key with a different page, company or type is a conflict',async()=>{
+  await db.doc('pages/page_a').set({name:'صفحة أ',nameLower:'صفحة أ',active:true,archived:false,status:'active'});
+  await db.doc('pages/page_b').set({name:'صفحة ب',nameLower:'صفحة ب',active:true,archived:false,status:'active'});
+  await db.doc('companies/comp_x').set({name:'شركة',enabled:true,archived:false,provider:'generic_v1',statusMap:{}});
+  const key='idem_conflict_key_0001';
+  const first=await invoke('createOrder','gm',{...orderBase,pageId:'page_a',requestKey:key});
+  // Same key + identical data returns the same order.
+  const same=await invoke('createOrder','gm',{...orderBase,pageId:'page_a',requestKey:key});
+  assert.equal(same.id,first.id);assert.equal(same.alreadyExists,true);
+  // Different page -> conflict.
+  await assert.rejects(invoke('createOrder','gm',{...orderBase,pageId:'page_b',requestKey:key}),{code:'already-exists'});
+  // Different company -> conflict.
+  await assert.rejects(invoke('createOrder','gm',{...orderBase,pageId:'page_a',companyId:'comp_x',requestKey:key}),{code:'already-exists'});
+  // Different order type -> conflict.
+  await assert.rejects(invoke('createOrder','gm',{...orderBase,pageId:'page_a',orderType:'return',requestKey:key}),{code:'already-exists'});
 });

@@ -305,7 +305,7 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
           title: 'جارٍ التنفيذ',
           message:
               'تم بدء إرسال الطلب إلى شركة التوصيل؛ يرجى الانتظار دون إعادة الإرسال. '
-              'يمكنك تحديث الحالة لمتابعة النتيجة.',
+              'إذا استمرت الحالة، استخدم «تحقق من نتيجة الإرسال» لمتابعة الشحنة بأمان.',
           icon: Icons.hourglass_top_outlined,
         ),
         const SizedBox(height: 12),
@@ -315,6 +315,19 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
               : () => _run(() async {}, success: 'تم تحديث حالة الطلب.'),
           icon: const Icon(Icons.refresh),
           label: const Text('تحديث الحالة'),
+        ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: busy
+              ? null
+              : () => _run(
+                  () => VelnixGateway.instance.recoverStuckDispatch(
+                    widget.orderId,
+                  ),
+                  success: 'تمت مراجعة حالة الإرسال.',
+                ),
+          icon: const Icon(Icons.fact_check_outlined),
+          label: const Text('تحقق من نتيجة الإرسال'),
         ),
       ];
     }

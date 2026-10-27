@@ -331,7 +331,8 @@ class _LivePagesState extends State<LivePages> {
   }
 
   Widget _logo(String dataUri) {
-    if (dataUri.isEmpty) {
+    final bytes = decodeLogoDataUri(dataUri);
+    if (bytes == null) {
       return Container(
         width: 46,
         height: 46,
@@ -342,32 +343,21 @@ class _LivePagesState extends State<LivePages> {
         child: const Icon(Icons.facebook, color: VColors.brand),
       );
     }
-    try {
-      final comma = dataUri.indexOf(',');
-      final bytes = base64Decode(dataUri.substring(comma + 1));
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.memory(
-          bytes,
-          width: 46,
-          height: 46,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            width: 46,
-            height: 46,
-            color: VColors.softBlue,
-            child: const Icon(Icons.facebook, color: VColors.brand),
-          ),
-        ),
-      );
-    } catch (_) {
-      return Container(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.memory(
+        bytes,
         width: 46,
         height: 46,
-        color: VColors.softBlue,
-        child: const Icon(Icons.facebook, color: VColors.brand),
-      );
-    }
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Container(
+          width: 46,
+          height: 46,
+          color: VColors.softBlue,
+          child: const Icon(Icons.facebook, color: VColors.brand),
+        ),
+      ),
+    );
   }
 
   Widget _chip(String text, Color color) => Container(
@@ -432,33 +422,22 @@ class _LivePageFormState extends State<LivePageForm> {
   }
 
   Future<void> _pickLogo() async {
-    // Image picking is optional; a file picker is not bundled, so a manager can
-    // paste a small image as a data URI. Kept simple and offline-friendly.
-    final controller = TextEditingController(text: logoDataUri);
-    final value = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('شعار الصفحة (اختياري)'),
-        content: TextField(
-          controller: controller,
-          maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'data:image/png;base64,...',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('حفظ'),
-          ),
-        ],
-      ),
-    );
-    if (value != null) setState(() => logoDataUri = value);
+    // Opens the platform image picker (gallery/camera/file dialog), shrinks the
+    // image to a bounded square, previews it, and stores a small data URI. The
+    // server re-validates type and size before saving.
+    try {
+      final picked = await PageLogoService().pick();
+      if (picked == null || !mounted) return;
+      if (picked.bytes.length > PageLogoService.maxBytes) {
+        showError(context, 'الصورة كبيرة جداً بعد المعالجة؛ اختر صورة أصغر');
+        return;
+      }
+      setState(() => logoDataUri = picked.dataUri);
+    } catch (e) {
+      if (mounted) {
+        showError(context, 'تعذر اختيار الصورة. جرّب صورة أخرى.');
+      }
+    }
   }
 
   Future<void> save() async {
@@ -583,18 +562,19 @@ class _LivePageFormState extends State<LivePageForm> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
                       children: [
-                        if (logoDataUri.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: _thumb(logoDataUri),
-                          ),
+                        if (logoDataUri.isNotEmpty) _thumb(logoDataUri),
                         TextButton.icon(
                           onPressed: _pickLogo,
                           icon: const Icon(Icons.image_outlined, size: 18),
                           label: Text(
-                            logoDataUri.isEmpty ? 'إضافة شعار' : 'تغيير الشعار',
+                            logoDataUri.isEmpty
+                                ? 'اختيار شعار'
+                                : 'تغيير الشعار',
                           ),
                         ),
                         if (logoDataUri.isNotEmpty)
@@ -622,12 +602,11 @@ class _LivePageFormState extends State<LivePageForm> {
   );
 
   Widget _thumb(String dataUri) {
-    try {
-      final comma = dataUri.indexOf(',');
-      final bytes = base64Decode(dataUri.substring(comma + 1));
-      return Image.memory(bytes, width: 40, height: 40, fit: BoxFit.cover);
-    } catch (_) {
-      return const Icon(Icons.broken_image_outlined);
-    }
+    final bytes = decodeLogoDataUri(dataUri);
+    if (bytes == null) return const Icon(Icons.broken_image_outlined);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Image.memory(bytes, width: 44, height: 44, fit: BoxFit.cover),
+    );
   }
 }

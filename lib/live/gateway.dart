@@ -262,6 +262,14 @@ class VelnixGateway {
     return result;
   }
 
+  /// Recovers an interrupted dispatch (server verifies with a read-only getorder
+  /// or converts it to a clear review). Never resends the shipment.
+  Future<Map<String, dynamic>> recoverStuckDispatch(String id) async {
+    final result = await call('recoverStuckDispatch', {'id': id});
+    _invalidateOrderData();
+    return result;
+  }
+
   Future<Map<String, dynamic>> companyStats(String id) =>
       _cached('companyStats:$id', () => call('companyStats', {'id': id}));
   Future<List<Map<String, dynamic>>> companies() async =>
@@ -297,6 +305,18 @@ class VelnixGateway {
   /// Active pages the signed-in employee may create orders for. Not cached so a
   /// revoked page takes effect on the next open.
   Future<Map<String, dynamic>> allowedPages() => call('listAllowedPages', {});
+
+  /// Organization settings (name, receipt footer, support phone, default
+  /// delivery company). Cached briefly; the default company must be read fresh
+  /// enough that a change reaches the order form.
+  Future<Map<String, dynamic>> settings({bool fresh = false}) {
+    if (fresh) return call('getSettings', {});
+    return _cached(
+      'settings',
+      () => call('getSettings', {}),
+      ttl: const Duration(seconds: 30),
+    );
+  }
 
   Future<Map<String, dynamic>> savePage(Map<String, dynamic> page) async {
     final result = await call('savePage', page);

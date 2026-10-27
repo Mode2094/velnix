@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,6 +19,7 @@ import '../core/theme.dart';
 import '../core/widgets.dart';
 import '../core/dates.dart';
 import '../core/order_paste.dart';
+import '../core/page_logo.dart';
 import '../models/entities.dart';
 import '../models/shipping_status.dart';
 import 'gateway.dart';
@@ -1143,18 +1143,12 @@ class _LiveShellState extends State<LiveShell> {
       key: ValueKey('form$refreshVersion'),
       policy: widget.policy,
       onSaved: (id) {
-        go(1);
-        if (id != null && id.isNotEmpty) {
-          // Push the new order's details onto the orders tab so the bottom
-          // bar stays mounted and Back returns to the refreshed list.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            tabKeys[1]?.currentState?.push(
-              MaterialPageRoute<void>(
-                builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
-              ),
-            );
-          });
-        }
+        // After a successful save, land on the dashboard (per the client flow)
+        // and force a dashboard/orders refresh so counts update. The saved order
+        // number is shown by the form's own success message.
+        VelnixGateway.instance.invalidate('dashboard');
+        VelnixGateway.instance.invalidate('orders');
+        go(0);
       },
       onBack: () => go(1),
     ),

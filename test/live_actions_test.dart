@@ -76,6 +76,8 @@ void main() {
         };
       case 'listCompanies':
         return {'items': <dynamic>[]};
+      case 'getSettings':
+        return {'organizationName': 'Velnix', 'defaultCompanyId': null};
     }
     return onMutation(name, data);
   });
@@ -135,6 +137,11 @@ void main() {
       Map<String, dynamic>? payload;
       String? savedId;
       VelnixGateway.instance = formGateway((name, data) async {
+        if (name == 'getOrder') {
+          return {
+            'order': {'id': 'saved-order', 'orderNumber': 'VNX-000042'},
+          };
+        }
         expect(name, 'createOrder');
         payload = data;
         return {'id': 'saved-order'};
@@ -710,6 +717,11 @@ void main() {
     (tester) async {
       Map<String, dynamic>? payload;
       VelnixGateway.instance = formGateway((name, data) async {
+        if (name == 'getOrder') {
+          return {
+            'order': {'id': 'saved-order', 'orderNumber': 'VNX-000042'},
+          };
+        }
         expect(name, 'createOrder');
         payload = data;
         return {'id': 'saved-order'};

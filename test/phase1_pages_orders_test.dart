@@ -198,4 +198,65 @@ void main() {
     expect(find.text('تعديل قائمة الصفحات'), findsOneWidget);
     expect(find.text('الصفحات المحددة: 1'), findsOneWidget);
   });
+
+  testWidgets('the default delivery company is preselected on a new order', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listAllowedPages':
+          return {
+            'items': [
+              {'id': 'page_a', 'name': 'تاج Market'},
+            ],
+          };
+        case 'listCompanies':
+          return {
+            'items': [
+              {
+                'id': 'comp_1',
+                'name': 'أرامكس',
+                'enabled': true,
+                'archived': false,
+              },
+              {
+                'id': 'comp_2',
+                'name': 'بريد',
+                'enabled': true,
+                'archived': false,
+              },
+            ],
+          };
+        case 'getSettings':
+          return {'organizationName': 'Velnix', 'defaultCompanyId': 'comp_2'};
+      }
+      throw StateError('Unexpected call $name');
+    });
+    await tester.pumpWidget(app(LiveOrderForm(policy: gm(), onSaved: (_) {})));
+    await tester.pumpAndSettle();
+    // The default company name shows in the company dropdown.
+    expect(find.text('بريد'), findsOneWidget);
+  });
+
+  testWidgets('a disabled default company is not preselected', (tester) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listAllowedPages':
+          return {
+            'items': [
+              {'id': 'page_a', 'name': 'تاج Market'},
+            ],
+          };
+        case 'listCompanies':
+          // The default company is not in the enabled list.
+          return {'items': <dynamic>[]};
+        case 'getSettings':
+          return {'organizationName': 'Velnix', 'defaultCompanyId': 'comp_off'};
+      }
+      throw StateError('Unexpected call $name');
+    });
+    await tester.pumpWidget(app(LiveOrderForm(policy: gm(), onSaved: (_) {})));
+    await tester.pumpAndSettle();
+    expect(find.text('بدون شركة الآن'), findsOneWidget);
+  });
 }
