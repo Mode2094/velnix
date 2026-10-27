@@ -78,6 +78,14 @@ Future<void> main() async {
         ),
       );
     }
+    // Native builds must install the App Check provider before any Firebase
+    // product (Firestore/Auth/Functions) attaches its request interceptor.
+    // Activating lazily left the provider uninstalled on Android, so callable
+    // requests went out with a placeholder token and were rejected. Web stays
+    // lazy so the login screen does not pay for reCAPTCHA up front.
+    if (!kIsWeb) {
+      await AppCheckGate.wait();
+    }
     runApp(const VelnixLiveApp());
     if (kIsWeb) {
       unawaited(
