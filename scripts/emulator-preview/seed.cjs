@@ -18,7 +18,10 @@ const fixtures=[
 async function main(){
  const users=fixtures.map(f=>({uid:'qa-'+f.role,email:f.role.toLowerCase()+'@velnix.test',emailVerified:true,displayName:f.name,providerData:[{uid:'google-qa-'+f.role,email:f.role.toLowerCase()+'@velnix.test',displayName:f.name,providerId:'google.com'}]}));
  const result=await getAuth().importUsers(users);assert.equal(result.errors.length,0);
- for(const f of fixtures){if(f.pending)continue;await getFirestore().doc('members/qa-'+f.role).set({name:f.name,email:f.role.toLowerCase()+'@velnix.test',role:f.actualRole||f.role,active:!f.disabled,permissions:f.permissions,approvalStatus:'approved',salesSupervisorId:f.salesSupervisorId||null,authorizationVersion:1,createdAt:FieldValue.serverTimestamp()});}
+ // One synthetic electronic page every employee may create orders for, so the
+ // mandatory page selector has a valid option in the QA preview.
+ await getFirestore().doc('pages/qa_page').set({name:'صفحة الاختبار',nameLower:'صفحة الاختبار',facebookUrl:'https://facebook.com/qa',active:true,archived:false,status:'active',createdBy:'qa-generalManager',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+ for(const f of fixtures){if(f.pending)continue;await getFirestore().doc('members/qa-'+f.role).set({name:f.name,email:f.role.toLowerCase()+'@velnix.test',role:f.actualRole||f.role,active:!f.disabled,permissions:f.permissions,approvalStatus:'approved',salesSupervisorId:f.salesSupervisorId||null,allowedPageIds:['qa_page'],authorizationVersion:1,createdAt:FieldValue.serverTimestamp()});}
  // Markers are deliberately not real customer/company records and never leave demo- project.
  console.log(fixtures.length+' synthetic Google emulator identities ready. No bootstrap, real credentials, or external delivery configuration.');
 }

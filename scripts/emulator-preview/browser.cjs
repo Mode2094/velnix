@@ -39,8 +39,14 @@ async function login(role){
 async function nav(p,kind){const label={home:'الرئيسية',orders:'الطلبات',create:'طلب جديد',companies:'شركات التوصيل',notices:'الإشعارات',audit:'العمليات'}[kind];if(kind==='more'){const admin=p.getByRole('button').filter({hasText:/الفريق|العمليات/});if(await admin.count())await activate(p,admin.first());return;}const exact=p.getByRole('button',{name:label,exact:true});if(await exact.count())return activate(p,exact.first());await activate(p,p.getByRole('button').filter({hasText:label}).first());}
 async function create(p,role){await nav(p,'create');await p.getByText('إضافة طلب جديد',{exact:true}).waitFor();
  const customer=`طلب اصطناعي ${role} ${stamp}`,amount={generalManager:'11.101',manager:'22.202',warehouse:'33.303',sales:'44.404',dataEntry:'55.505'}[role];
- const fields={'اسم المستلم *':customer,'رقم الهاتف *':'0790000000','المنطقة *':'اختبار محلي','العنوان التفصيلي *':'عنوان اصطناعي فقط','وصف محتويات الطلب *':'طرد اختبار دون شحن','الكمية *':'2','المبلغ (دينار أردني) *':amount,'ملاحظات (اختياري)':'محاكيات فقط'};
+ // The quantity field was removed from the client form; the detailed address is
+ // now optional. The electronic page is mandatory and is selected below.
+ const fields={'اسم المستلم *':customer,'رقم الهاتف *':'0790000000','المنطقة *':'اختبار محلي','العنوان التفصيلي (اختياري)':'عنوان اصطناعي فقط','وصف محتويات الطلب *':'طرد اختبار دون شحن','المبلغ (دينار أردني) *':amount,'ملاحظات (اختياري)':'محاكيات فقط'};
  for(const [label,value] of Object.entries(fields)){const field=p.getByRole('textbox',{name:label,exact:true});await activate(p,field);await selectAll(p);await p.keyboard.insertText(value);await frame(p);}
+ // Select the mandatory electronic page (seed provides 'صفحة الاختبار').
+ const pageTrigger=p.getByRole('button',{name:'الصفحة الإلكترونية *'}).first();await activate(p,pageTrigger);
+ await frame(p);await p.waitForTimeout(300);
+ const pageOption=p.locator('[aria-label="صفحة الاختبار"]').last();await pageOption.waitFor({timeout:10000});await activate(p,pageOption);await frame(p);
  const city=p.getByRole('textbox',{name:'المحافظة *'});await activate(p,city);await selectAll(p);await p.keyboard.insertText('عمان');const cityOption=p.getByRole('button',{name:'عمان',exact:true}).last();await cityOption.waitFor({timeout:10000});await activate(p,cityOption);await frame(p);
  const response=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/createOrder')&&r.request().method()==='POST',{timeout:60000});await click(p,'حفظ الطلب');const res=await response,body=await res.json();assert.equal(res.status(),200);assert.ok(body.result?.id);
  const saved=await okay(p,'getOrder',{id:body.result.id});assert.match(saved.order.orderNumber,/^VNX-\d{6}$/);
@@ -98,7 +104,8 @@ async function main(){
   await openOrder(p,o);await click(p,'تعديل الطلب');await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).waitFor();
   await p.screenshot({path:path.join(out,'editing.png')});
   // Full-screen edit route has a 56px app bar and no navigation rail.
-  const noteBox=await p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true}).boundingBox();await p.mouse.click(300,noteBox.y+noteBox.height/2);await frame(p);await selectAll(p);await p.keyboard.insertText('تم تعديل الطلب عبر الواجهة');await frame(p);
+  const noteField=p.getByRole('textbox',{name:'ملاحظات (اختياري)',exact:true});
+  await activate(p,noteField);await selectAll(p);await p.keyboard.insertText('تم تعديل الطلب عبر الواجهة');await frame(p);
   let changed=p.waitForResponse(r=>new URL(r.url()).pathname.endsWith('/updateOrder')&&r.request().method()==='POST');await click(p,'حفظ الطلب');assert.equal((await changed).status(),200);
   let latest=await okay(p,'getOrder',{id:o.id});assert.equal(latest.order.note,'تم تعديل الطلب عبر الواجهة');
   await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();
@@ -114,8 +121,15 @@ async function main(){
    // one the journey uses); the detail UI must then reflect the new state.
    const r=await okay(p,'changeOrderStatus',{id:o.id,status});
    void r;
-   await p.getByText('تحديث',{exact:true}).first().click().catch(()=>{});
-   await p.getByText(({'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status]),{exact:true}).first().waitFor({timeout:20000});
+   const wanted={'review':'قيد المراجعة','preparing':'قيد التجهيز','ready':'جاهز للتسليم','delivered':'تم التسليم'}[status];
+   let seen=false;
+   for(let attempt=0;attempt<8 && !seen;attempt++){
+    const refreshBtn=p.getByRole('button',{name:'تحديث',exact:true}).first();
+    if(await refreshBtn.count())await activate(p,refreshBtn);
+    await p.waitForTimeout(1500);
+    seen=await p.getByText(wanted,{exact:false}).first().isVisible().catch(()=>false);
+   }
+   assert.ok(seen,`status ${status} should show ${wanted}`);
    void label;
   }
   assert.equal(await p.getByRole('button',{name:'تعديل الطلب',exact:true}).count(),0);
@@ -126,8 +140,14 @@ async function main(){
   await scenario('UI cancellation retains order and history',async()=>{
    const p=sessions.manager.p,o=orders.manager;await openOrder(p,o);
    await okay(p,'changeOrderStatus',{id:o.id,status:'cancelled'});
-   await p.getByText('تحديث',{exact:true}).first().click().catch(()=>{});
-   await p.getByText('ملغي',{exact:true}).first().waitFor({timeout:20000});
+   let cancelled=false;
+   for(let attempt=0;attempt<8 && !cancelled;attempt++){
+    const refreshBtn=p.getByRole('button',{name:'تحديث',exact:true}).first();
+    if(await refreshBtn.count())await activate(p,refreshBtn);
+    await p.waitForTimeout(1500);
+    cancelled=await p.getByText('ملغي',{exact:false}).first().isVisible().catch(()=>false);
+   }
+   assert.ok(cancelled,'cancelled status should be visible');
    const r=await okay(p,'getOrder',{id:o.id});assert.equal(r.order.status,'cancelled');assert.ok(r.events.some(e=>e.action==='status_changed'));await p.screenshot({path:path.join(out,'cancelled-order.png')});await back(p);
   });
  await scenario('Firestore denies direct order reads, deletes and profile escalation for every role',async()=>{

@@ -9,7 +9,7 @@ const {initializeApp}=load('firebase-admin/app'),{getFirestore}=load('firebase-a
  const r=JSON.parse(fs.readFileSync(path.join(out,'results.json')));assert.equal(r.projectId,'demo-velnix-preview');assert.equal(r.results.length,21);assert.equal(r.status,'passed');assert.ok(r.results.every(t=>t.status==='passed'));assert.deepEqual(r.pageErrors,[]);
  const db=getFirestore(),verified=[];
  for(const [role,o] of Object.entries(r.orders)){
-  const ref=db.doc('orders/'+o.id),data=(await ref.get()).data();assert.ok(data);assert.equal(data.createdBy,'qa-'+role);assert.equal(data.amountMinor,Math.round(Number(o.amount)*1000));assert.equal(data.quantity,2);assert.equal(data.companyId,null);assert.equal(data.trackingNumber,null);
+  const ref=db.doc('orders/'+o.id),data=(await ref.get()).data();assert.ok(data);assert.equal(data.createdBy,'qa-'+role);assert.equal(data.amountMinor,Math.round(Number(o.amount)*1000));assert.equal(data.quantity,1);assert.equal(data.pageId,'qa_page');assert.equal(data.orderType,'normal');assert.equal(data.companyId,null);assert.equal(data.trackingNumber,null);
   const events=await ref.collection('events').get(),creates=events.docs.filter(d=>d.data().action==='created');assert.equal(creates.length,1);
   const audit=await db.collection('auditEvents').where('entityId','==',o.id).get();assert.equal(audit.docs.filter(d=>d.data().action==='order.created').length,1);
   if(role==='generalManager'){assert.equal(data.status,'delivered');assert.equal(data.completionSource,'internal');assert.equal(events.docs.filter(d=>d.data().action==='status_changed').length,4);assert.equal(data.note,'تعديل متزامن معتمد');}
