@@ -13,7 +13,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../printing/order_printing.dart';
+import '../printing/bulk_printing.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
@@ -30,6 +32,7 @@ part 'live_order_journey.dart';
 part 'live_bucket_status.dart';
 part 'live_admin.dart';
 part 'live_pages.dart';
+part 'live_barcode.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
 

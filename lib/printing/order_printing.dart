@@ -126,6 +126,44 @@ class OrderInvoicePdf {
       author: 'Velnix Smart Order Management',
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
+    pdf.addPage(_orderPage(order, font, bold, format));
+    return pdf.save();
+  }
+
+  /// Builds one multi-order PDF, one independent voucher per order, in the given
+  /// order. Used by the bulk "طباعة الطلبات المحددة" action. Amounts are only
+  /// present when the server included them for this user, so a print can never
+  /// leak a hidden amount.
+  static Future<Uint8List> generateMany({
+    required List<Map<String, dynamic>> orders,
+    required PdfPageFormat format,
+    int maxOrders = 100,
+  }) async {
+    if (orders.isEmpty) throw const FormatException('لا توجد طلبات للطباعة');
+    final limited = orders.take(maxOrders).toList();
+    final font = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
+    );
+    final bold = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
+    );
+    final pdf = pw.Document(
+      title: 'Velnix - ${limited.length} طلب',
+      author: 'Velnix Smart Order Management',
+      theme: pw.ThemeData.withFont(base: font, bold: bold),
+    );
+    for (final order in limited) {
+      pdf.addPage(_orderPage(order, font, bold, format));
+    }
+    return pdf.save();
+  }
+
+  static pw.Page _orderPage(
+    Map<String, dynamic> order,
+    pw.Font font,
+    pw.Font bold,
+    PdfPageFormat format,
+  ) {
     final narrow = format.width < 100 * PdfPageFormat.mm;
     final horizontalMargin = (narrow ? 3 : 12) * PdfPageFormat.mm;
     final verticalMargin = (narrow ? 3 : 11) * PdfPageFormat.mm;
@@ -163,18 +201,18 @@ class OrderInvoicePdf {
     );
     final barcodeWidth = geometry.width;
 
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: format,
-        margin: pw.EdgeInsets.fromLTRB(
-          horizontalMargin,
-          verticalMargin,
-          horizontalMargin,
-          verticalMargin,
-        ),
-        textDirection: pw.TextDirection.rtl,
-        maxPages: 20,
-        build: (_) => [
+    return pw.Page(
+      pageFormat: format,
+      margin: pw.EdgeInsets.fromLTRB(
+        horizontalMargin,
+        verticalMargin,
+        horizontalMargin,
+        verticalMargin,
+      ),
+      textDirection: pw.TextDirection.rtl,
+      build: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
           pw.Container(
             padding: pw.EdgeInsets.only(bottom: narrow ? 7 : 13),
             decoration: pw.BoxDecoration(border: border),
@@ -277,7 +315,6 @@ class OrderInvoicePdf {
         ],
       ),
     );
-    return pdf.save();
   }
 }
 

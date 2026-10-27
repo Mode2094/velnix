@@ -87,7 +87,9 @@ void main() {
     (tester) async {
       final calls = <String>[];
       VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
-        if (name == 'listCompanies' || name == 'listOrderCreators') {
+        if (name == 'listCompanies' ||
+            name == 'listAllowedPages' ||
+            name == 'listOrderCreators') {
           return {'items': []};
         }
         calls.add(name);
@@ -112,7 +114,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'عميل');
+      await tester.enterText(
+        find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
+        'عميل',
+      );
       await tester.ensureVisible(find.text('تحميل المزيد'));
       await tester.tap(find.text('تحميل المزيد'));
       await tester.pumpAndSettle();

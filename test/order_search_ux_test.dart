@@ -50,6 +50,7 @@ void main() {
           listCalls.add(data);
           return {'items': <dynamic>[], 'nextAfterId': null};
         case 'listCompanies':
+        case 'listAllowedPages':
         case 'listOrderCreators':
           return {'items': <dynamic>[], 'more': false, 'afterId': null};
       }
@@ -59,7 +60,10 @@ void main() {
     await tester.pumpWidget(app(LiveOrders(policy: gm())));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'عميل مطا');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
+      'عميل مطا',
+    );
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
 
@@ -83,6 +87,7 @@ void main() {
         case 'listOrders':
           return {'items': <dynamic>[], 'nextAfterId': null};
         case 'listCompanies':
+        case 'listAllowedPages':
         case 'listOrderCreators':
           return {'items': <dynamic>[], 'more': false, 'afterId': null};
       }
@@ -92,7 +97,10 @@ void main() {
     await tester.pumpWidget(app(LiveOrders(policy: gm())));
     await tester.pumpAndSettle();
 
-    await tester.enterText(find.byType(TextField), 'عميل');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
+      'عميل',
+    );
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
 
@@ -123,6 +131,7 @@ void main() {
           listCalls.add(data);
           return {'items': <dynamic>[], 'nextAfterId': null};
         case 'listCompanies':
+        case 'listAllowedPages':
         case 'listOrderCreators':
           return {'items': <dynamic>[], 'more': false, 'afterId': null};
       }
@@ -133,12 +142,18 @@ void main() {
     await tester.pumpAndSettle();
     final before = listCalls.length;
 
-    await tester.enterText(find.byType(TextField), 'عميل');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
+      'عميل',
+    );
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
     expect(searchCalls, greaterThan(0));
 
-    await tester.enterText(find.byType(TextField), '');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
+      '',
+    );
     await tester.pump(const Duration(milliseconds: 450));
     await tester.pumpAndSettle();
 

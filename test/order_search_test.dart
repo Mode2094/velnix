@@ -50,7 +50,9 @@ void main() {
       if (name == 'listOrders') {
         return {'items': <dynamic>[], 'nextAfterId': null};
       }
-      if (name == 'listCompanies' || name == 'listOrderCreators') {
+      if (name == 'listCompanies' ||
+          name == 'listAllowedPages' ||
+          name == 'listOrderCreators') {
         return {'items': <dynamic>[], 'more': false, 'afterId': null};
       }
       if (name == 'getOrder') {
@@ -80,7 +82,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('بحث عن طلب'), findsOneWidget);
-    final field = find.byType(TextField);
+    final field = find.widgetWithText(
+      TextField,
+      'بحث في كل الطلبات المسموح لك بها',
+    );
     expect(field, findsOneWidget);
     // The page wires a focus node for the query field so it opens ready to type.
     expect(tester.widget<TextField>(field).focusNode, isNotNull);
@@ -93,6 +98,8 @@ void main() {
     expect(find.text('VNX-000009'), findsWidgets);
 
     // Tapping the result opens the order details.
+    await tester.ensureVisible(find.text('فتح التفاصيل').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('فتح التفاصيل').first);
     await tester.pumpAndSettle();
     expect(calls.contains('getOrder'), isTrue);

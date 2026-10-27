@@ -23,16 +23,24 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const pagesFactory="const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});";
  const pagesBinding='for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);';
  const pagesReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(pages);
- if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||[...text.matchAll(/exports\s*\[/g)].length!==2||!returned||!pagesReturned)throw Error('source_manifest_requires_review');
+ // The bulk factory exposes bounded multi-order operations the same way.
+ const bulkSrc=fs.readFileSync(path.join(root,'functions/src/bulk.js'),'utf8');
+ const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
+ const bulkBinding='for(const [name,handler] of Object.entries(bulk))if(typeof handler===\'function\')exports[name]=callable(handler);';
+ const bulkReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(bulkSrc);
+ if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||!text.includes(bulkFactory)||!text.includes(bulkBinding)||[...text.matchAll(/exports\s*\[/g)].length!==3||!returned||!pagesReturned||!bulkReturned)throw Error('source_manifest_requires_review');
  const names=returned[1].split(',').map(n=>n.trim());
  if(names.length!==3||new Set(names).size!==names.length||names.some(n=>!['joinSession','listJoinRequests','decideJoinRequest'].includes(n)))throw Error('source_manifest_requires_review');
  const pageNames=pagesReturned[1].split(',').map(n=>n.trim());
  if(pageNames.length!==6||new Set(pageNames).size!==pageNames.length||pageNames.some(n=>!['listPages','listAllowedPages','savePage','archivePage','restorePage','pageStats'].includes(n)))throw Error('source_manifest_requires_review');
+ const bulkNames=bulkReturned[1].split(',').map(n=>n.trim()).filter(n=>n!=='MAX_BULK');
+ if(bulkNames.length!==4||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch'].includes(n)))throw Error('source_manifest_requires_review');
  functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...pageNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
+ functions.push(...bulkNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  if(new Set(functions.map(f=>f.name)).size!==functions.length)throw Error('source_manifest_requires_review');
  const rules=fs.readFileSync(path.join(root,'firestore.rules'),'utf8'),indexes=JSON.parse(fs.readFileSync(path.join(root,'firestore.indexes.json'),'utf8'));
- return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),pageHandlersSha256:hash(pages),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
+ return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),pageHandlersSha256:hash(pages),bulkHandlersSha256:hash(bulkSrc),searchHandlersSha256:hash(fs.readFileSync(path.join(root,'functions/src/search.js'),'utf8')),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
 }
 function indexKey(index){return JSON.stringify({collectionGroup:index.collectionGroup,queryScope:index.queryScope,documentNameOrder:(index.fields||[]).find(f=>f.fieldPath==='__name__')?.order||(index.fields||[]).filter(f=>f.order).at(-1)?.order||'ASCENDING',fields:(index.fields||[]).filter(f=>f.fieldPath!=='__name__').map(({fieldPath,order,arrayConfig})=>({fieldPath,...(order?{order}:{}),...(arrayConfig?{arrayConfig}:{})}))});}
 async function operationalReadiness({get,auth,readIam,plan}){

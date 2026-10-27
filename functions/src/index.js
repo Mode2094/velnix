@@ -22,6 +22,7 @@ const {shippingStatus,isApiConfirmed}=require('./shipping_status');
 const {directoryPage}=require('./directory');
 const {aggregateGroups}=require('./aggregations');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
+const {buildSearchFields}=require('./search');
 initializeApp();const db=getFirestore();
 const REGION='europe-west1';
 // Server-enforced allowlist for real Click sending. Flutter cannot change this.
@@ -91,9 +92,42 @@ async function oneOrder(user,id) {
   if(!canSeeOrder(user,{...snap.data(),id:snap.id}))fail('permission-denied','لا يمكن الوصول للطلب');
   return {ref,snap};
 }
+// Single-order, permission-checked status change. Shared by changeOrderStatus
+// and the bulk status operation so both honor the exact same policy.
+async function applyStatusChange(ref,user,target){
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const latest=await tx.get(ref);
+    if(!latest.exists)fail('not-found','الطلب غير موجود');
+    if(!canSeeOrder(user,{...latest.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
+    if(!allowedTransition(user,{...latest.data(),id:ref.id},target))fail('failed-precondition','هذا الانتقال غير مسموح');
+    const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
+    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={status:target,...(target==='delivered'?{completionSource:'internal'}:{})};
+    await addEvent(ref.id,'status_changed',user,detail,tx);await audit('order.status_changed',user,ref.id,detail,tx);
+  });
+  return {ok:true};
+}
+// Single-order, permission-checked company assignment. Shared by
+// assignCompany and the bulk assignment operation.
+async function applyCompanyAssignment(ref,user,id){
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const order=await tx.get(ref);
+    if(!order.exists)fail('not-found','الطلب غير موجود');
+    if(!canSeeOrder(user,{...order.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
+    if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
+    if(!['created','review','preparing','ready'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
+    tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
+    const action=id?'company_assigned':'company_unassigned';
+    await addEvent(ref.id,action,user,{companyId:id},tx);
+    await audit('order.'+action,user,ref.id,{companyId:id},tx);
+  });
+  return {ok:true};
+}
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -110,15 +144,24 @@ for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler
 const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
 for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);
 
+const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
+for(const [name,handler] of Object.entries(bulk))if(typeof handler==='function')exports[name]=callable(handler);
+
 exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,allowedPageIds:user.allowedPageIds||[],email:user.email||''};});
 exports.listOrders=callable(async req=>{
   const user=await requireAuth(req);
   const size=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
+  // Amount filters are only honored for callers allowed to view amounts.
+  const canViewAmounts=user.role==='generalManager'||can(user,'viewAmounts');
+  if(!canViewAmounts){filters.amountMin=null;filters.amountMax=null;}
   const sort=req.data?.sort||'desc';if(!['asc','desc'].includes(sort))fail('invalid-argument','ترتيب غير صالح');
   let previous=null;if(req.data?.afterId)previous=(await oneOrder(user,req.data.afterId)).snap;
-  const results=await Promise.all(scopeQueries(user,filters).map(base=>{let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(size);if(previous)query=query.startAfter(previous);return query.get();}));
-  const docs=results.flatMap(result=>result.docs).filter(d=>canSeeOrder(user,d.data()));
+  // Fetch a bounded window so in-memory filters (city/area/dispatch/amount) can
+  // be applied without a full scan; over-fetch up to 4x the page size.
+  const fetchSize=Math.min(200,size*4);
+  const results=await Promise.all(scopeQueries(user,filters).map(base=>{let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(fetchSize);if(previous)query=query.startAfter(previous);return query.get();}));
+  const docs=results.flatMap(result=>result.docs).filter(d=>canSeeOrder(user,d.data())&&matchingFilters(d.data(),filters));
   docs.sort((a,b)=>{const time=(a.data().createdAt?.toMillis?.()||0)-(b.data().createdAt?.toMillis?.()||0);const comparison=time||(a.id===b.id?0:a.id>b.id?1:-1);return comparison*(sort==='desc'?-1:1);});
   const page=docs.slice(0,size);return {items:page.map(d=>orderForUser(user,d)),nextAfterId:page.length===size?page.at(-1).id:null};
 });
@@ -130,27 +173,57 @@ exports.searchOrders=callable(async req=>{
   const query=str(req.data?.query,120),needle=normalizeCustomer(query),digits=searchDigits(query);
   if(query.length<2)fail('invalid-argument','اكتب حرفين على الأقل للبحث');
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
+  // A caller may not filter on amount without the amounts permission.
+  if((filters.amountMin!=null||filters.amountMax!=null)&&!(user.role==='generalManager'||can(user,'viewAmounts')))fail('permission-denied','لا يمكنك التصفية حسب المبلغ');
+  const {normalizeSearch,tokenize}=require('./search');
+  const searchPrefix=normalizeSearch(query);
+  const tokens=tokenize(query);
+  // Visibility scope is the same one listOrders uses; every candidate MUST pass
+  // canSeeOrder + matchingFilters before being returned.
   const matches=new Map();
   const accept=(doc)=>{
     if(!doc.exists||!canSeeOrder(user,{...doc.data(),id:doc.id})||!matchingFilters(doc.data(),filters))return;
     matches.set(doc.id,doc);
   };
-  // Accept both the human-readable order number and the legacy immutable
-  // Firestore document ID; neither is used as a Click reference.
-  const orderNumber=query.toUpperCase().startsWith('VNX-')?query.toUpperCase():null;
+  // Exact identifiers: human order number, immutable doc id, barcode (VNX-<id>),
+  // and the unique order number are all cheap direct lookups.
+  const upper=query.toUpperCase();
+  const orderNumber=upper.startsWith('VNX-')?upper:null;
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get());
   const scoped=scopeQueries(user,filters);
   const searches=[];
+  // orderNumber == / clickOrderRef == / trackingNumber == are single-field
+  // equality lookups (auto-indexed) performed on the global collection.
   if(orderNumber)searches.push(db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get());
+  if(orderNumber)searches.push(db.collection('orders').where('barcodeValue','==',orderNumber).limit(5).get());
+  if(query.startsWith('VNX-'))searches.push(db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)).limit(5).get());
+  // Exact Click shipment reference / tracking number lookups (single-field).
+  searches.push(db.collection('orders').where('clickOrderRef','==',query).limit(5).get());
+  searches.push(db.collection('orders').where('trackingNumber','==',query).limit(5).get());
   for(const base of scoped){
-    if(digits.length>=7)searches.push(base.where('phoneDigits','==',digits).limit(50).get());
+    if(digits.length>=5)searches.push(base.where('phoneDigits','==',digits).limit(50).get());
+    // Partial phone: prefix range on the stored digit string.
+    if(digits.length>=5)searches.push(base.where('phoneDigits','>=',digits).where('phoneDigits','<=',digits+'\uf8ff').orderBy('phoneDigits').limit(50).get());
+    // Exact Arabic-normalized name prefix (fast path already indexed).
     searches.push(base.where('customerKey','>=',needle).where('customerKey','<=',needle+'\uf8ff').orderBy('customerKey').limit(50).get());
+    // Derived-token search: prefix range on the joined searchText (covers
+    // description, notes, page name, area, address, refs, partial names).
+    if(searchPrefix.length>=2){
+      searches.push(base.where('searchText','>=',searchPrefix).where('searchText','<=',searchPrefix+'\uf8ff').orderBy('searchText').limit(50).get());
+    }
+    // Exact token matches (array-contains) for compact tokens/refs/phones.
+    // Skip the ubiquitous "vnx" token (present in every barcode/order number)
+    // and very short tokens, which would otherwise match almost everything.
+    for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4)){
+      searches.push(base.where('searchTokens','array-contains',token).limit(30).get());
+    }
   }
   const results=await Promise.all(searches);
   for(const snap of results)for(const doc of snap.docs)accept(doc);
+  const limited=results.some(r=>r.size>=50)||matches.size>50;
   const items=[...matches.values()].slice(0,50).map(doc=>orderForUser(user,doc));
-  return {items,limited:results.some(r=>r.size===50)||matches.size>50};
+  return {items,limited};
 });
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.
@@ -299,6 +372,7 @@ exports.createOrder=callable(async req=>{
     tx.create(ref,{...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
       ...pageSnapshot,
+      ...buildSearchFields({...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,...pageSnapshot}),
       companyId:companyId||null,hasDelivery:companyId!=null,revision:0,status:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.create(idemRef,{orderId:ref.id,payloadHash,createdBy:user.id,createdAt:FieldValue.serverTimestamp()});
@@ -328,46 +402,30 @@ exports.updateOrder=callable(async req=>{
       : {};
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);
+  const old=snap.data();
+  // Recompute derived search fields on edit; keep the immutable identifiers.
+  const searchFields=buildSearchFields({...fields,orderNumber:old.orderNumber,barcodeValue:old.barcodeValue||`VNX/${ref.id}`,...pageSnapshot,
+    clickOrderRef:old.clickOrderRef,trackingNumber:old.trackingNumber,providerOrderId:old.providerOrderId});
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);if(!latest.exists)fail('not-found','الطلب غير موجود');
     if(!Number.isSafeInteger(req.data?.revision)||req.data.revision!==(latest.data().revision||0))fail('aborted','تم تعديل الطلب بواسطة مستخدم آخر؛ أعد تحميله');
     if(!canEditOrder(user,latest.data()))fail('failed-precondition','تغيّرت حالة الطلب');
     if(user.role!=='generalManager'&&!can(user,'viewAmounts')&&latest.data().createdBy!==user.id)fields.amountMinor=latest.data().amountMinor;
-    tx.update(ref,{...fields,...pageSnapshot,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{...fields,...pageSnapshot,...searchFields,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'edited',user,{},tx);await audit('order.edited',user,ref.id,{},tx);
   });return {ok:true};
 });
 exports.changeOrderStatus=callable(async req=>{
   const user=await requireAuth(req);const {ref}=await oneOrder(user,req.data?.id);
   const target=str(req.data?.status,30);
-  await db.runTransaction(async tx=>{
-    await currentActor(tx,user);
-    const latest=await tx.get(ref);
-    if(!latest.exists)fail('not-found','الطلب غير موجود');
-    if(!allowedTransition(user,{...latest.data(),id:ref.id},target))fail('failed-precondition','هذا الانتقال غير مسموح');
-    const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
-    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    const detail={status:target,...(target==='delivered'?{completionSource:'internal'}:{})};
-    await addEvent(ref.id,'status_changed',user,detail,tx);await audit('order.status_changed',user,ref.id,detail,tx);
-  });
-  return {ok:true};
+  return applyStatusChange(ref,user,target);
 });
 exports.assignCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');const {ref}=await oneOrder(user,req.data?.id);
   const id=req.data?.companyId == null?null:idValue(req.data.companyId);
   if(id){const company=await db.collection('companies').doc(id).get();if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','شركة التوصيل غير مفعلة');}
-  await db.runTransaction(async tx=>{
-    await currentActor(tx,user);
-    const order=await tx.get(ref);
-    if(!order.exists)fail('not-found','الطلب غير موجود');
-    if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
-    if(!['created','review','preparing','ready'].includes(order.data().status) || dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
-    tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
-    const action=id?'company_assigned':'company_unassigned';
-    await addEvent(ref.id,action,user,{companyId:id},tx);
-    await audit('order.'+action,user,ref.id,{companyId:id},tx);
-  });return {ok:true};
+  return applyCompanyAssignment(ref,user,id);
 });
 
 exports.listCompanies=callable(async req=>{
@@ -521,14 +579,17 @@ async function createDeliveryShipment(company,secrets,order,onAttempt){
   onAttempt();
   return adapter.create(company,token,order);
 }
-exports.sendOrderToDelivery=callable(async req=>{
-  const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
-  const {ref}=await oneOrder(user,req.data?.id);const lockId=crypto.randomUUID();
+// Core single-order dispatch flow. Shared by sendOrderToDelivery and the bulk
+// dispatch operation so both honor the exact same lock/idempotency/needs_review
+// protections. `user` must already hold sendToDelivery.
+async function dispatchOrder(ref,user){
+  const lockId=crypto.randomUUID();
   let snapshot;
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const doc=await tx.get(ref),o=doc.data();
     if(!o)fail('not-found','الطلب غير موجود');
+    if(!canSeeOrder(user,{...o,id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
     if(o.status!=='ready'||!o.companyId)fail('failed-precondition','الطلب غير جاهز للشحن');
     if(o.dispatchState==='needs_review')fail('failed-precondition','نتيجة الإرسال السابقة غير مؤكدة. تحقق من شركة التوصيل أولاً لمنع شحنة مكررة.');
     if(o.dispatchState==='sent')fail('failed-precondition','الطلب أُرسل بالفعل');
@@ -597,6 +658,11 @@ exports.sendOrderToDelivery=callable(async req=>{
     });
     fail(vendorAttempted?'unavailable':'failed-precondition',vendorAttempted?'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.':'تعذر تجهيز اتصال شركة التوصيل. لم تبدأ محاولة الإرسال. راجع المسؤول.');
   }
+}
+exports.sendOrderToDelivery=callable(async req=>{
+  const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');
+  const {ref}=await oneOrder(user,req.data?.id);
+  return dispatchOrder(ref,user);
 });
 
 

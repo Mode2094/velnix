@@ -175,6 +175,7 @@ class _LiveDashboardState extends State<LiveDashboard> {
                 const SizedBox(height: 14),
                 VLivePanel(
                   child: OrderFilters(
+                    basicOnly: true,
                     initialFilters: filters,
                     onChanged: (value) {
                       filters = value;

@@ -136,6 +136,44 @@ class VelnixGateway {
     return call('searchOrders', data);
   }
 
+  /// Resolves up to 20 scanned/pasted codes to orders in one server call.
+  Future<List<Map<String, dynamic>>> resolveBarcodes(List<String> codes) async {
+    final result = await call('resolveBarcodes', {'codes': codes});
+    return (result['results'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> bulkChangeStatus(
+    List<String> ids,
+    String status,
+  ) async {
+    final result = await call('bulkChangeStatus', {
+      'ids': ids,
+      'status': status,
+    });
+    _invalidateOrderData();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> bulkAssignCompany(
+    List<String> ids,
+    String? companyId,
+  ) async {
+    final result = await call('bulkAssignCompany', {
+      'ids': ids,
+      'companyId': ?companyId,
+    });
+    _invalidateOrderData();
+    return result;
+  }
+
+  Future<Map<String, dynamic>> bulkDispatch(List<String> ids) async {
+    final result = await call('bulkDispatch', {'ids': ids});
+    _invalidateOrderData();
+    return result;
+  }
+
   Future<Map<String, dynamic>> dashboard([
     Map<String, dynamic> filters = const {},
     bool fresh = false,

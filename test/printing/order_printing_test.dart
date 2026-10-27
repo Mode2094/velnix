@@ -177,5 +177,28 @@ void main() {
       );
       expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
     });
+
+    test('generates one multi-order PDF for several orders', () async {
+      final bytes = await OrderInvoicePdf.generateMany(
+        orders: [
+          syntheticOrder(id: 'orderA'),
+          syntheticOrder(id: 'orderB'),
+          syntheticOrder(id: 'orderC'),
+        ],
+        format: PdfPageFormat.a4,
+      );
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+      expect(bytes.length, greaterThan(1500));
+    });
+
+    test('bulk generation rejects an empty selection', () {
+      expect(
+        () => OrderInvoicePdf.generateMany(
+          orders: const [],
+          format: PdfPageFormat.a4,
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    });
   });
 }

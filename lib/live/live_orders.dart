@@ -39,6 +39,115 @@ class _LiveOrdersState extends State<LiveOrders> {
   int generation = 0;
   String appliedQuery = '';
 
+  // ---- Multi-selection (Phase 2) ----
+  bool selectionMode = false;
+  // Selected order ids (stable identifiers), never positional indices.
+  final Set<String> selected = {};
+  // Bulk operation progress / last result summary.
+  bool bulkBusy = false;
+
+  void _enterSelection(String id) {
+    setState(() {
+      selectionMode = true;
+      selected.add(id);
+    });
+  }
+
+  void _toggle(String id) {
+    setState(() {
+      if (selected.contains(id)) {
+        selected.remove(id);
+        if (selected.isEmpty) selectionMode = false;
+      } else {
+        selected.add(id);
+      }
+    });
+  }
+
+  void _exitSelection() {
+    setState(() {
+      selectionMode = false;
+      selected.clear();
+    });
+  }
+
+  void _selectAllVisible() {
+    setState(() {
+      selectionMode = true;
+      selected.addAll(rows.map((o) => o['id'].toString()));
+    });
+  }
+
+  /// Server-scoped "select all matching": fetches every visible id for the
+  /// current search/filters in bounded pages, so the user selects the whole
+  /// result set (up to a safe cap) rather than only the loaded page.
+  Future<void> _selectAllMatching() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تحديد جميع النتائج المطابقة'),
+        content: const Text(
+          'سيتم تحديد كل الطلبات المطابقة للبحث والفلاتر الحالية (حتى 500 طلب). '
+          'طلباتك المخفية لا تُحدَّد.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('تحديد الكل'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => bulkBusy = true);
+    try {
+      final ids = <String>[];
+      const pageSize = 50;
+      String? cursor;
+      final query = appliedQuery;
+      for (var i = 0; i < 10 && ids.length < 500; i++) {
+        final result = query.length >= 2
+            ? await gateway.searchOrders(
+                query,
+                status: status,
+                bucket: bucket,
+                companyId: widget.companyId,
+                filters: filters,
+              )
+            : await gateway.orders(
+                afterId: cursor,
+                pageSize: pageSize,
+                sort: sort,
+                status: status,
+                bucket: bucket,
+                companyId: widget.companyId,
+                filters: filters,
+                fresh: true,
+              );
+        final list = gateway.listResult(result);
+        ids.addAll(list.map((o) => o['id'].toString()));
+        cursor = query.length >= 2 ? null : result['nextAfterId'] as String?;
+        if (query.length >= 2 || cursor == null) break;
+      }
+      if (mounted) {
+        setState(() {
+          selectionMode = true;
+          selected
+            ..clear()
+            ..addAll(ids.take(500));
+        });
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => bulkBusy = false);
+    }
+  }
+
   /// Debounce so typing settles before a query is issued, while the submit
   /// action and the magnifier still fire immediately. Without this the field
   /// only ran on an explicit Enter/search tap, so on phones the list appeared
@@ -123,6 +232,16 @@ class _LiveOrdersState extends State<LiveOrders> {
         rows.addAll(list);
         after = query.length >= 2 ? null : result['nextAfterId'] as String?;
         more = after != null;
+        // Keep selection consistent: drop ids that are no longer visible, and
+        // never keep duplicates.
+        if (reset) {
+          final visible = rows.map((o) => o['id'].toString()).toSet();
+          final retained = selected.where(visible.contains).toSet();
+          selected
+            ..clear()
+            ..addAll(retained);
+          if (selected.isEmpty) selectionMode = false;
+        }
       });
     } catch (e) {
       if (mounted && generation == current) {
@@ -267,6 +386,7 @@ class _LiveOrdersState extends State<LiveOrders> {
       OrderFilters(
         fixedCompanyId: widget.companyId,
         initialFilters: filters,
+        showAmounts: widget.policy.viewAmounts,
         onChanged: (value) {
           filters = value;
           widget.onFiltersChanged?.call(value);
@@ -303,153 +423,638 @@ class _LiveOrdersState extends State<LiveOrders> {
     ),
   );
 
+  void _openBarcodeScanner() {
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => BarcodeScannerScreen(policy: widget.policy),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> get _selectedOrders =>
+      rows.where((o) => selected.contains(o['id'].toString())).toList();
+
+  Future<void> _bulkPrint() async {
+    final orders = _selectedOrders;
+    if (orders.isEmpty) return;
+    var merged = orders;
+    try {
+      final settings = await gateway.settings(fresh: true);
+      merged = [
+        for (final o in orders)
+          {
+            ...o,
+            if (!o.containsKey('organizationName'))
+              'organizationName': settings['organizationName'],
+            if (!o.containsKey('receiptFooter'))
+              'receiptFooter': settings['receiptFooter'],
+          },
+      ];
+    } catch (_) {}
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => BulkPrintScreen(orders: merged)),
+    );
+  }
+
+  void _showBulkResult(String title, Map<String, dynamic> result) {
+    final results = (result['results'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final ok =
+        result['succeeded'] ?? results.where((r) => r['ok'] == true).length;
+    final failed = result['failed'] ?? (results.length - (ok as int));
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('نجح: $ok • فشل: $failed'),
+                const SizedBox(height: 8),
+                for (final r in results.where((r) => r['ok'] != true))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '• ${r['id']}: ${_bulkReason(r)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('تم'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _bulkReason(Map<String, dynamic> r) {
+    final code = r['code']?.toString() ?? '';
+    return switch (code) {
+      'permission-denied' => 'لا تملك صلاحية',
+      'failed-precondition' => r['message']?.toString() ?? 'غير مسموح',
+      'not-found' => 'غير موجود',
+      _ => r['message']?.toString() ?? code,
+    };
+  }
+
+  Future<void> _runBulk(Future<Map<String, dynamic>> Function() action) async {
+    if (bulkBusy) return;
+    setState(() => bulkBusy = true);
+    try {
+      final result = await action();
+      if (!mounted) return;
+      _showBulkResult('نتيجة العملية', result);
+      await load(reset: true, fresh: true);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => bulkBusy = false);
+    }
+  }
+
+  Future<void> _bulkChangeStatus() async {
+    final targets = <String>[
+      'review',
+      'preparing',
+      'ready',
+    ]; // safe internal forward steps
+    final target = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('تغيير حالة ${selected.length} طلب'),
+        children: [
+          for (final t in targets)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, t),
+              child: Text(statusLabels[t] ?? t),
+            ),
+        ],
+      ),
+    );
+    if (target == null) return;
+    await _runBulk(() => gateway.bulkChangeStatus(selected.toList(), target));
+  }
+
+  Future<void> _bulkAssign() async {
+    final companies = (await gateway.companies())
+        .where((c) => c['enabled'] == true && c['archived'] != true)
+        .toList();
+    if (!mounted) return;
+    final id = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('إسناد شركة لـ ${selected.length} طلب'),
+        children: [
+          for (final c in companies)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, c['id'].toString()),
+              child: Text(c['name'].toString()),
+            ),
+          if (companies.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('لا توجد شركات مفعّلة.'),
+            ),
+        ],
+      ),
+    );
+    if (id == null) return;
+    if (!mounted) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد الإسناد'),
+        content: Text(
+          'سيتم إسناد الشركة لـ ${selected.length} طلب. هذا لا يُرسل الشحنة تلقائياً.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إسناد'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await _runBulk(() => gateway.bulkAssignCompany(selected.toList(), id));
+  }
+
+  Future<void> _bulkDispatch() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('إرسال ${selected.length} طلب إلى شركة التوصيل'),
+        content: const Text(
+          'سيؤدي هذا إلى إنشاء شحنات فعلية لدى الشركة للطلبات الجاهزة فقط. '
+          'الطلبات غير الجاهزة أو غير المؤكدة لن تُرسل، ولن يُعاد إرسال أي شحنة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إرسال'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await _runBulk(() => gateway.bulkDispatch(selected.toList()));
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = rows;
     final compact = MediaQuery.sizeOf(context).width < 720;
-    return RefreshIndicator(
-      onRefresh: () => load(reset: true, fresh: true),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: LiveContent(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                runSpacing: 10,
-                spacing: 10,
-                children: [
-                  Text(
-                    widget.companyId == null
-                        ? 'إدارة الطلبات'
-                        : 'طلبات شركة التوصيل',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      IconButton.filledTonal(
-                        tooltip: 'تحديث القائمة',
-                        onPressed: busy
-                            ? null
-                            : () => load(reset: true, fresh: true),
-                        icon: const Icon(Icons.refresh),
-                      ),
-                      FilledButton.icon(
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => LiveOrderForm(
-                              policy: widget.policy,
-                              onSaved: (id) {
-                                Navigator.pop(context);
-                                load(reset: true);
-                                if (id != null && id.isNotEmpty) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute<void>(
-                                      builder: (_) => LiveOrderDetail(
-                                        id: id,
-                                        policy: widget.policy,
+    return PopScope(
+      // Back exits selection mode first instead of leaving the list.
+      canPop: !selectionMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && selectionMode) _exitSelection();
+      },
+      child: RefreshIndicator(
+        onRefresh: () => load(reset: true, fresh: true),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: LiveContent(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  runSpacing: 10,
+                  spacing: 10,
+                  children: [
+                    Text(
+                      widget.companyId == null
+                          ? 'إدارة الطلبات'
+                          : 'طلبات شركة التوصيل',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'مسح باركود',
+                          onPressed: _openBarcodeScanner,
+                          icon: const Icon(Icons.qr_code_scanner),
+                        ),
+                        IconButton.filledTonal(
+                          tooltip: 'تحديث القائمة',
+                          onPressed: busy
+                              ? null
+                              : () => load(reset: true, fresh: true),
+                          icon: const Icon(Icons.refresh),
+                        ),
+                        FilledButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => LiveOrderForm(
+                                policy: widget.policy,
+                                onSaved: (id) {
+                                  Navigator.pop(context);
+                                  load(reset: true);
+                                  if (id != null && id.isNotEmpty) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => LiveOrderDetail(
+                                          id: id,
+                                          policy: widget.policy,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }
-                              },
+                                    );
+                                  }
+                                },
+                              ),
                             ),
                           ),
+                          icon: const Icon(Icons.add),
+                          label: const Text('طلب جديد'),
                         ),
-                        icon: const Icon(Icons.add),
-                        label: const Text('طلب جديد'),
-                      ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                _appliedFilterBanner(),
+                if (selectionMode) _selectionToolbar(),
+                VLivePanel(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (compact)
+                        Row(
+                          children: [
+                            Expanded(child: _searchField()),
+                            const SizedBox(width: 8),
+                            Badge(
+                              isLabelVisible: _activeFilterCount > 0,
+                              label: Text('$_activeFilterCount'),
+                              child: IconButton.filledTonal(
+                                tooltip: 'الفلاتر والترتيب',
+                                onPressed: () => _openFilters(context),
+                                icon: const Icon(Icons.tune),
+                              ),
+                            ),
+                          ],
+                        )
+                      else ...[
+                        _filterControls(),
+                        const SizedBox(height: 10),
+                        _searchField(),
+                      ],
+                      if (search.text.trim().isNotEmpty)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              search.clear();
+                              load(reset: true);
+                            },
+                            icon: const Icon(Icons.close),
+                            label: const Text('مسح البحث'),
+                          ),
+                        ),
                     ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                if (limited)
+                  const VLivePanel(
+                    child: Text(
+                      'توجد نتائج إضافية؛ حدّد الحالة أو الشركة أو الفترة لتضييق البحث.',
+                    ),
+                  ),
+                if (error != null)
+                  VFeedbackPanel(
+                    title: 'تعذر تحميل الطلبات',
+                    message: error,
+                    icon: Icons.error_outline,
+                    onRetry: () => load(reset: true, fresh: true),
+                  ),
+                if (!busy && error == null && rows.isEmpty)
+                  const VFeedbackPanel(
+                    title: 'لا توجد طلبات مطابقة',
+                    message:
+                        'جرّب تغيير البحث أو الفلاتر، أو أنشئ طلباً جديداً.',
+                    icon: Icons.receipt_long_outlined,
+                  ),
+                for (final item in visible)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: _orderCard(item),
+                  ),
+                const SizedBox(height: 9),
+                if (busy)
+                  const VFeedbackPanel(
+                    title: 'جارٍ تحميل الطلبات',
+                    loading: true,
+                  ),
+                if (more && !busy)
+                  Center(
+                    child: OutlinedButton.icon(
+                      onPressed: () => load(),
+                      icon: const Icon(Icons.expand_more),
+                      label: const Text('تحميل المزيد'),
+                    ),
+                  ),
+                const SizedBox(height: 30),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _selectionToolbar() => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: VLivePanel(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.check_circle,
+                    color: VColors.brand,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'المحدد: ${selected.length}',
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-              _appliedFilterBanner(),
-              VLivePanel(
-                padding: const EdgeInsets.all(12),
+              Wrap(
+                spacing: 4,
+                children: [
+                  TextButton(
+                    onPressed: _selectAllVisible,
+                    child: const Text('تحديد الظاهر'),
+                  ),
+                  TextButton(
+                    onPressed: bulkBusy ? null : _selectAllMatching,
+                    child: const Text('تحديد كل النتائج'),
+                  ),
+                  TextButton(
+                    onPressed: _exitSelection,
+                    child: const Text('إلغاء التحديد'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: selected.isEmpty || bulkBusy ? null : _bulkPrint,
+                icon: const Icon(Icons.print_outlined, size: 18),
+                label: const Text('طباعة'),
+              ),
+              if (widget.policy.canChangeStatus)
+                OutlinedButton.icon(
+                  onPressed: selected.isEmpty || bulkBusy
+                      ? null
+                      : _bulkChangeStatus,
+                  icon: const Icon(Icons.sync_alt, size: 18),
+                  label: const Text('تغيير الحالة'),
+                ),
+              if (widget.policy.can('sendToDelivery'))
+                OutlinedButton.icon(
+                  onPressed: selected.isEmpty || bulkBusy ? null : _bulkAssign,
+                  icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                  label: const Text('إسناد شركة'),
+                ),
+              if (widget.policy.can('sendToDelivery'))
+                OutlinedButton.icon(
+                  onPressed: selected.isEmpty || bulkBusy
+                      ? null
+                      : _bulkDispatch,
+                  icon: const Icon(Icons.send_outlined, size: 18),
+                  label: const Text('إرسال'),
+                ),
+              if (bulkBusy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _orderCard(Map<String, dynamic> o) {
+    final id = o['id'].toString();
+    final isSelected = selected.contains(id);
+    final state = o['status']?.toString() ?? 'created',
+        color = statusColors[state] ?? VColors.brand;
+    final scope = o['companyId'] != null ? 'شركة توصيل' : 'غير مسندة';
+    final created = o['createdAt'] != null
+        ? businessDate(o['createdAt'])
+        : null;
+    final type = OrderTypeUI.fromWire(o['orderType']);
+    final pageName = o['pageName']?.toString() ?? '';
+    final unresolved = o['dispatchState'] == 'needs_review';
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+
+    void openDetail() {
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+        ),
+      ).then((_) => load(reset: true));
+    }
+
+    return VLivePanel(
+      padding: EdgeInsets.zero,
+      child: InkWell(
+        onTap: selectionMode ? () => _toggle(id) : openDetail,
+        onLongPress: selectionMode ? null : () => _enterSelection(id),
+        child: Container(
+          decoration: isSelected
+              ? BoxDecoration(
+                  color: VColors.softBlue.withValues(alpha: .35),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (selectionMode || wide)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 8, top: 2),
+                  child: Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => _toggle(id),
+                  ),
+                ),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (compact)
-                      Row(
-                        children: [
-                          Expanded(child: _searchField()),
-                          const SizedBox(width: 8),
-                          Badge(
-                            isLabelVisible: _activeFilterCount > 0,
-                            label: Text('$_activeFilterCount'),
-                            child: IconButton.filledTonal(
-                              tooltip: 'الفلاتر والترتيب',
-                              onPressed: () => _openFilters(context),
-                              icon: const Icon(Icons.tune),
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Text(
+                          '${o['customer'] ?? ''}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            if (unresolved)
+                              _chip('يحتاج مراجعة', VColors.warning),
+                            if (type != OrderType.normal)
+                              _chip(type.label, VColors.aqua),
+                            _chip(statusLabels[state] ?? state, color),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'طلب #${o['orderNumber'] ?? id} • $scope'
+                      '${pageName.isNotEmpty ? ' • $pageName' : ''}'
+                      ' • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
+                      '${created != null ? ' • $created' : ''}',
+                      style: const TextStyle(
+                        color: VColors.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 5,
+                      children: [
+                        if (o['phone'] != null)
+                          Text(
+                            '${o['phone']}',
+                            textDirection: TextDirection.ltr,
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        Text(
+                          '${o['description'] ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        if (o['amount'] != null)
+                          Text(
+                            displayAmount(o['amount']),
+                            style: const TextStyle(
+                              color: VColors.brand,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ],
-                      )
-                    else ...[
-                      _filterControls(),
-                      const SizedBox(height: 10),
-                      _searchField(),
-                    ],
-                    if (search.text.trim().isNotEmpty)
+                        if (o['trackingNumber'] != null)
+                          Text(
+                            'تتبع: ${o['trackingNumber']}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        if (o['providerOrderId'] != null)
+                          Text(
+                            'شحنة Click: ${o['providerOrderId']}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                      ],
+                    ),
+                    if (!selectionMode) ...[
+                      const SizedBox(height: 4),
                       Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          onPressed: () {
-                            search.clear();
-                            load(reset: true);
-                          },
-                          icon: const Icon(Icons.close),
-                          label: const Text('مسح البحث'),
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 2,
+                          children: [
+                            IconButton(
+                              tooltip: 'نسخ رقم الطلب',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () async {
+                                final num = (o['orderNumber'] ?? id).toString();
+                                await Clipboard.setData(
+                                  ClipboardData(text: num),
+                                );
+                                if (mounted) {
+                                  showSuccess(
+                                    context,
+                                    'تم نسخ رقم الطلب: $num',
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.copy, size: 15),
+                            ),
+                            const Text(
+                              'فتح التفاصيل',
+                              style: TextStyle(
+                                color: VColors.brand,
+                                fontSize: 11,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.arrow_back_ios_new,
+                              size: 11,
+                              color: VColors.brand,
+                            ),
+                          ],
                         ),
                       ),
+                    ],
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              if (limited)
-                const VLivePanel(
-                  child: Text(
-                    'توجد نتائج إضافية؛ حدّد الحالة أو الشركة أو الفترة لتضييق البحث.',
-                  ),
-                ),
-              if (error != null)
-                VFeedbackPanel(
-                  title: 'تعذر تحميل الطلبات',
-                  message: error,
-                  icon: Icons.error_outline,
-                  onRetry: () => load(reset: true, fresh: true),
-                ),
-              if (!busy && error == null && rows.isEmpty)
-                const VFeedbackPanel(
-                  title: 'لا توجد طلبات مطابقة',
-                  message: 'جرّب تغيير البحث أو الفلاتر، أو أنشئ طلباً جديداً.',
-                  icon: Icons.receipt_long_outlined,
-                ),
-              for (final item in visible)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: _orderCard(item),
-                ),
-              const SizedBox(height: 9),
-              if (busy)
-                const VFeedbackPanel(
-                  title: 'جارٍ تحميل الطلبات',
-                  loading: true,
-                ),
-              if (more && !busy)
-                Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () => load(),
-                    icon: const Icon(Icons.expand_more),
-                    label: const Text('تحميل المزيد'),
-                  ),
-                ),
-              const SizedBox(height: 30),
             ],
           ),
         ),
@@ -457,122 +1062,17 @@ class _LiveOrdersState extends State<LiveOrders> {
     );
   }
 
-  Widget _orderCard(Map<String, dynamic> o) {
-    final state = o['status']?.toString() ?? 'created',
-        color = statusColors[state] ?? VColors.brand;
-    final scope = o['companyId'] != null ? 'شركة توصيل' : 'غير مسندة';
-    final created = o['createdAt'] != null
-        ? businessDate(o['createdAt'])
-        : null;
-    return VLivePanel(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: InkWell(
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                LiveOrderDetail(id: o['id'].toString(), policy: widget.policy),
-          ),
-        ).then((_) => load(reset: true)),
-        child: Padding(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  Text(
-                    '${o['customer'] ?? ''}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: .10),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      statusLabels[state] ?? state,
-                      style: TextStyle(
-                        color: color,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'طلب #${o['orderNumber'] ?? o['id']} • $scope • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
-                '${created != null ? ' • $created' : ''}',
-                style: const TextStyle(color: VColors.muted, fontSize: 11),
-              ),
-              const SizedBox(height: 5),
-              Wrap(
-                spacing: 12,
-                runSpacing: 5,
-                children: [
-                  Text(
-                    '${o['description'] ?? ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  if (o['amount'] != null)
-                    Text(
-                      displayAmount(o['amount']),
-                      style: const TextStyle(
-                        color: VColors.brand,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  if (o['trackingNumber'] != null)
-                    Text(
-                      'تتبع: ${o['trackingNumber']}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  if (o['providerOrderId'] != null)
-                    Text(
-                      'شحنة Click: ${o['providerOrderId']}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Flexible(
-                    child: Text(
-                      'فتح التفاصيل',
-                      style: TextStyle(color: VColors.brand, fontSize: 11),
-                    ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_back_ios_new,
-                    size: 11,
-                    color: VColors.brand,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _chip(String text, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      text,
+      style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12),
+    ),
+  );
 }
 
 class LiveOrderDetail extends StatefulWidget {
