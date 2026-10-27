@@ -29,11 +29,16 @@ const base = {
   quantity: 1,
   amount: '12.345',
   paymentMethod: 'عند الاستلام',
+  pageId: 'search_page',
 };
 
 test('search and filters journey: number, name, phone, click ref and combined', async () => {
+  // Self-contained: reset so the journey is order-independent across the suite.
+  await fetch('http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST+'/emulator/v1/projects/demo-velnix/accounts',{method:'DELETE'});
+  await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-velnix/databases/(default)/documents',{method:'DELETE'});
   await auth.createUser({uid: 'gm'}).catch(() => {});
   await db.doc('members/gm').set({name: 'GM', role: 'generalManager', active: true});
+  await db.doc('pages/search_page').set({name: 'صفحة البحث', nameLower: 'صفحة البحث', active: true, archived: false, status: 'active'});
 
   const created = [];
   for (let i = 0; i < 3; i++) {

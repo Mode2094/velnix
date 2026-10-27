@@ -56,6 +56,12 @@ void main() {
               'apiUrl': 'https://local-contract.example',
               'statusMap': {'done': 'delivered'},
             };
+            final page = <String, dynamic>{
+              'id': 'page_x',
+              'name': 'صفحة اختبار',
+              'active': true,
+              'archived': false,
+            };
             final order = <String, dynamic>{
               'id': 'order_1234567890',
               'customer': 'عميل اختبار طويل الاسم',
@@ -121,6 +127,14 @@ void main() {
                 case 'listCompanies':
                   return {
                     'items': [company],
+                  };
+                case 'listPages':
+                  return {
+                    'items': [page],
+                  };
+                case 'listAllowedPages':
+                  return {
+                    'items': [page],
                   };
                 case 'listOrderCreators':
                   return {'items': []};

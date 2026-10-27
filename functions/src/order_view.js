@@ -6,6 +6,7 @@ function publicOrder(d) {
   const o=d.data();
   return {id:d.id,orderNumber:o.orderNumber||null,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
+    pageId:o.pageId||null,pageName:o.pageName||null,pageFacebookUrl:o.pageFacebookUrl||null,orderType:o.orderType||'normal',
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
     companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,
     clickOrderRef:o.clickOrderRef||null,clickClientSerial:o.clickClientSerial||null,clickStatusRaw:o.clickStatusRaw||null,clickStatusDate:o.clickStatusDate||null,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -195,7 +196,21 @@ class VelnixGateway {
   }
 
   Future<void> dispatch(String id) async {
-    await call('sendOrderToDelivery', {'id': id});
+    try {
+      // Bound the wait so the UI never spins forever. A timeout here is
+      // ambiguous: the request may still reach the vendor, so the caller must
+      // treat it like an uncertain outcome (do not auto-resend).
+      await call('sendOrderToDelivery', {
+        'id': id,
+      }).timeout(const Duration(seconds: 75));
+    } on TimeoutException {
+      _invalidateOrderData();
+      throw VelnixException(
+        'استغرقت العملية وقتاً أطول من المتوقع. قد تكون الشحنة قيد الإنشاء؛ '
+        'لا تُعد الإرسال. افتح الطلب لمتابعة النتيجة.',
+        code: 'deadline-exceeded',
+      );
+    }
     _invalidateOrderData();
   }
 
@@ -273,6 +288,41 @@ class VelnixGateway {
     final result = await call('testCompanyConnection', {'id': id});
     invalidate('listCompanies');
     return result;
+  }
+
+  // ---- Electronic pages (Facebook pages the client receives orders on) ----
+  Future<List<Map<String, dynamic>>> pages() async =>
+      directoryItems('listPages');
+
+  /// Active pages the signed-in employee may create orders for. Not cached so a
+  /// revoked page takes effect on the next open.
+  Future<Map<String, dynamic>> allowedPages() => call('listAllowedPages', {});
+
+  Future<Map<String, dynamic>> savePage(Map<String, dynamic> page) async {
+    final result = await call('savePage', page);
+    invalidate('listPages');
+    invalidate('listAllowedPages');
+    return result;
+  }
+
+  Future<void> archivePage(String id) async {
+    await call('archivePage', {'id': id});
+    invalidate('listPages');
+    invalidate('listAllowedPages');
+  }
+
+  Future<void> restorePage(String id) async {
+    await call('restorePage', {'id': id});
+    invalidate('listPages');
+    invalidate('listAllowedPages');
+  }
+
+  Future<Map<String, int>> pageStats(List<String> ids) async {
+    final result = await call('pageStats', {'ids': ids});
+    final raw = Map<String, dynamic>.from(
+      (result['counts'] as Map?) ?? const {},
+    );
+    return raw.map((k, v) => MapEntry(k, (v as num?)?.toInt() ?? 0));
   }
 
   Future<List<Map<String, dynamic>>> members() async =>
@@ -391,13 +441,34 @@ class _GatewayCacheEntry {
   final Object? value;
 }
 
+/// True when a server message is a safe, human-readable business message (the
+/// backend's own Arabic guidance) rather than a raw SDK/transport diagnostic.
+/// Only such messages may be surfaced to the user.
+bool _safeServerMessage(String? message) {
+  final m = message?.trim() ?? '';
+  if (m.isEmpty) return false;
+  // Require Arabic script and reject anything that looks like a raw SDK string
+  // (latin identifiers, stack frames, bracketed codes).
+  if (!RegExp(r'[\u0600-\u06FF]').hasMatch(m)) return false;
+  if (RegExp(r'[A-Za-z]{3,}').hasMatch(m)) return false;
+  return true;
+}
+
 String callableErrorMessage(
   String code,
   String? serverMessage,
 ) => switch (code) {
-  'unavailable' => 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة',
+  // For an uncertain delivery outcome the backend sends specific Arabic
+  // guidance (shipment may exist; do not resend). Surface it so the UI never
+  // hides that a shipment may have been created — but never leak raw SDK text.
+  'unavailable' =>
+    _safeServerMessage(serverMessage)
+        ? serverMessage!.trim()
+        : 'تعذر الاتصال. تحقق من الشبكة ثم أعد المحاولة',
   'internal' =>
-    'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
+    _safeServerMessage(serverMessage)
+        ? serverMessage!.trim()
+        : 'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
   'aborted' => 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ',
   'unauthenticated' =>
     serverMessage?.trim().isNotEmpty == true

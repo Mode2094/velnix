@@ -22,6 +22,7 @@ enum AppPermission {
   viewAmounts,
   manageEmployees,
   manageCompanies,
+  managePages,
   viewSync,
   viewAudit,
   manageSettings,
@@ -37,6 +38,7 @@ extension PermissionText on AppPermission {
     AppPermission.viewAmounts => 'مشاهدة مبالغ الطلبات',
     AppPermission.manageEmployees => 'إدارة الموظفين والصلاحيات',
     AppPermission.manageCompanies => 'إدارة شركات التوصيل',
+    AppPermission.managePages => 'إدارة الصفحات الإلكترونية',
     AppPermission.viewSync => 'مراقبة المزامنة مع شركات التوصيل',
     AppPermission.viewAudit => 'سجل العمليات',
     AppPermission.manageSettings => 'إعدادات النظام',
@@ -209,6 +211,33 @@ class AppNotice {
 /// Split from the reference video: orders with a delivery-company assignment
 /// and orders still managed internally. NOT a store/inventory module.
 enum OrderBucket { all, delivery, internal }
+
+/// Business intent of an order. Deliberately separate from [OrderStatus]
+/// (operational state) and from any Click shipment state. Only `normal` maps to
+/// a plain Click `setorder`; the others are managed internally in Velnix until
+/// a confirmed carrier contract exists.
+enum OrderType { normal, returnOrder, exchange, partialReceipt }
+
+extension OrderTypeUI on OrderType {
+  String get wire => switch (this) {
+    OrderType.normal => 'normal',
+    OrderType.returnOrder => 'return',
+    OrderType.exchange => 'exchange',
+    OrderType.partialReceipt => 'partial_receipt',
+  };
+  String get label => switch (this) {
+    OrderType.normal => 'عادي',
+    OrderType.returnOrder => 'إرجاع',
+    OrderType.exchange => 'تبديل',
+    OrderType.partialReceipt => 'استلام جزئي',
+  };
+  static OrderType fromWire(Object? value) => switch (value?.toString()) {
+    'return' => OrderType.returnOrder,
+    'exchange' => OrderType.exchange,
+    'partial_receipt' => OrderType.partialReceipt,
+    _ => OrderType.normal,
+  };
+}
 
 extension OrderBucketLabel on OrderBucket {
   String get label => switch (this) {

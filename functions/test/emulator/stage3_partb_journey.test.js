@@ -15,6 +15,7 @@ process.env.GCLOUD_PROJECT = 'demo-velnix';
 
 const functions = require('../../src/index');
 const { getFirestore } = require('firebase-admin/firestore');
+const { Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const db = getFirestore();
 const auth = getAuth();
@@ -35,6 +36,7 @@ const FIXTURE = {
   quantity: 1,
   amount: '0.000',
   paymentMethod: 'عند الاستلام',
+  pageId: 'stage3_page',
   requestKey: TAG
 };
 const EDITED_NOTE = 'INTERNAL TEST EDITED — ' + TAG;
@@ -60,6 +62,7 @@ before(async () => {
   };
   gm = await mk('stage3_gm', 'generalManager', []);
   sales = await mk('stage3_sales', 'sales', []);
+  await db.doc('pages/stage3_page').set({name: 'صفحة stage3', nameLower: 'صفحة stage3', active: true, archived: false, status: 'active', createdBy: 'stage3_gm', createdAt: Timestamp.now(), updatedAt: Timestamp.now()});
 });
 
 // ---------------------------------------------------------------- contracts
@@ -87,9 +90,14 @@ test('contract: non-GM roles are denied GM-only scope', async () => {
 });
 
 test('contract: createOrder forces internal-only fields regardless of forged input', async () => {
+  // A forged, non-existent company is refused outright (server validates it).
+  await assert.rejects(
+    invoke('createOrder', gm, { ...FIXTURE, requestKey: 'stage3_contract_forge_bad', companyId: 'evil' }),
+    { code: 'failed-precondition' }
+  );
   const created = await invoke('createOrder', gm, {
     ...FIXTURE, requestKey: 'stage3_contract_forge_v1',
-    companyId: 'evil', trackingNumber: 'FAKE', remoteStatus: 'x',
+    trackingNumber: 'FAKE', remoteStatus: 'x',
     hasDelivery: true, status: 'delivered', shippingStatus: 'delivered'
   });
   const rec = (await db.doc('orders/' + created.id).get()).data();

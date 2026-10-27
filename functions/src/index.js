@@ -12,7 +12,7 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
@@ -46,7 +46,7 @@ const requireAuth=async req=>{
 };
 async function currentActor(tx,user){
   const snap=await tx.get(db.doc('members/'+user.id));
-  if(!snap.exists||snap.data().active!==true||snap.data().role!==user.role||JSON.stringify(snap.data().permissions||[])!==JSON.stringify(user.permissions||[])||(snap.data().salesSupervisorId||null)!==(user.salesSupervisorId||null)||(snap.data().authorizationVersion||0)!==(user.authorizationVersion||0))fail('permission-denied','تغيرت صلاحيات الحساب؛ أعد تحميل الجلسة');
+  if(!snap.exists||snap.data().active!==true||snap.data().role!==user.role||JSON.stringify(snap.data().permissions||[])!==JSON.stringify(user.permissions||[])||(snap.data().salesSupervisorId||null)!==(user.salesSupervisorId||null)||(snap.data().authorizationVersion||0)!==(user.authorizationVersion||0)||JSON.stringify([...(snap.data().allowedPageIds||[])].sort())!==JSON.stringify([...(user.allowedPageIds||[])].sort()))fail('permission-denied','تغيرت صلاحيات الحساب؛ أعد تحميل الجلسة');
 }
 const safeDate=v=>v?.toDate?.()?.toISOString?.() ?? null;
 async function audit(action,actor,entityId,extra={},tx=null) {
@@ -93,7 +93,7 @@ async function oneOrder(user,id) {
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -107,7 +107,10 @@ function firebaseError(e){
 const joins=require('./join_requests')({db,auth:getAuth(),FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
 for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler);
 
-exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,email:user.email||''};});
+const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
+for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);
+
+exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,allowedPageIds:user.allowedPageIds||[],email:user.email||''};});
 exports.listOrders=callable(async req=>{
   const user=await requireAuth(req);
   const size=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
@@ -205,9 +208,54 @@ exports.getOrder=callable(async req=>{
   const order=orderForUser(user,snap);if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;order.companyProvider=company.data()?.provider||null;}
   return {order,events:docs.map(d=>({id:d.id,...d.data(),createdAt:safeDate(d.data().createdAt)})),eventsMore:page.size>size,eventsAfterId:docs.at(-1)?.id||null};
 });
+// Resolves the electronic page for a new/edited order. Returns the immutable
+// pageId plus a small snapshot. Throws when the page is missing, archived or
+// outside the caller's allowed set (server-side enforcement; hiding the option
+// in the UI is never sufficient).
+async function resolveOrderPage(user,pageIdRaw){
+  const pageId=idValue(pageIdRaw);
+  const snap=await db.doc('pages/'+pageId).get();
+  if(!snap.exists)fail('failed-precondition','الصفحة الإلكترونية غير موجودة');
+  const page=snap.data();
+  if(page.archived===true)fail('failed-precondition','لا يمكن استخدام صفحة مؤرشفة لإنشاء طلب');
+  if(page.active===false)fail('failed-precondition','لا يمكن استخدام صفحة معطلة لإنشاء طلب');
+  if(user.role!=='generalManager'&&!can(user,'managePages')){
+    const allowed=Array.isArray(user.allowedPageIds)?user.allowedPageIds:[];
+    if(!allowed.includes(pageId))fail('permission-denied','هذه الصفحة الإلكترونية غير مصرح لك بها');
+  }
+  return {pageId,pageName:page.name||'',pageFacebookUrl:page.facebookUrl||''};
+}
+// Optional delivery company chosen at creation time. Assigning here does NOT
+// send the shipment; sending stays an explicit, separately guarded action.
+async function resolveOrderCompany(companyIdRaw){
+  if(companyIdRaw==null)return null;
+  const companyId=idValue(companyIdRaw);
+  const snap=await db.doc('companies/'+companyId).get();
+  if(!snap.exists)fail('failed-precondition','شركة التوصيل غير موجودة');
+  const c=snap.data();
+  if(c.enabled!==true||c.archived===true)fail('failed-precondition','شركة التوصيل غير مفعلة');
+  return companyId;
+}
+// Validates and de-duplicates an employee's allowed page ids. Unknown page ids
+// are rejected so a client cannot attach a page that does not exist.
+async function resolveAllowedPageIds(raw){
+  if(raw==null)return [];
+  if(!Array.isArray(raw)||raw.length>200)fail('invalid-argument','قائمة الصفحات المسموحة غير صالحة');
+  const ids=[...new Set(raw.map(idValue))];
+  if(!ids.length)return [];
+  const refs=ids.map(id=>db.doc('pages/'+id));
+  const snaps=await db.getAll(...refs);
+  if(snaps.some(s=>!s.exists))fail('invalid-argument','إحدى الصفحات المحددة غير موجودة');
+  return ids;
+}
 exports.createOrder=callable(async req=>{
   const user=await requireAuth(req);if(!user.active)fail('permission-denied','الحساب معطل');
   let fields;try{fields=validateOrderFields(req.data||{});}catch(e){return firebaseError(e);}
+  // The electronic page is mandatory for new orders and must be an active page
+  // the caller is allowed to use. The snapshot is copied onto the order so
+  // history and printing survive later page renames/archival.
+  const pageSnapshot=await resolveOrderPage(user,req.data?.pageId);
+  const companyId=await resolveOrderCompany(req.data?.companyId);
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);
   const visibleTo=[user.id];
@@ -239,7 +287,8 @@ exports.createOrder=callable(async req=>{
     tx.set(counterRef,{value:nextNumber,updatedAt:FieldValue.serverTimestamp()},{merge:true});
     tx.create(ref,{...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
-      companyId:null,hasDelivery:false,revision:0,status:'created',trackingNumber:null,remoteStatus:null,
+      ...pageSnapshot,
+      companyId:companyId||null,hasDelivery:companyId!=null,revision:0,status:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.create(idemRef,{orderId:ref.id,payloadHash,createdBy:user.id,createdAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'created',user,{},tx);await audit('order.created',user,ref.id,{},tx);
@@ -258,6 +307,14 @@ exports.updateOrder=callable(async req=>{
     const payload={...req.data,amount:financialAccess?(req.data?.amount??old.amountMinor/1000):old.amountMinor/1000};
     fields=validateOrderFields(payload,{legacyCity:old.city});
   }catch(e){return firebaseError(e);}
+  // Page: keep the order's existing snapshot unless a new permitted page is
+  // supplied. Legacy orders without a page stay valid and unmodified.
+  const existingPageId=snap.data().pageId;
+  const pageSnapshot=req.data?.pageId!=null
+    ? await resolveOrderPage(user,req.data.pageId)
+    : existingPageId
+      ? {pageId:existingPageId,pageName:snap.data().pageName||'',pageFacebookUrl:snap.data().pageFacebookUrl||''}
+      : {};
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);
   await db.runTransaction(async tx=>{
@@ -266,7 +323,7 @@ exports.updateOrder=callable(async req=>{
     if(!Number.isSafeInteger(req.data?.revision)||req.data.revision!==(latest.data().revision||0))fail('aborted','تم تعديل الطلب بواسطة مستخدم آخر؛ أعد تحميله');
     if(!canEditOrder(user,latest.data()))fail('failed-precondition','تغيّرت حالة الطلب');
     if(user.role!=='generalManager'&&!can(user,'viewAmounts')&&latest.data().createdBy!==user.id)fields.amountMinor=latest.data().amountMinor;
-    tx.update(ref,{...fields,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{...fields,...pageSnapshot,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'edited',user,{},tx);await audit('order.edited',user,ref.id,{},tx);
   });return {ok:true};
 });
@@ -471,6 +528,10 @@ exports.sendOrderToDelivery=callable(async req=>{
     if(!company.exists||!c)fail('failed-precondition','شركة التوصيل غير موجودة');
     if(c.provider===CLICK_PROVIDER){
       if(c.archived===true||c.clickSendEnabled!==true||!CLICK_SEND_ALLOWED_COMPANY_IDS.has(o.companyId))fail('failed-precondition','إرسال Click غير مفعّل لهذه الشركة');
+      // Only a normal order maps to a plain Click setorder. Return / exchange /
+      // partial-receipt orders have no confirmed Click contract, so they must be
+      // managed inside Velnix and never sent in a misleading payload.
+      if((o.orderType||'normal')!=='normal')fail('failed-precondition','لا يمكن إرسال هذا النوع من الطلبات إلى Click؛ إدارته تتم داخل Velnix حتى تثبيت العقد');
     }else{
       if(c.archived||c.enabled!==true)fail('failed-precondition','شركة التوصيل غير مفعلة؛ لم يبدأ إرسال الشحنة');
       requireOperationalProvider(c);
@@ -761,7 +822,7 @@ exports.listMembers=callable(async req=>{
   if(data.afterId){const id=documentId(data.afterId);const at=rows.findIndex(d=>d.id===id);start=at<0?0:at+1;}
   const page=rows.slice(start,start+size);
   return {more:rows.length>start+size,afterId:page.at(-1)?.id||null,items:page.map(d=>({id:d.id,name:d.data().name,email:d.data().email,role:d.data().role,active:d.data().active,
-    permissions:d.data().permissions||[],salesSupervisorId:d.data().salesSupervisorId||null}))};
+    permissions:d.data().permissions||[],salesSupervisorId:d.data().salesSupervisorId||null,allowedPageIds:d.data().allowedPageIds||[]}))};
 });
 exports.saveMember=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageEmployees');
@@ -776,6 +837,9 @@ exports.saveMember=callable(async req=>{
   const name=str(req.data?.name,120),supervisor=req.data?.salesSupervisorId==null?null:idValue(req.data.salesSupervisorId);
   if(supervisor&&role!=='dataEntry')fail('invalid-argument','مشرف المبيعات خاص بمدخل البيانات');
   if(supervisor){const sup=await db.doc(`members/${supervisor}`).get();if(!sup.exists||sup.data().role!=='sales'||sup.data().active===false)fail('failed-precondition','مشرف المبيعات غير متاح');}
+  // Pages the employee may create orders for. Only meaningful for roles that
+  // create orders; validated as a unique list of existing page ids.
+  const allowedPageIds=await resolveAllowedPageIds(req.data?.allowedPageIds);
   if(req.data?.id){
     const id=idValue(req.data.id);const target=await db.doc(`members/${id}`).get();
     if(supervisor===id)fail('invalid-argument','لا يمكن أن يكون الموظف مشرفاً على نفسه');
@@ -798,7 +862,7 @@ exports.saveMember=callable(async req=>{
       const supervisors=new Map();
       for(const owner of new Set([latest.data().salesSupervisorId,supervisor].filter(Boolean))){const profile=await tx.get(db.doc('members/'+owner));if(profile.exists)supervisors.set(owner,profile.ref);}
       for(const reference of supervisors.values())tx.update(reference,{authorizationVersion:FieldValue.increment(1)});
-      tx.update(target.ref,{name,role,permissions,active,salesSupervisorId:supervisor,updatedAt:FieldValue.serverTimestamp()});
+      tx.update(target.ref,{name,role,permissions,active,salesSupervisorId:supervisor,allowedPageIds,authorizationVersion:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
       await audit('member.updated',user,id,{role,active},tx);
     });
     // DB authorization takes effect first, including during Auth API failure.
@@ -861,6 +925,7 @@ exports.createEmployee=callable(async req=>{
   const active=req.data.active;
   const supervisor=req.data?.salesSupervisorId==null?null:idValue(req.data.salesSupervisorId);
   if(supervisor&&role!=='dataEntry')fail('invalid-argument','مشرف المبيعات خاص بمدخل البيانات');
+  const allowedPageIds=await resolveAllowedPageIds(req.data?.allowedPageIds);
   let existingAuth=null;
   try{existingAuth=await getAuth().getUserByEmail(email);}catch(e){if(e.code!=='auth/user-not-found')throw e;}
   if(existingAuth)fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
@@ -876,7 +941,7 @@ exports.createEmployee=callable(async req=>{
         tx.update(sup.ref,{authorizationVersion:FieldValue.increment(1)});
       }
       tx.create(db.doc('members/'+created.uid),{name,email,role,permissions:[...new Set(permissions)],active,
-        salesSupervisorId:supervisor,approvalStatus:'approved',createdBy:user.id,
+        salesSupervisorId:supervisor,allowedPageIds,approvalStatus:'approved',createdBy:user.id,
         createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),authorizationVersion:1});
       await audit('member.created',user,created.uid,{role,active},tx);
     });

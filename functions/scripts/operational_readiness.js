@@ -18,13 +18,21 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const factory="const joins=require('./join_requests')({db,auth:getAuth(),FieldValue,FieldPath,requireAuth,currentActor,audit,fail});";
  const binding='for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler);';
  const returned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(joins);
- if(!text.includes(factory)||!text.includes(binding)||[...text.matchAll(/exports\s*\[/g)].length!==1||!returned)throw Error('source_manifest_requires_review');
+ // The pages factory mirrors the join factory shape and is validated the same way.
+ const pages=fs.readFileSync(path.join(root,'functions/src/pages.js'),'utf8');
+ const pagesFactory="const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});";
+ const pagesBinding='for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);';
+ const pagesReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(pages);
+ if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||[...text.matchAll(/exports\s*\[/g)].length!==2||!returned||!pagesReturned)throw Error('source_manifest_requires_review');
  const names=returned[1].split(',').map(n=>n.trim());
  if(names.length!==3||new Set(names).size!==names.length||names.some(n=>!['joinSession','listJoinRequests','decideJoinRequest'].includes(n)))throw Error('source_manifest_requires_review');
+ const pageNames=pagesReturned[1].split(',').map(n=>n.trim());
+ if(pageNames.length!==6||new Set(pageNames).size!==pageNames.length||pageNames.some(n=>!['listPages','listAllowedPages','savePage','archivePage','restorePage','pageStats'].includes(n)))throw Error('source_manifest_requires_review');
  functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
+ functions.push(...pageNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  if(new Set(functions.map(f=>f.name)).size!==functions.length)throw Error('source_manifest_requires_review');
  const rules=fs.readFileSync(path.join(root,'firestore.rules'),'utf8'),indexes=JSON.parse(fs.readFileSync(path.join(root,'firestore.indexes.json'),'utf8'));
- return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
+ return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),pageHandlersSha256:hash(pages),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
 }
 function indexKey(index){return JSON.stringify({collectionGroup:index.collectionGroup,queryScope:index.queryScope,documentNameOrder:(index.fields||[]).find(f=>f.fieldPath==='__name__')?.order||(index.fields||[]).filter(f=>f.order).at(-1)?.order||'ASCENDING',fields:(index.fields||[]).filter(f=>f.fieldPath!=='__name__').map(({fieldPath,order,arrayConfig})=>({fieldPath,...(order?{order}:{}),...(arrayConfig?{arrayConfig}:{})}))});}
 async function operationalReadiness({get,auth,readIam,plan}){

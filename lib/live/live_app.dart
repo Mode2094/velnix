@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +19,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 import '../core/dates.dart';
+import '../core/order_paste.dart';
 import '../models/entities.dart';
 import '../models/shipping_status.dart';
 import 'gateway.dart';
@@ -27,6 +29,7 @@ part 'live_orders.dart';
 part 'live_order_journey.dart';
 part 'live_bucket_status.dart';
 part 'live_admin.dart';
+part 'live_pages.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
 
@@ -812,7 +815,7 @@ class _LiveShellState extends State<LiveShell> {
   /// orders, order details, create, companies, team and settings instead of a
   /// full-screen route replacing the whole shell.
   final tabKeys = {
-    for (final index in [0, 1, 2, 3, 4, 5, 6, 7, 8])
+    for (final index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
       index: GlobalKey<NavigatorState>(debugLabel: 'velnix-tab-$index'),
   };
 
@@ -829,6 +832,7 @@ class _LiveShellState extends State<LiveShell> {
     'الإشعارات',
     'التقارير',
     'المزامنة',
+    'الصفحات الإلكترونية',
   ];
   final icons = [
     Icons.dashboard_outlined,
@@ -840,6 +844,7 @@ class _LiveShellState extends State<LiveShell> {
     Icons.notifications_none_outlined,
     Icons.bar_chart_outlined,
     Icons.sync_outlined,
+    Icons.facebook_outlined,
   ];
 
   /// Returns a tab to its root page. Called when a top-level destination is
@@ -909,6 +914,7 @@ class _LiveShellState extends State<LiveShell> {
     1,
     2,
     3,
+    if (widget.policy.can('managePages')) 9,
     if (widget.policy.can('manageEmployees')) 4,
     if (widget.policy.can('viewReports')) 7,
     6,
@@ -1170,6 +1176,10 @@ class _LiveShellState extends State<LiveShell> {
       policy: widget.policy,
     ),
     8 => LiveSyncCenter(key: ValueKey('sync$refreshVersion')),
+    9 => LivePages(
+      key: ValueKey('pages$refreshVersion'),
+      policy: widget.policy,
+    ),
     _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
   };
 

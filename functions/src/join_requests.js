@@ -19,7 +19,7 @@ module.exports=({db,auth,FieldValue,FieldPath,requireAuth,currentActor,audit,fai
       if(member.exists){
         const m=member.data();
         return {status:m.active===true&&validRole(m.role)?'approved':'disabled',
-          member:{id:uid,name:m.name||'',email:m.email||'',role:m.role,active:m.active===true,permissions:m.permissions||[],salesSupervisorId:m.salesSupervisorId||null}};
+          member:{id:uid,name:m.name||'',email:m.email||'',role:m.role,active:m.active===true,permissions:m.permissions||[],salesSupervisorId:m.salesSupervisorId||null,allowedPageIds:m.allowedPageIds||[]}};
       }
       if(join.exists)return {status:join.data().status};
       tx.create(ref,{...profile,status:'pending',createdAt:FieldValue.serverTimestamp()});
@@ -42,6 +42,12 @@ module.exports=({db,auth,FieldValue,FieldPath,requireAuth,currentActor,audit,fai
     if(!['approved','rejected'].includes(decision))fail('invalid-argument','قرار غير صالح');
     const role=req.data?.role,permissions=req.data?.permissions??[],supervisor=req.data?.salesSupervisorId==null?null:documentId(req.data.salesSupervisorId);
     if(decision==='approved'&&(!validRole(role)||!validPermissions(permissions)||supervisor&&(role!=='dataEntry'||supervisor===id)))fail('invalid-argument','دور أو صلاحيات أو فريق غير صالح');
+    // Pages the new employee may create orders for (optional).
+    let allowedPageIds=[];
+    if(decision==='approved'&&req.data?.allowedPageIds!=null){
+      if(!Array.isArray(req.data.allowedPageIds)||req.data.allowedPageIds.length>200)fail('invalid-argument','قائمة الصفحات غير صالحة');
+      allowedPageIds=[...new Set(req.data.allowedPageIds.map(documentId))];
+    }
     const profile=decision==='approved'?sessionProfile(await auth.getUser(id)):null;
     await db.runTransaction(async tx=>{
       await currentActor(tx,actor);
@@ -51,7 +57,7 @@ module.exports=({db,auth,FieldValue,FieldPath,requireAuth,currentActor,audit,fai
       let sup;
       if(decision==='approved'&&supervisor){sup=await tx.get(db.doc('members/'+supervisor));if(!sup.exists||sup.data().role!=='sales'||sup.data().active!==true)fail('failed-precondition','مشرف المبيعات غير متاح');}
       if(decision==='approved'){
-        tx.create(db.doc('members/'+id),{...profile,role,permissions:[...new Set(permissions)],salesSupervisorId:supervisor,active:true,approvalStatus:'approved',approvedBy:actor.id,createdAt:FieldValue.serverTimestamp(),authorizationVersion:1});
+        tx.create(db.doc('members/'+id),{...profile,role,permissions:[...new Set(permissions)],salesSupervisorId:supervisor,allowedPageIds,active:true,approvalStatus:'approved',approvedBy:actor.id,createdAt:FieldValue.serverTimestamp(),authorizationVersion:1});
         if(sup)tx.update(sup.ref,{authorizationVersion:FieldValue.increment(1)});
       }
       tx.update(ref,{status:decision,decidedBy:actor.id,decidedAt:FieldValue.serverTimestamp()});

@@ -1,7 +1,10 @@
 'use strict';
 const ROLES = ['generalManager','manager','warehouse','sales','dataEntry'];
 const STATUSES = ['created','review','preparing','ready','dispatched','inTransit','delivered','returned','cancelled'];
-const PERMISSIONS = ['viewAllOrders','editAllOrders','updateOrderStatus','sendToDelivery','viewReports','viewAmounts','manageEmployees','manageCompanies','viewSync','viewAudit','manageSettings'];
+// Business intent of an order. Kept separate from STATUSES (operational state)
+// and from Click shipment states; only 'normal' maps to a plain Click setorder.
+const ORDER_TYPES = ['normal','return','exchange','partial_receipt'];
+const PERMISSIONS = ['viewAllOrders','editAllOrders','updateOrderStatus','sendToDelivery','viewReports','viewAmounts','manageEmployees','manageCompanies','managePages','viewSync','viewAudit','manageSettings'];
 const JORDAN_CITIES = new Set(['عمان','عمّان','إربد','الزرقاء','البلقاء','المفرق','جرش','عجلون','مادبا','الكرك','الطفيلة','معان','العقبة','الأغوار الشمالية','الأغوار الجنوبية']);
 const CLOSED = new Set(['delivered','returned','cancelled']);
 const REMOTE = new Set(['inTransit','delivered','returned']);
@@ -48,11 +51,16 @@ function validateOrderFields(data, {legacyCity=null} = {}) {
     return v;
   };
   const customer=text('customer',120), phone=text('phone',30), city=text('city',80),
-    area=text('area',120), address=text('address',240), description=text('description',500);
+    // The detailed street address is optional per the client form; the shipper
+    // address is composed from city/area/address only when it is present.
+    area=text('area',120), address=text('address',240,false), description=text('description',500);
   if(!JORDAN_CITIES.has(city) && city!==legacyCity) throw new Error('invalid_city');
   const extraPhone=text('extraPhone',30,false), note=text('note',600,false);
-  if (!['string','number'].includes(typeof data.quantity)) throw new Error('invalid_quantity');
-  const quantity = Number(arabicDigits(data.quantity));
+  // Quantity is hidden in the client form; the data field is retained for the
+  // Click contract and defaults to 1 when the form does not send one.
+  const rawQuantity = data.quantity == null || data.quantity === '' ? 1 : data.quantity;
+  if (!['string','number'].includes(typeof rawQuantity)) throw new Error('invalid_quantity');
+  const quantity = Number(arabicDigits(rawQuantity));
   if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 10000) throw new Error('invalid_quantity');
   // English digits only, exactly 10, for both the primary and the optional phone.
   const phonePattern=/^[0-9]{10}$/;
@@ -65,7 +73,31 @@ function validateOrderFields(data, {legacyCity=null} = {}) {
   if (extraRaw !== '' && (extraRaw !== cleanExtra || !phonePattern.test(cleanExtra))) throw new Error('invalid_phone');
   const paymentMethod=text('paymentMethod',40,false)||'عند الاستلام';
   if (!['عند الاستلام','مدفوع مسبقاً'].includes(paymentMethod)) throw new Error('invalid_paymentMethod');
-  return {customer,phone:cleanPhone,city,area,address,description,extraPhone:cleanExtra,note,quantity,amountMinor:moneyMinor(data.amount),paymentMethod};
+  const orderType=text('orderType',40,false)||'normal';
+  if(!ORDER_TYPES.includes(orderType)) throw new Error('invalid_order_type');
+  return {customer,phone:cleanPhone,city,area,address,description,extraPhone:cleanExtra,note,quantity,amountMinor:moneyMinor(data.amount),paymentMethod,orderType};
+}
+function validOrderType(value) { return ORDER_TYPES.includes(value); }
+// Organization "electronic pages" (Facebook pages the client receives orders on).
+// Only name is mandatory; the rest are optional free text/URLs.
+function validatePageFields(data={}) {
+  const text = (key, max, required=false) => {
+    const v = typeof data[key] === 'string' ? data[key].trim() : '';
+    if (v.length > max || (required && !v)) throw new Error(`invalid_${key}`);
+    return v;
+  };
+  const name = text('name', 120, true);
+  const facebookUrl = text('facebookUrl', 300, false);
+  if (facebookUrl && !/^https?:\/\/[^\s]+$/i.test(facebookUrl)) throw new Error('invalid_page_url');
+  const logoPath = text('logoPath', 400, false);
+  const phone = text('phone', 30, false);
+  const whatsapp = text('whatsapp', 30, false);
+  const note = text('note', 600, false);
+  const cleanDigits = v => v.replace(/[^0-9]/g, '');
+  const phoneDigits = cleanDigits(phone), whatsappDigits = cleanDigits(whatsapp);
+  if (phone && phoneDigits.length < 7) throw new Error('invalid_page_phone');
+  if (whatsapp && whatsappDigits.length < 7) throw new Error('invalid_page_whatsapp');
+  return {name, facebookUrl, logoPath, phone, whatsapp, note, phoneDigits, whatsappDigits};
 }
 function safeStatusMap(obj) {
   if(!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('invalid_status_map');
@@ -87,4 +119,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,PERMISSIONS,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validateOrderFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId};

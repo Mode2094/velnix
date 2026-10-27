@@ -2436,12 +2436,24 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   bool _dirty = false;
   String? city;
   bool _leaving = false;
+  OrderType _orderType = OrderType.normal;
+  String? _pageId;
+  String? _companyId;
+  // Pages (+ the employee's allowed subset) and companies are loaded once.
+  List<Map<String, dynamic>> allowedPages = [];
+  List<Map<String, dynamic>> companies = [];
+  bool _optionsLoading = true;
+  String? _optionsError;
   final String _requestKey = List.generate(
     5,
     (_) => Random.secure().nextInt(1 << 30).toRadixString(36).padLeft(6, '0'),
   ).join();
   late String paymentMethod =
       widget.initial?['paymentMethod']?.toString() ?? 'عند الاستلام';
+  // Quantity is hidden in the client form but kept in the payload (Click needs
+  // Ord_Quantity). Default 1 for new orders; legacy orders keep their value.
+  late final int _quantity =
+      int.tryParse(widget.initial?['quantity']?.toString() ?? '1') ?? 1;
   final names = const {
     'customer': 'اسم المستلم',
     'phone': 'رقم الهاتف',
@@ -2450,7 +2462,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
     'area': 'المنطقة',
     'address': 'العنوان التفصيلي',
     'description': 'وصف محتويات الطلب',
-    'quantity': 'الكمية',
     'amount': 'المبلغ (دينار أردني)',
     'note': 'ملاحظات',
   };
@@ -2458,11 +2469,50 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   void initState() {
     super.initState();
     city = widget.initial?['city']?.toString();
+    _orderType = OrderTypeUI.fromWire(widget.initial?['orderType']);
+    _pageId = widget.initial?['pageId']?.toString();
+    _companyId = widget.initial?['companyId']?.toString();
     for (final key in names.keys) {
       inputs[key] = TextEditingController(
-        text:
-            widget.initial?[key]?.toString() ?? (key == 'quantity' ? '1' : ''),
+        text: widget.initial?[key]?.toString() ?? '',
       );
+    }
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    try {
+      final pagesResult = await VelnixGateway.instance.allowedPages();
+      final companiesResult = await VelnixGateway.instance.companies();
+      if (!mounted) return;
+      final pages = (pagesResult['items'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      final comps = companiesResult
+          .where((c) => c['enabled'] == true && c['archived'] != true)
+          .toList();
+      setState(() {
+        allowedPages = pages;
+        companies = comps;
+        _optionsLoading = false;
+        _optionsError = null;
+        // Keep the edited order's page visible even if it is now archived.
+        if (_pageId != null &&
+            _pageId!.isNotEmpty &&
+            !pages.any((p) => p['id']?.toString() == _pageId)) {
+          pages.insert(0, {
+            'id': _pageId,
+            'name': widget.initial?['pageName'] ?? 'صفحة الطلب',
+          });
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _optionsLoading = false;
+          _optionsError = '$e';
+        });
+      }
     }
   }
 
@@ -2503,14 +2553,22 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
 
   Future<void> save() async {
     if (!form.currentState!.validate() || busy) return;
+    if (_pageId == null || _pageId!.isEmpty) {
+      showError(context, 'اختر الصفحة الإلكترونية أولاً');
+      return;
+    }
     setState(() => busy = true);
     final map = <String, dynamic>{
       for (final k in names.keys)
         k: k == 'city' ? (city ?? '') : inputs[k]!.text.trim(),
       'paymentMethod': paymentMethod,
+      'orderType': _orderType.wire,
+      'pageId': _pageId,
+      if (_companyId != null && _companyId!.isNotEmpty) 'companyId': _companyId,
     };
     map['phone'] = normalizedNumber(map['phone']!.toString());
     map['extraPhone'] = normalizedNumber(map['extraPhone']!.toString());
+    map['quantity'] = _quantity;
     try {
       if (_showAmount) {
         map['amount'] = double.parse(
@@ -2519,9 +2577,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       } else {
         map.remove('amount');
       }
-      map['quantity'] = int.parse(
-        normalizedNumber(inputs['quantity']!.text.trim()),
-      );
       String? savedId = widget.initial?['id']?.toString();
       if (widget.initial == null) {
         final created = await VelnixGateway.instance.createOrder({
@@ -2548,7 +2603,300 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   }
 
   String _label(String key) =>
-      '${names[key]}${['extraPhone', 'note'].contains(key) ? ' (اختياري)' : ' *'}';
+      '${names[key]}${['extraPhone', 'note', 'address'].contains(key) ? ' (اختياري)' : ' *'}';
+
+  /// Order type, electronic page and delivery company selectors. These three
+  /// drive the server contract, so they are shown before the free-text fields.
+  Widget _optionsPanel() => VLivePanel(
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final wide = box.maxWidth >= 620;
+        final width = wide ? (box.maxWidth - 16) / 2 : box.maxWidth;
+        if (_optionsLoading) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              children: [
+                SizedBox(
+                  width: width,
+                  child: DropdownButtonFormField<OrderType>(
+                    initialValue: _orderType,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'نوع الطلب *'),
+                    items: [
+                      for (final t in OrderType.values)
+                        DropdownMenuItem(value: t, child: Text(t.label)),
+                    ],
+                    onChanged: (v) => setState(() {
+                      _orderType = v ?? OrderType.normal;
+                      _dirty = true;
+                    }),
+                  ),
+                ),
+                SizedBox(
+                  width: width,
+                  child: FormField<String>(
+                    initialValue: _pageId,
+                    validator: (_) => (_pageId == null || _pageId!.isEmpty)
+                        ? 'اختر الصفحة الإلكترونية'
+                        : null,
+                    builder: (field) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DropdownButtonFormField<String>(
+                          key: ValueKey(
+                            'page-${_pageId ?? ''}-${allowedPages.length}',
+                          ),
+                          initialValue: _pageId,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                            labelText: 'الصفحة الإلكترونية *',
+                          ),
+                          items: [
+                            for (final p in allowedPages)
+                              DropdownMenuItem(
+                                value: p['id']?.toString(),
+                                child: Text(
+                                  p['name']?.toString() ?? '',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                          onChanged: allowedPages.isEmpty
+                              ? null
+                              : (v) {
+                                  setState(() {
+                                    _pageId = v;
+                                    _dirty = true;
+                                  });
+                                  field.didChange(v);
+                                },
+                        ),
+                        if (field.hasError || allowedPages.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6, right: 12),
+                            child: Text(
+                              allowedPages.isEmpty
+                                  ? 'لا توجد صفحات مسموحة لحسابك؛ راجع المدير.'
+                                  : field.errorText!,
+                              style: const TextStyle(
+                                color: VColors.danger,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: width,
+                  child: DropdownButtonFormField<String>(
+                    key: ValueKey('company-${_companyId ?? ''}'),
+                    initialValue: _companyId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'شركة التوصيل (اختياري)',
+                    ),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('بدون شركة الآن'),
+                      ),
+                      for (final c in companies)
+                        DropdownMenuItem(
+                          value: c['id']?.toString(),
+                          child: Text(
+                            c['name']?.toString() ?? '',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) => setState(() {
+                      _companyId = v;
+                      _dirty = true;
+                    }),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'اختيار الشركة لا يُرسل الشحنة؛ الإرسال خطوة مستقلة لاحقًا.',
+              style: TextStyle(color: VColors.muted, fontSize: 11.5),
+            ),
+            if (_optionsError != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'تعذر تحميل الصفحات والشركات: $_optionsError',
+                      style: const TextStyle(
+                        color: VColors.danger,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _optionsLoading = true);
+                      _loadOptions();
+                    },
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              ),
+          ],
+        );
+      },
+    ),
+  );
+
+  /// Optional paste import: the employee pastes a free-text order, reviews the
+  /// suggested field values, then applies them. Nothing is parsed on the server
+  /// and nothing is saved automatically.
+  Widget _pastePanel() => VLivePanel(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            Text.rich(
+              TextSpan(
+                children: [
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.middle,
+                    child: Icon(
+                      Icons.content_paste_go_outlined,
+                      size: 18,
+                      color: VColors.brand,
+                    ),
+                  ),
+                  const TextSpan(text: '  لصق رسالة طلب (اختياري)'),
+                ],
+              ),
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            TextButton.icon(
+              onPressed: _importFromPaste,
+              icon: const Icon(Icons.auto_fix_high, size: 18),
+              label: const Text('توزيع على الحقول'),
+            ),
+          ],
+        ),
+        const Text(
+          'مثال: أحمد محمد، 0791234567، عمان، خلدا، طقم شرعي أسود، 30',
+          style: TextStyle(color: VColors.muted, fontSize: 11.5),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _importFromPaste() async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('لصق رسالة الطلب'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 4,
+          maxLength: 600,
+          decoration: const InputDecoration(
+            hintText: 'الصق نص رسالة الطلب هنا',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('توزيع'),
+          ),
+        ],
+      ),
+    );
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    final suggestion = suggestOrderFields(text);
+    final confirmed = await _confirmSuggestion(suggestion);
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      if (suggestion['customer'] != null) {
+        inputs['customer']!.text = suggestion['customer']!;
+      }
+      if (suggestion['phone'] != null) {
+        inputs['phone']!.text = suggestion['phone']!;
+      }
+      if (suggestion['city'] != null &&
+          jordanGovernorates.contains(suggestion['city'])) {
+        city = suggestion['city'];
+      }
+      if (suggestion['area'] != null) {
+        inputs['area']!.text = suggestion['area']!;
+      }
+      if (suggestion['description'] != null) {
+        inputs['description']!.text = suggestion['description']!;
+      }
+      if (suggestion['amount'] != null) {
+        inputs['amount']!.text = suggestion['amount']!;
+      }
+      _dirty = true;
+    });
+    if (mounted) {
+      showSuccess(context, 'راجع القيم قبل الحفظ.');
+    }
+  }
+
+  Future<bool?> _confirmSuggestion(Map<String, String> suggestion) =>
+      showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('مراجعة القيم المستخرجة'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'لن تُستبدل أي قيمة أدخلتها إلا بعد موافقتك. راجع القيم:',
+                  style: TextStyle(color: VColors.muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                for (final e in suggestion.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('${names[e.key] ?? e.key}: ${e.value}'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('تطبيق'),
+            ),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) => PopScope(
@@ -2589,6 +2937,10 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                       ],
                     ),
                   ),
+                _optionsPanel(),
+                const SizedBox(height: 12),
+                _pastePanel(),
+                const SizedBox(height: 12),
                 VLivePanel(
                   child: LayoutBuilder(
                     builder: (context, box) {
@@ -2668,7 +3020,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                       [
                                         'phone',
                                         'extraPhone',
-                                        'quantity',
                                         'amount',
                                       ].contains(entry.key)
                                       ? TextDirection.ltr
@@ -2682,15 +3033,12 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                     'address': 240,
                                     'description': 500,
                                     'note': 600,
-                                    'quantity': 5,
                                     'amount': 11,
                                   }[entry.key],
                                   keyboardType: entry.key == 'amount'
                                       ? const TextInputType.numberWithOptions(
                                           decimal: true,
                                         )
-                                      : entry.key == 'quantity'
-                                      ? TextInputType.number
                                       : entry.key.toLowerCase().contains(
                                           'phone',
                                         )
@@ -2704,12 +3052,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                             RegExp(r'[0-9]'),
                                           ),
                                           LengthLimitingTextInputFormatter(10),
-                                        ]
-                                      : entry.key == 'quantity'
-                                      ? [
-                                          FilteringTextInputFormatter.allow(
-                                            RegExp(r'[0-9٠-٩۰-۹]'),
-                                          ),
                                         ]
                                       : entry.key == 'amount'
                                       ? [
@@ -2735,6 +3077,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                     if (![
                                           'note',
                                           'extraPhone',
+                                          'address',
                                         ].contains(entry.key) &&
                                         (v == null || v.trim().isEmpty)) {
                                       return 'الحقل مطلوب';
@@ -2750,16 +3093,6 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                                             r'^[0-9]{10}$',
                                           ).hasMatch(phone)) {
                                         return 'أدخل 10 أرقام إنجليزية فقط';
-                                      }
-                                    }
-                                    if (entry.key == 'quantity') {
-                                      final quantity = int.tryParse(
-                                        normalizedNumber(v ?? ''),
-                                      );
-                                      if (quantity == null ||
-                                          quantity < 1 ||
-                                          quantity > 10000) {
-                                        return 'الكمية من 1 إلى 10000';
                                       }
                                     }
                                     if (entry.key == 'amount') {

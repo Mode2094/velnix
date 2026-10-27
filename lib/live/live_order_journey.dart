@@ -59,6 +59,11 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
         setState(() {
           note = e.toString();
           noteOk = false;
+          // Reload so the order shows the server's real dispatch state
+          // (idle / sending / needs_review / sent) even after a failure or an
+          // uncertain outcome. This is what makes the UI state-based instead of
+          // trusting the client's guess.
+          reload();
         });
       }
     } finally {
@@ -295,12 +300,21 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
     String? companyName,
   ) {
     if (plan.action == _JourneyAction.open) {
-      return const [
-        VFeedbackPanel(
+      return [
+        const VFeedbackPanel(
           title: 'جارٍ التنفيذ',
           message:
-              'تم بدء إرسال الطلب إلى شركة التوصيل؛ يرجى الانتظار دون إعادة الإرسال.',
+              'تم بدء إرسال الطلب إلى شركة التوصيل؛ يرجى الانتظار دون إعادة الإرسال. '
+              'يمكنك تحديث الحالة لمتابعة النتيجة.',
           icon: Icons.hourglass_top_outlined,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: busy
+              ? null
+              : () => _run(() async {}, success: 'تم تحديث حالة الطلب.'),
+          icon: const Icon(Icons.refresh),
+          label: const Text('تحديث الحالة'),
         ),
       ];
     }

@@ -21,23 +21,33 @@ Widget app(Widget child) => MaterialApp(
   home: Scaffold(body: child),
 );
 Future<void> fill(WidgetTester tester) async {
+  // The quantity field was removed from the client form (Click keeps a
+  // server-side default of 1), so it is no longer filled here.
   const values = {
     'اسم المستلم': 'عميل اختبار',
     'رقم الهاتف': '0791234567',
     'المنطقة': 'وسط',
     'العنوان التفصيلي': 'شارع الاختبار',
     'وصف محتويات الطلب': 'طرد',
-    'الكمية': '٢',
     'المبلغ (دينار أردني)': '١٢٫٣٤٥',
   };
   for (final entry in values.entries) {
-    final label = ['هاتف إضافي', 'ملاحظات'].contains(entry.key)
+    final label =
+        ['هاتف إضافي', 'ملاحظات', 'العنوان التفصيلي'].contains(entry.key)
         ? '${entry.key} (اختياري)'
         : '${entry.key} *';
     final input = find.widgetWithText(TextFormField, label);
     await tester.ensureVisible(input);
     await tester.enterText(input, entry.value);
   }
+  // Electronic page is mandatory; select the first available page.
+  final pageDropdown = find.byType(DropdownButtonFormField<String>).first;
+  await tester.ensureVisible(pageDropdown);
+  await tester.tap(pageDropdown);
+  await tester.pumpAndSettle();
+  final option = find.text('صفحة اختبار').last;
+  await tester.tap(option);
+  await tester.pumpAndSettle();
   final cityField = find.byType(DropdownMenu<String>);
   await tester.ensureVisible(cityField);
   tester.widget<DropdownMenu<String>>(cityField).onSelected?.call('عمان');
@@ -47,6 +57,29 @@ Future<void> fill(WidgetTester tester) async {
 void main() {
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
+
+  // Wraps a create/update handler with the page + company loads the live order
+  // form now performs, so a form save only records the real mutation call.
+  VelnixGateway formGateway(
+    Future<Map<String, dynamic>> Function(
+      String name,
+      Map<String, dynamic> data,
+    )
+    onMutation,
+  ) => VelnixGateway.forTesting((name, data) async {
+    switch (name) {
+      case 'listAllowedPages':
+        return {
+          'items': [
+            {'id': 'page_test', 'name': 'صفحة اختبار', 'active': true},
+          ],
+        };
+      case 'listCompanies':
+        return {'items': <dynamic>[]};
+    }
+    return onMutation(name, data);
+  });
+
   testWidgets(
     'order pagination keeps the applied query until a new search is submitted',
     (tester) async {
@@ -101,7 +134,7 @@ void main() {
     ) async {
       Map<String, dynamic>? payload;
       String? savedId;
-      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      VelnixGateway.instance = formGateway((name, data) async {
         expect(name, 'createOrder');
         payload = data;
         return {'id': 'saved-order'};
@@ -122,7 +155,9 @@ void main() {
       await tester.tap(find.text('حفظ الطلب'));
       await tester.pumpAndSettle();
       expect(savedId, 'saved-order');
-      expect(payload?['quantity'], 2);
+      expect(payload?['quantity'], 1);
+      expect(payload?['pageId'], 'page_test');
+      expect(payload?['orderType'], 'normal');
       expect(payload?['amount'], 12.345);
       expect(payload?['phone'], '0791234567');
       expect(payload?['extraPhone'], '');
@@ -139,7 +174,7 @@ void main() {
   ) async {
     final keys = <String>[];
     bool saved = false;
-    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+    VelnixGateway.instance = formGateway((name, data) async {
       keys.add(data['requestKey'] as String);
       if (keys.length == 1) throw VelnixException('تعذر الاتصال؛ أعد المحاولة');
       return {'id': 'saved-order'};
@@ -173,7 +208,7 @@ void main() {
     'financial validation rejects invalid precision before calling backend',
     (tester) async {
       var calls = 0;
-      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      VelnixGateway.instance = formGateway((name, data) async {
         calls++;
         return {};
       });
@@ -674,7 +709,7 @@ void main() {
     'order form offers the governorate picker and persists a valley',
     (tester) async {
       Map<String, dynamic>? payload;
-      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      VelnixGateway.instance = formGateway((name, data) async {
         expect(name, 'createOrder');
         payload = data;
         return {'id': 'saved-order'};

@@ -9,7 +9,7 @@ const {getFirestore,Timestamp}=require('firebase-admin/firestore');
 const {getAuth}=require('firebase-admin/auth');
 const db=getFirestore();
 const invoke=(name,id,data={})=>functions[name].run({auth:id?{uid:id,token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}}:null,data});
-const payload={customer:'عميل عربي',phone:'0791234567',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345'};
+const payload={customer:'عميل عربي',phone:'0791234567',city:'عمان',area:'وسط',address:'شارع',description:'طرد',quantity:1,amount:'12.345',pageId:'test_page'};
 const users={generalManager:'gm',manager:'manager',warehouse:'warehouse',sales:'sales',dataEntry:'entry'};
 let orderId;
 test('disabled carrier and unconfirmed Click fail before claiming a shipment lock',async()=>{
@@ -105,10 +105,13 @@ test('no permanent order-delete or Click-remove callable exists; rules deny dele
   // Actual SDK deletion denials for all five roles are exercised in rules.test.js.
 });
 test('order creation cannot forge carrier status, identifiers or unverified financial fields',async()=>{
-  const created=await invoke('createOrder','entry',{...payload,requestKey:'forged_carrier_fields',status:'delivered',shippingStatus:'partiallyDelivered',companyId:'click_carrier',trackingNumber:'FAKE',Order_ID:1,amountMinor:0,collectedAmount:999});
+  // A client may now choose an existing, enabled company at creation, but may
+  // still never forge status, tracking, Click ids or the amount.
+  const created=await invoke('createOrder','entry',{...payload,requestKey:'forged_carrier_fields',status:'delivered',shippingStatus:'partiallyDelivered',companyId:'company',trackingNumber:'FAKE',Order_ID:1,amountMinor:0,collectedAmount:999});
   const record=(await db.doc('orders/'+created.id).get()).data();
-  assert.equal(record.status,'created');assert.equal(record.companyId,null);assert.equal(record.trackingNumber,null);assert.equal(record.amountMinor,12345);
+  assert.equal(record.status,'created');assert.equal(record.companyId,'company');assert.equal(record.hasDelivery,true);assert.equal(record.trackingNumber,null);assert.equal(record.amountMinor,12345);
   for(const field of ['shippingStatus','Order_ID','collectedAmount'])assert.equal(Object.hasOwn(record,field),false);
+  assert.equal(record.dispatchState,'idle');
   await assert.rejects(invoke('changeOrderStatus','gm',{id:created.id,status:'partiallyDelivered'}),{code:'failed-precondition'});
 });
 before(async()=>{
@@ -118,9 +121,10 @@ before(async()=>{
   const reset=await fetch('http://'+process.env.FIRESTORE_EMULATOR_HOST+'/emulator/v1/projects/demo-velnix/databases/(default)/documents',{method:'DELETE'});if(!reset.ok)throw Error('Emulator reset failed');
   for(const [role,id]of Object.entries(users)){
     await getAuth().createUser({uid:id,email:id+'@velnix.test',password:'LocalTestingOnly123!'}).catch(e=>{if(e.code!=='auth/uid-already-exists')throw e;});
-    await db.doc('members/'+id).set({role,id,name:id,active:true,permissions:[],salesSupervisorId:role==='dataEntry'?'sales':null});
+    await db.doc('members/'+id).set({role,id,name:id,active:true,permissions:[],salesSupervisorId:role==='dataEntry'?'sales':null,allowedPageIds:['test_page']});
   }
   await db.doc('companies/company').set({name:'Local contract',enabled:true,archived:false,provider:'generic_v1',statusMap:{delivered:'delivered'}});
+  await db.doc('pages/test_page').set({name:'صفحة اختبار',nameLower:'صفحة اختبار',facebookUrl:'https://facebook.com/test',active:true,archived:false,status:'active',createdBy:'gm',createdAt:Timestamp.now(),updatedAt:Timestamp.now()});
 });
 after(async()=>{await db.terminate();await deleteApp(getApp());});
 test('legacy password authentication remains enabled but cannot authorize Velnix; Google policy preserves roles',async()=>{

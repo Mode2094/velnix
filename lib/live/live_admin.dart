@@ -1096,6 +1096,14 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
   late final Set<String> permissions = {
     ...(widget.initial?['permissions'] as List? ?? []).map((e) => e.toString()),
   };
+  // Electronic pages this employee may create orders for.
+  late final Set<String> allowedPageIds = {
+    ...(widget.initial?['allowedPageIds'] as List? ?? []).map(
+      (e) => e.toString(),
+    ),
+  };
+  List<Map<String, dynamic>> allPages = [];
+  bool pagesLoading = true;
   bool busy = false;
   bool _dirty = false;
   static const titles = <String, String>{
@@ -1107,6 +1115,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
     'viewAmounts': 'مشاهدة المبالغ',
     'manageEmployees': 'إدارة الفريق',
     'manageCompanies': 'إدارة شركات التوصيل',
+    'managePages': 'إدارة الصفحات الإلكترونية',
     'viewSync': 'مراقبة المزامنة',
     'viewAudit': 'سجل العمليات',
     'manageSettings': 'إعدادات النظام',
@@ -1123,6 +1132,111 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
       name.text = widget.initial?['name']?.toString() ?? '';
       setState(() {});
     });
+    _loadPages();
+  }
+
+  Future<void> _loadPages() async {
+    try {
+      final pages = await VelnixGateway.instance.pages();
+      if (mounted) {
+        setState(() {
+          allPages = pages.where((p) => p['archived'] != true).toList();
+          pagesLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => pagesLoading = false);
+    }
+  }
+
+  Future<void> _pickPages() async {
+    final selected = {...allowedPageIds};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('الصفحات الإلكترونية المسموح بها'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'اختر الصفحات التي يستطيع الموظف إنشاء طلبات باسمها.',
+                    style: TextStyle(color: VColors.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 6),
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value:
+                        allPages.isNotEmpty &&
+                        selected.length == allPages.length,
+                    onChanged: (v) => setLocal(() {
+                      selected.clear();
+                      if (v == true) {
+                        selected.addAll(
+                          allPages.map((p) => p['id'].toString()),
+                        );
+                      }
+                    }),
+                    title: const Text('تحديد جميع الصفحات'),
+                  ),
+                  const Divider(),
+                  if (pagesLoading)
+                    const LinearProgressIndicator()
+                  else if (allPages.isEmpty)
+                    const Text(
+                      'لا توجد صفحات. أضف صفحة أولًا من تبويب «الصفحات الإلكترونية».',
+                      style: TextStyle(color: VColors.danger, fontSize: 12),
+                    )
+                  else
+                    for (final p in allPages)
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        value: selected.contains(p['id'].toString()),
+                        onChanged: (v) => setLocal(() {
+                          final id = p['id'].toString();
+                          if (v == true) {
+                            selected.add(id);
+                          } else {
+                            selected.remove(id);
+                          }
+                        }),
+                        title: Text(p['name']?.toString() ?? ''),
+                        subtitle: Text(
+                          p['active'] == true ? 'مفعلة' : 'معطلة',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('حفظ الاختيار'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() {
+        allowedPageIds
+          ..clear()
+          ..addAll(selected.where((id) => id.isNotEmpty));
+        _dirty = true;
+      });
+    }
   }
 
   @override
@@ -1151,6 +1265,7 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
         'permissions': permissions.toList(),
         'active': active,
         'salesSupervisorId': role == 'dataEntry' ? salesSupervisor : null,
+        'allowedPageIds': allowedPageIds.toList(),
       };
       if (creating) {
         await VelnixGateway.instance.createEmployee({
@@ -1464,6 +1579,66 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                       const Text(
                         'هذه صلاحيات إضافية للدور؛ كل الموظفين يستطيعون إنشاء طلب. الخادم يتحقق من كل تعديل.',
                         style: TextStyle(color: VColors.muted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                VLivePanel(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'الصفحات الإلكترونية المسموح بها',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        allowedPageIds.isEmpty
+                            ? 'لم يتم تحديد أي صفحة؛ لن يستطيع هذا الموظف إنشاء طلب حتى تمنحه صفحة.'
+                            : 'الصفحات المحددة: ${allowedPageIds.length}',
+                        style: TextStyle(
+                          color: allowedPageIds.isEmpty
+                              ? VColors.danger
+                              : VColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (allowedPageIds.isNotEmpty)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final id in allowedPageIds)
+                              Chip(
+                                label: Text(
+                                  allPages
+                                      .firstWhere(
+                                        (p) => p['id'].toString() == id,
+                                        orElse: () => {'name': id},
+                                      )['name']
+                                      .toString(),
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                onDeleted: () => setState(() {
+                                  _dirty = true;
+                                  allowedPageIds.remove(id);
+                                }),
+                              ),
+                          ],
+                        ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: OutlinedButton.icon(
+                          onPressed: pagesLoading ? null : _pickPages,
+                          icon: const Icon(Icons.tune, size: 18),
+                          label: const Text('تعديل قائمة الصفحات'),
+                        ),
                       ),
                     ],
                   ),
