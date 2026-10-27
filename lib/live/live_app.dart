@@ -1179,14 +1179,21 @@ class _LiveShellState extends State<LiveShell> {
   /// were never opened are not built, so they issue no requests.
   Widget _tabs(List<int> entries) => IndexedStack(
     index: entries.contains(selected) ? entries.indexOf(selected) : 0,
+    // Expand so the nested navigators fill the shell body. Under loose sizing
+    // an RTL direction can lay the active tab out beyond the viewport.
+    sizing: StackFit.expand,
     children: [
       for (final index in entries)
         if (visitedTabs.contains(index))
-          Navigator(
-            key: tabKeys[index],
-            onGenerateRoute: (settings) => MaterialPageRoute<void>(
-              settings: settings,
-              builder: (context) => _screenFor(index, context),
+          Semantics(
+            container: true,
+            explicitChildNodes: true,
+            child: Navigator(
+              key: tabKeys[index],
+              onGenerateRoute: (settings) => MaterialPageRoute<void>(
+                settings: settings,
+                builder: (context) => _screenFor(index, context),
+              ),
             ),
           )
         else
