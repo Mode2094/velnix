@@ -58,9 +58,12 @@ async function create(p,role){await nav(p,'create');await p.getByText('إضاف�
 }
 async function openOrder(p,o){
  await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());
- await p.getByText(o.customer,{exact:false}).first().waitFor({timeout:30000});
+ // Flutter web can merge a whole card into one semantics node whose text is the
+ // concatenation; match the customer on aria-label (substring) to stay robust.
+ const card=p.locator(`[aria-label*="${o.customer}"]`).first();
+ await card.waitFor({timeout:30000});
  await p.screenshot({path:path.join(out,'opened-'+o.id+'.png')});
- await activate(p,p.getByText(o.customer,{exact:false}).first());await p.getByText('تفاصيل الطلب',{exact:true}).waitFor({timeout:15000});await p.getByText('سجل الحركة',{exact:true}).waitFor();await frame(p);
+ await activate(p,card);await p.getByText('تفاصيل الطلب',{exact:true}).waitFor({timeout:15000});await p.getByText('سجل الحركة',{exact:true}).waitFor();await frame(p);
 }
 
 async function main(){
@@ -179,7 +182,7 @@ async function main(){
  });
  await scenario('UI network error and retry recover without fabricated success',async()=>{
   const p=sessions.sales.p;await p.route('**/listOrders',route=>route.abort());await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());await p.getByText('تعذر تحميل الطلبات',{exact:false}).first().waitFor({timeout:20000});
-  await p.screenshot({path:path.join(out,'offline-ui.png')});await p.unroute('**/listOrders');await click(p,'إعادة المحاولة');await p.getByText(orders.sales.customer,{exact:false}).first().waitFor();
+  await p.screenshot({path:path.join(out,'offline-ui.png')});await p.unroute('**/listOrders');await click(p,'إعادة المحاولة');await p.locator(`[aria-label*="${orders.sales.customer}"]`).first().waitFor();
  });
  await scenario('authorization changes immediately block an existing data-entry UI session',async()=>{
   const p=sessions.dataEntry.p;await nav(p,'orders');

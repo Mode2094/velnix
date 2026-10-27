@@ -178,11 +178,29 @@ exports.searchOrders=callable(async req=>{
   const {normalizeSearch,tokenize}=require('./search');
   const searchPrefix=normalizeSearch(query);
   const tokens=tokenize(query);
+  // Strict post-filter: a candidate must actually match the QUERY, not merely
+  // share one token. Every query token must be a prefix of some order token, or
+  // the normalized query must be a prefix of the order's searchText. This stops
+  // a broad array-contains hit (e.g. "طلب") from returning unrelated orders.
+  const matchesQuery=(d)=>{
+    if(tokens.length===0)return true;
+    const orderTokens=Array.isArray(d.searchTokens)?d.searchTokens:[];
+    const text=typeof d.searchText==='string'?d.searchText:'';
+    if(searchPrefix && text.startsWith(searchPrefix))return true;
+    // Needle/phone fast paths.
+    if(needle && typeof d.customerKey==='string' && d.customerKey.startsWith(needle))return true;
+    if(digits.length>=5 && typeof d.phoneDigits==='string' && d.phoneDigits.startsWith(digits))return true;
+    // All tokens present as prefix of at least one order token.
+    return tokens.every(t=>orderTokens.some(ot=>typeof ot==='string'&&ot.startsWith(t)));
+  };
   // Visibility scope is the same one listOrders uses; every candidate MUST pass
   // canSeeOrder + matchingFilters before being returned.
   const matches=new Map();
-  const accept=(doc)=>{
-    if(!doc.exists||!canSeeOrder(user,{...doc.data(),id:doc.id})||!matchingFilters(doc.data(),filters))return;
+  const accept=(doc,{strict=true}={})=>{
+    if(!doc.exists)return;
+    const d=doc.data();
+    if(!canSeeOrder(user,{...d,id:doc.id})||!matchingFilters(d,filters))return;
+    if(strict&&!matchesQuery(d))return;
     matches.set(doc.id,doc);
   };
   // Exact identifiers: human order number, immutable doc id, barcode (VNX-<id>),
@@ -190,17 +208,23 @@ exports.searchOrders=callable(async req=>{
   const upper=query.toUpperCase();
   const orderNumber=upper.startsWith('VNX-')?upper:null;
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
-  if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get());
+  if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get(),{strict:false});
   const scoped=scopeQueries(user,filters);
   const searches=[];
   // orderNumber == / clickOrderRef == / trackingNumber == are single-field
   // equality lookups (auto-indexed) performed on the global collection.
-  if(orderNumber)searches.push(db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get());
-  if(orderNumber)searches.push(db.collection('orders').where('barcodeValue','==',orderNumber).limit(5).get());
-  if(query.startsWith('VNX-'))searches.push(db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)).limit(5).get());
+  if(orderNumber){
+    for(const s of await Promise.all([
+      db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get(),
+      db.collection('orders').where('barcodeValue','==',orderNumber).limit(5).get(),
+      db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)).limit(5).get(),
+    ]))for(const doc of s.docs)accept(doc,{strict:false});
+  }
   // Exact Click shipment reference / tracking number lookups (single-field).
-  searches.push(db.collection('orders').where('clickOrderRef','==',query).limit(5).get());
-  searches.push(db.collection('orders').where('trackingNumber','==',query).limit(5).get());
+  for(const s of await Promise.all([
+    db.collection('orders').where('clickOrderRef','==',query).limit(5).get(),
+    db.collection('orders').where('trackingNumber','==',query).limit(5).get(),
+  ]))for(const doc of s.docs)accept(doc,{strict:false});
   for(const base of scoped){
     if(digits.length>=5)searches.push(base.where('phoneDigits','==',digits).limit(50).get());
     // Partial phone: prefix range on the stored digit string.

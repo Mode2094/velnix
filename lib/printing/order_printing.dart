@@ -201,7 +201,7 @@ class OrderInvoicePdf {
     );
     final barcodeWidth = geometry.width;
 
-    return pw.Page(
+    return pw.MultiPage(
       pageFormat: format,
       margin: pw.EdgeInsets.fromLTRB(
         horizontalMargin,
@@ -210,110 +210,108 @@ class OrderInvoicePdf {
         verticalMargin,
       ),
       textDirection: pw.TextDirection.rtl,
-      build: (_) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Container(
-            padding: pw.EdgeInsets.only(bottom: narrow ? 7 : 13),
-            decoration: pw.BoxDecoration(border: border),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text(
-                  order['organizationName']?.toString() ?? 'VELNIX',
-                  textDirection: pw.TextDirection.ltr,
-                  style: pw.TextStyle(
-                    font: bold,
-                    fontSize: narrow ? 17 : 24,
-                    color: PdfColors.indigo800,
-                  ),
+      maxPages: 20,
+      build: (_) => [
+        pw.Container(
+          padding: pw.EdgeInsets.only(bottom: narrow ? 7 : 13),
+          decoration: pw.BoxDecoration(border: border),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(
+                order['organizationName']?.toString() ?? 'VELNIX',
+                textDirection: pw.TextDirection.ltr,
+                style: pw.TextStyle(
+                  font: bold,
+                  fontSize: narrow ? 17 : 24,
+                  color: PdfColors.indigo800,
                 ),
-                pw.Text(
-                  'فاتورة طلب / سند توصيل',
-                  style: pw.TextStyle(font: bold, fontSize: narrow ? 10 : 16),
-                ),
-                pw.Text(
-                  'رقم الطلب: $id',
-                  style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
-                ),
-                pw.Text(
-                  'تاريخ الإنشاء: $date',
-                  style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 9),
-                ),
-              ],
-            ),
+              ),
+              pw.Text(
+                'فاتورة طلب / سند توصيل',
+                style: pw.TextStyle(font: bold, fontSize: narrow ? 10 : 16),
+              ),
+              pw.Text(
+                'رقم الطلب: $id',
+                style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
+              ),
+              pw.Text(
+                'تاريخ الإنشاء: $date',
+                style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 9),
+              ),
+            ],
           ),
-          pw.SizedBox(height: narrow ? 6 : 12),
-          item('رقم الطلب', order['orderNumber'] ?? order['id']),
-          item('المستلم', order['customer']),
-          item('الهاتف', order['phone']),
-          if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
-            item('هاتف إضافي', order['extraPhone']),
-          item('المحافظة', order['city']),
-          item('المنطقة', order['area']),
-          item('العنوان', order['address']),
-          pw.SizedBox(height: narrow ? 5 : 10),
-          pw.Divider(color: PdfColors.grey300),
-          item('وصف المحتويات', order['description']),
-          item('الكمية', order['quantity']),
-          item('طريقة الدفع', order['paymentMethod']),
-          if (order['companyName'] != null)
-            item('شركة التوصيل', order['companyName']),
-          if (amount is num) item('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
-          if ((order['trackingNumber']?.toString() ?? '').isNotEmpty)
-            item('رقم تتبع الشحنة', order['trackingNumber']),
-          if ((order['note']?.toString() ?? '').isNotEmpty)
-            item('ملاحظات', order['note']),
-          pw.SizedBox(height: narrow ? 10 : 18),
-          pw.Center(
-            child: pw.Column(
-              mainAxisSize: pw.MainAxisSize.min,
-              children: [
-                pw.Padding(
-                  padding: pw.EdgeInsets.only(
-                    left: geometry.leftPadding,
-                    right: geometry.rightPadding,
-                  ),
-                  child: pw.BarcodeWidget(
-                    barcode: pw.Barcode.code128(),
-                    data: barcode,
-                    drawText: false,
-                    height: narrow ? 36 : 60,
-                    width: barcodeWidth,
-                  ),
+        ),
+        pw.SizedBox(height: narrow ? 6 : 12),
+        item('رقم الطلب', order['orderNumber'] ?? order['id']),
+        item('المستلم', order['customer']),
+        item('الهاتف', order['phone']),
+        if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
+          item('هاتف إضافي', order['extraPhone']),
+        item('المحافظة', order['city']),
+        item('المنطقة', order['area']),
+        item('العنوان', order['address']),
+        pw.SizedBox(height: narrow ? 5 : 10),
+        pw.Divider(color: PdfColors.grey300),
+        item('وصف المحتويات', order['description']),
+        item('الكمية', order['quantity']),
+        item('طريقة الدفع', order['paymentMethod']),
+        if (order['companyName'] != null)
+          item('شركة التوصيل', order['companyName']),
+        if (amount is num) item('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
+        if ((order['trackingNumber']?.toString() ?? '').isNotEmpty)
+          item('رقم تتبع الشحنة', order['trackingNumber']),
+        if ((order['note']?.toString() ?? '').isNotEmpty)
+          item('ملاحظات', order['note']),
+        pw.SizedBox(height: narrow ? 10 : 18),
+        pw.Center(
+          child: pw.Column(
+            mainAxisSize: pw.MainAxisSize.min,
+            children: [
+              pw.Padding(
+                padding: pw.EdgeInsets.only(
+                  left: geometry.leftPadding,
+                  right: geometry.rightPadding,
                 ),
-                pw.SizedBox(height: 6),
-                pw.Text(
-                  barcode,
-                  textDirection: pw.TextDirection.ltr,
-                  style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
+                child: pw.BarcodeWidget(
+                  barcode: pw.Barcode.code128(),
+                  data: barcode,
+                  drawText: false,
+                  height: narrow ? 36 : 60,
+                  width: barcodeWidth,
                 ),
-              ],
-            ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                barcode,
+                textDirection: pw.TextDirection.ltr,
+                style: pw.TextStyle(font: font, fontSize: narrow ? 7 : 10),
+              ),
+            ],
           ),
-          pw.SizedBox(height: 9),
-          if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
-            item('معلومات المؤسسة', order['receiptFooter']),
-          pw.Text(
-            'امسح الباركود للعثور على الطلب بواسطة المعرّف الداخلي. لا يحتوي الباركود على بيانات العميل.',
-            style: pw.TextStyle(
-              font: font,
-              fontSize: narrow ? 7 : 9,
-              color: PdfColors.grey700,
-            ),
-            textAlign: pw.TextAlign.center,
+        ),
+        pw.SizedBox(height: 9),
+        if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
+          item('معلومات المؤسسة', order['receiptFooter']),
+        pw.Text(
+          'امسح الباركود للعثور على الطلب بواسطة المعرّف الداخلي. لا يحتوي الباركود على بيانات العميل.',
+          style: pw.TextStyle(
+            font: font,
+            fontSize: narrow ? 7 : 9,
+            color: PdfColors.grey700,
           ),
-          pw.Text(
-            'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
-            style: pw.TextStyle(
-              font: font,
-              fontSize: narrow ? 6 : 8,
-              color: PdfColors.grey700,
-            ),
-            textAlign: pw.TextAlign.center,
+          textAlign: pw.TextAlign.center,
+        ),
+        pw.Text(
+          'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
+          style: pw.TextStyle(
+            font: font,
+            fontSize: narrow ? 6 : 8,
+            color: PdfColors.grey700,
           ),
-        ],
-      ),
+          textAlign: pw.TextAlign.center,
+        ),
+      ],
     );
   }
 }
