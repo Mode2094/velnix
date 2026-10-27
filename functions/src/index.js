@@ -816,12 +816,18 @@ async function recoverStuckDispatch(ref,actor,{source='scheduled'}={}){
           const parsed=parseClickOrderResponse(json);
           if(parsed.ok){
             // The shipment exists at Click for our reference: resolve to sent.
+            // Schedule the next status poll (15 min) unless the confirmed state
+            // is terminal, in which case follow the existing stop policy. This
+            // keeps the recovered order in the syncClickStatuses sweep instead
+            // of stranding it with nextClickSyncAt:null.
+            const pollNext=Timestamp.fromMillis(Date.now()+15*60*1000);
+            const isTerminal=['delivered','cancelled'].includes(parsed.shippingStatus);
             await db.runTransaction(async tx=>{
               const cur=await tx.get(ref);if(cur.data()?.dispatchState!=='sending')return;
               tx.update(ref,{dispatchState:'sent',status:o.status==='ready'?'dispatched':o.status,revision:FieldValue.increment(1),
                 shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',shippingStatusUpdatedAt:Timestamp.now(),
                 clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,
-                clickStatusVerified:isApiConfirmed(parsed.shippingStatus),nextClickSyncAt:null,nextPollAt:Timestamp.now(),
+                clickStatusVerified:isApiConfirmed(parsed.shippingStatus),nextClickSyncAt:isTerminal?null:pollNext,nextPollAt:Timestamp.now(),
                 dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
               await addEvent(ref.id,'dispatch_exception_resolved',actor,{outcome:'shipment_exists',rawStatus:parsed.rawStatus,source},tx);
               await audit('order.dispatch_review_auto_resolved',actor,ref.id,{rawStatus:parsed.rawStatus,source},tx);
