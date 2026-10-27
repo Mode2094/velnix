@@ -265,103 +265,124 @@ class _LiveDashboardState extends State<LiveDashboard> {
     );
   }
 
+  // Unified dashboard card typography. Every card shares one scale so the row
+  // reads as a set instead of a mix of oversized numbers and titles.
+  static const _cardTitleStyle = TextStyle(
+    fontSize: 14,
+    fontWeight: FontWeight.w800,
+    height: 1.25,
+    color: VColors.ink,
+  );
+  static const _cardCountStyle = TextStyle(
+    fontSize: 26,
+    fontWeight: FontWeight.w900,
+    height: 1,
+    color: VColors.ink,
+  );
+  static const _cardUnitStyle = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: VColors.muted,
+  );
+  static const _cardAmountStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w700,
+    color: VColors.brand,
+  );
+  static const _cardSummaryStyle = TextStyle(
+    fontSize: 11.5,
+    fontWeight: FontWeight.w700,
+    color: VColors.muted,
+  );
+  static const _cardMutedStyle = TextStyle(
+    fontSize: 11.5,
+    color: VColors.muted,
+  );
+
   Widget _storesCard() => _cardShell(
     onTap: widget.onOpenStores ?? () {},
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
             const Icon(
               Icons.storefront_outlined,
               color: VColors.brand,
-              size: 20,
+              size: 19,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 7),
             const Expanded(
               child: Text(
                 'المتاجر',
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                style: _cardTitleStyle,
               ),
             ),
-            const Icon(Icons.arrow_back, color: VColors.muted, size: 18),
+            const Icon(Icons.chevron_left, color: VColors.muted, size: 18),
           ],
         ),
-        const SizedBox(height: 12),
-        const Text(
-          'قريبًا...',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: VColors.muted,
-          ),
-        ),
+        const SizedBox(height: 14),
+        const Text('قريبًا...', style: _cardMutedStyle),
       ],
     ),
   );
 
   Widget _allCard(_ScopeTotals data) => _cardShell(
     onTap: () => _openBucket('all'),
+    accent: true,
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
             const Icon(
               Icons.receipt_long_outlined,
               color: VColors.brand,
-              size: 22,
+              size: 19,
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 7),
             const Expanded(
               child: Text(
                 'كل الطلبات',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: _cardTitleStyle,
               ),
             ),
-            const Icon(Icons.arrow_back, color: VColors.muted, size: 20),
+            const Icon(Icons.chevron_left, color: VColors.muted, size: 18),
           ],
         ),
         const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  '${data.count}',
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 4, right: 6),
-              child: Text(
-                'طلب',
-                style: TextStyle(color: VColors.muted, fontSize: 14),
-              ),
-            ),
-          ],
-        ),
+        _countRow(data.count),
         if (widget.policy.viewAmounts) ...[
-          const SizedBox(height: 8),
-          Text(
-            displayAmount(data.amountMinor / 1000),
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
+          const SizedBox(height: 7),
+          Text(displayAmount(data.amountMinor / 1000), style: _cardAmountStyle),
         ],
         const SizedBox(height: 12),
         _cardSummary(data),
       ],
     ),
+  );
+
+  /// A big number plus its unit, shrink-wrapped so a four-digit count never
+  /// overflows a narrow phone column.
+  Widget _countRow(int count) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Flexible(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text('$count', style: _cardCountStyle),
+        ),
+      ),
+      const Padding(
+        padding: EdgeInsetsDirectional.only(start: 6, bottom: 2),
+        child: Text('طلب', style: _cardUnitStyle),
+      ),
+    ],
   );
 
   Widget _scopeCard({
@@ -372,60 +393,32 @@ class _LiveDashboardState extends State<LiveDashboard> {
   }) => _cardShell(
     onTap: () => _openBucket(bucket),
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            Icon(icon, color: VColors.brand, size: 20),
-            const SizedBox(width: 8),
+            Icon(icon, color: VColors.brand, size: 19),
+            const SizedBox(width: 7),
             Expanded(
               child: Text(
                 title,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                style: _cardTitleStyle,
               ),
             ),
-            const Icon(Icons.arrow_back, color: VColors.muted, size: 18),
+            const Icon(Icons.chevron_left, color: VColors.muted, size: 18),
           ],
         ),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  '${data.count}',
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 3, right: 5),
-              child: Text(
-                'طلب',
-                style: TextStyle(color: VColors.muted, fontSize: 12),
-              ),
-            ),
-          ],
-        ),
+        const SizedBox(height: 14),
+        _countRow(data.count),
         if (widget.policy.viewAmounts) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: 7),
           Text(
             displayAmount(data.amountMinor / 1000),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            style: _cardAmountStyle,
           ),
         ],
         const SizedBox(height: 12),
@@ -434,49 +427,51 @@ class _LiveDashboardState extends State<LiveDashboard> {
     ),
   );
 
-  Widget _cardShell({required VoidCallback onTap, required Widget child}) =>
-      Semantics(
-        button: true,
-        child: Material(
-          color: Colors.white,
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: VColors.line),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            mouseCursor: SystemMouseCursors.click,
-            borderRadius: BorderRadius.circular(18),
-            hoverColor: VColors.softBlue.withValues(alpha: .6),
-            focusColor: VColors.softBlue,
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 170),
-              padding: const EdgeInsets.all(18),
-              child: child,
-            ),
-          ),
+  Widget _cardShell({
+    required VoidCallback onTap,
+    required Widget child,
+    bool accent = false,
+  }) => Semantics(
+    button: true,
+    child: Material(
+      color: accent ? VColors.softBlue.withValues(alpha: .45) : Colors.white,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: accent ? VColors.brand.withValues(alpha: .35) : VColors.line,
         ),
-      );
+      ),
+      child: InkWell(
+        onTap: onTap,
+        mouseCursor: SystemMouseCursors.click,
+        borderRadius: BorderRadius.circular(16),
+        hoverColor: VColors.softBlue.withValues(alpha: .6),
+        focusColor: VColors.softBlue,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 148),
+          padding: const EdgeInsets.all(16),
+          child: child,
+        ),
+      ),
+    ),
+  );
 
   /// Concise, non-crowded summary for a dashboard card: the two busiest
   /// statuses, or a clear empty note. The full breakdown lives on the status
   /// grid opened by tapping the card.
   Widget _cardSummary(_ScopeTotals data) {
     if (data.ranked.isEmpty) {
-      return const Text(
-        'لا توجد طلبات في هذا النطاق.',
-        style: TextStyle(fontSize: 12, color: VColors.muted),
-      );
+      return const Text('لا توجد طلبات في هذا النطاق.', style: _cardMutedStyle);
     }
     final top = data.ranked.take(2).toList();
     return Row(
       children: [
         for (final entry in top) ...[
           Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsetsDirectional.only(end: 6),
+            width: 7,
+            height: 7,
+            margin: const EdgeInsetsDirectional.only(end: 5),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: statusColors[entry.key] ?? VColors.brand,
@@ -487,14 +482,10 @@ class _LiveDashboardState extends State<LiveDashboard> {
               '${statusLabels[entry.key]}: ${entry.value}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: VColors.muted,
-              ),
+              style: _cardSummaryStyle,
             ),
           ),
-          if (entry != top.last) const SizedBox(width: 12),
+          if (entry != top.last) const SizedBox(width: 10),
         ],
       ],
     );
@@ -515,12 +506,12 @@ class _LiveDashboardState extends State<LiveDashboard> {
           ),
         ),
         const SizedBox(height: 20),
-        for (final height in [190.0, 150.0, 150.0]) ...[
+        for (final height in [160.0, 148.0, 148.0]) ...[
           Container(
             height: height,
             decoration: BoxDecoration(
               color: VColors.line.withValues(alpha: .28),
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
           const SizedBox(height: 14),

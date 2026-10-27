@@ -749,36 +749,44 @@ class _LiveShellState extends State<LiveShell> {
   @override
   void initState() {
     super.initState();
-    foregroundPush = FirebaseMessaging.onMessage.listen((message) {
-      if (!pushRouting.shouldPresentForeground(message.data['noticeId'])) {
-        return;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('لديك تحديث جديد في Velnix'),
-            action: SnackBarAction(
-              label: 'فتح',
-              onPressed: () => openPush(message),
+    // Foreground/opened push wiring must never take the shell down when the
+    // messaging plugin or Firebase app is unavailable (e.g. widget tests, web
+    // without a configured project). The shell stays usable either way.
+    try {
+      foregroundPush = FirebaseMessaging.onMessage.listen((message) {
+        if (!pushRouting.shouldPresentForeground(message.data['noticeId'])) {
+          return;
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('لديك تحديث جديد في Velnix'),
+              action: SnackBarAction(
+                label: 'فتح',
+                onPressed: () => openPush(message),
+              ),
             ),
-          ),
-        );
-      }
-    });
-    openedPush = FirebaseMessaging.onMessageOpenedApp.listen(openPush);
-    FirebaseMessaging.instance
-        .getInitialMessage()
-        .then((message) {
-          if (message != null && mounted) openPush(message);
-        })
-        .catchError((Object e) {});
+          );
+        }
+      });
+      openedPush = FirebaseMessaging.onMessageOpenedApp.listen(openPush);
+      FirebaseMessaging.instance
+          .getInitialMessage()
+          .then((message) {
+            if (message != null && mounted) openPush(message);
+          })
+          .catchError((Object e) {});
+    } catch (_) {
+      // Push is optional infrastructure; navigation and the rest of the shell
+      // keep working without it.
+    }
   }
 
   void openPush(RemoteMessage message) {
     final id = PushRouting.orderTarget(message.data);
     if (!mounted || id == null) return;
-    Navigator.push(
-      context,
+    final navigator = tabKeys[selected]?.currentState ?? Navigator.of(context);
+    navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
       ),
@@ -798,6 +806,19 @@ class _LiveShellState extends State<LiveShell> {
   String? selectedStatus;
   String selectedBucket = 'all';
   int refreshVersion = 0;
+
+  /// One nested navigator per top-level destination so detail pages push inside
+  /// the shell body. That keeps the app bar and the bottom bar mounted across
+  /// orders, order details, create, companies, team and settings instead of a
+  /// full-screen route replacing the whole shell.
+  final tabKeys = {
+    for (final index in [0, 1, 2, 3, 4, 5, 6, 7, 8])
+      index: GlobalKey<NavigatorState>(debugLabel: 'velnix-tab-$index'),
+  };
+
+  /// Tabs are built lazily: an unvisited destination mounts no page, so the
+  /// shell keeps issuing only the selected tab's requests on first paint.
+  final visitedTabs = <int>{0};
   final titles = [
     'الرئيسية',
     'الطلبات',
@@ -820,8 +841,18 @@ class _LiveShellState extends State<LiveShell> {
     Icons.bar_chart_outlined,
     Icons.sync_outlined,
   ];
+
+  /// Returns a tab to its root page. Called when a top-level destination is
+  /// (re)selected so the shell shows the requested section root instead of a
+  /// previously opened detail page.
+  void _resetTab(int index) {
+    tabKeys[index]?.currentState?.popUntil((route) => route.isFirst);
+  }
+
   void toOrders(String bucket, String? status) {
+    _resetTab(1);
     setState(() {
+      visitedTabs.add(1);
       selected = 1;
       selectedBucket = bucket;
       selectedStatus = status;
@@ -829,16 +860,27 @@ class _LiveShellState extends State<LiveShell> {
     });
   }
 
-  /// Opens the order search page, reusing LiveOrders' existing searchOrders
-  /// flow with the query field focused. The full orders list remains available
-  /// from the sidebar/drawer and the dashboard cards.
+  /// Opens the order search page inside the orders tab so the bottom bar stays
+  /// mounted. Reuses LiveOrders' existing searchOrders flow with the query field
+  /// focused; the full orders list remains available from the drawer/cards.
   void _openSearch() {
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => LiveOrderSearchPage(policy: widget.policy),
-      ),
-    );
+    if (!permittedEntries.contains(1)) return;
+    _resetTab(1);
+    setState(() {
+      visitedTabs.add(1);
+      selected = 1;
+      selectedBucket = 'all';
+      selectedStatus = null;
+      refreshVersion++;
+    });
+    // Push after the tab is built so its nested navigator exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      tabKeys[1]?.currentState?.push(
+        MaterialPageRoute<void>(
+          builder: (_) => LiveOrderSearchPage(policy: widget.policy),
+        ),
+      );
+    });
   }
 
   void go(int index) {
@@ -846,7 +888,10 @@ class _LiveShellState extends State<LiveShell> {
     // Re-tapping the create slot must never rebuild the form: that would drop
     // unsaved fields without the discard warning.
     if (index == 2 && selected == 2) return;
+    // Returning to a top-level destination shows its root, not a stale detail.
+    _resetTab(index);
     setState(() {
+      visitedTabs.add(index);
       if (index == 1) {
         selectedBucket = 'all';
         selectedStatus = null;
@@ -1049,6 +1094,116 @@ class _LiveShellState extends State<LiveShell> {
     ),
   );
 
+  Widget _screenFor(int index, BuildContext context) => switch (index) {
+    0 => LiveDashboard(
+      key: ValueKey('dash$refreshVersion'),
+      policy: widget.policy,
+      onNavigate: toOrders,
+      onOpenBucket: (bucket) => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => LiveBucketStatusGrid(
+            policy: widget.policy,
+            bucket: bucket,
+            onOpenOrders: (b, status) => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => LiveOrdersPage(
+                  policy: widget.policy,
+                  bucket: b,
+                  status: status,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      onOpenStores: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => const LiveStores()),
+      ),
+      initialFilters: selectedFilters,
+      onFiltersChanged: (value) => selectedFilters = value,
+    ),
+    1 => LiveOrders(
+      key: ValueKey('orders$refreshVersion'),
+      policy: widget.policy,
+      bucket: selectedBucket,
+      status: selectedStatus,
+      initialFilters: selectedFilters,
+      onFiltersChanged: (value) => selectedFilters = value,
+    ),
+    2 => LiveOrderForm(
+      key: ValueKey('form$refreshVersion'),
+      policy: widget.policy,
+      onSaved: (id) {
+        go(1);
+        if (id != null && id.isNotEmpty) {
+          // Push the new order's details onto the orders tab so the bottom
+          // bar stays mounted and Back returns to the refreshed list.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            tabKeys[1]?.currentState?.push(
+              MaterialPageRoute<void>(
+                builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+              ),
+            );
+          });
+        }
+      },
+      onBack: () => go(1),
+    ),
+    3 => LiveCompanies(
+      key: ValueKey('company$refreshVersion'),
+      policy: widget.policy,
+    ),
+    4 => LiveMembers(
+      key: ValueKey('people$refreshVersion'),
+      policy: widget.policy,
+    ),
+    6 => LiveNotices(
+      key: ValueKey('notices$refreshVersion'),
+      policy: widget.policy,
+    ),
+    5 => LiveAudit(key: ValueKey('audit$refreshVersion')),
+    7 => LiveReports(
+      key: ValueKey('reports$refreshVersion'),
+      policy: widget.policy,
+    ),
+    8 => LiveSyncCenter(key: ValueKey('sync$refreshVersion')),
+    _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
+  };
+
+  /// Keeps every visited destination's stack alive. Each tab owns a nested
+  /// navigator so pushed detail/form pages render under the persistent shell
+  /// chrome instead of a full-screen route that hides the bottom bar. Tabs that
+  /// were never opened are not built, so they issue no requests.
+  Widget _tabs(List<int> entries) => IndexedStack(
+    index: entries.contains(selected) ? entries.indexOf(selected) : 0,
+    children: [
+      for (final index in entries)
+        if (visitedTabs.contains(index))
+          Navigator(
+            key: tabKeys[index],
+            onGenerateRoute: (settings) => MaterialPageRoute<void>(
+              settings: settings,
+              builder: (context) => _screenFor(index, context),
+            ),
+          )
+        else
+          const SizedBox.shrink(),
+    ],
+  );
+
+  /// Android back first unwinds the active tab's nested stack, then falls back
+  /// to the shell-level behaviour (drawer close / app exit).
+  Future<void> _handleBack(bool didPop, Object? result) async {
+    if (didPop) return;
+    final navigator = tabKeys[selected]?.currentState;
+    if (navigator != null && navigator.canPop()) {
+      navigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width,
@@ -1056,164 +1211,95 @@ class _LiveShellState extends State<LiveShell> {
         extended = w >= 1200;
     final entries = permittedEntries;
     if (!entries.contains(selected)) selected = 0;
-    Widget screen = switch (selected) {
-      0 => LiveDashboard(
-        key: ValueKey('dash$refreshVersion'),
-        policy: widget.policy,
-        onNavigate: toOrders,
-        onOpenBucket: (bucket) => Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => LiveBucketStatusGrid(
-              policy: widget.policy,
-              bucket: bucket,
-              onOpenOrders: (b, status) => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) => LiveOrdersPage(
-                    policy: widget.policy,
-                    bucket: b,
-                    status: status,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _handleBack,
+      child: Scaffold(
+        key: scaffoldKey,
+        drawer: wide ? null : _drawer(context),
+        drawerEnableOpenDragGesture: !wide,
+        bottomNavigationBar: isPhoneShellWidth(w)
+            ? VelnixBottomBar(
+                selectedIndex: selected,
+                slots: phoneSlots,
+                titles: titles,
+                icons: icons,
+                onSelect: go,
+                onCreateOrder: () => go(2),
+                onOpenMenu: () => scaffoldKey.currentState?.openDrawer(),
+                onSearch: _openSearch,
+              )
+            : null,
+        appBar: AppBar(
+          toolbarHeight: 70,
+          backgroundColor: Colors.white,
+          // The phone bar owns the menu action; the automatic drawer button
+          // would duplicate it. Tablets/desktops still get it.
+          automaticallyImplyLeading: !isPhoneShellWidth(w),
+          title: Row(
+            children: [
+              const VBrandMark(size: 34),
+              const SizedBox(width: 9),
+              const Text(
+                'Velnix',
+                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
+              ),
+              const Spacer(),
+              if (w >= 430)
+                Text(
+                  widget.policy.roleLabel,
+                  style: const TextStyle(fontSize: 12, color: VColors.muted),
+                ),
+            ],
+          ),
+        ),
+        body: Row(
+          children: [
+            if (wide)
+              Container(
+                width: extended && !railCollapsed ? 230 : 85,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  border: Border(left: BorderSide(color: VColors.line)),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: IconButton(
+                          tooltip: railCollapsed
+                              ? 'توسيع القائمة'
+                              : 'طي القائمة',
+                          onPressed: () =>
+                              setState(() => railCollapsed = !railCollapsed),
+                          icon: Icon(
+                            railCollapsed
+                                ? Icons.chevron_right_outlined
+                                : Icons.chevron_left_outlined,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          children: [
+                            for (final index in entries)
+                              _navEntry(
+                                index,
+                                expanded: extended && !railCollapsed,
+                              ),
+                          ],
+                        ),
+                      ),
+                      _accountPanel(expanded: extended && !railCollapsed),
+                    ],
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
-        onOpenStores: () => Navigator.push(
-          context,
-          MaterialPageRoute<void>(builder: (_) => const LiveStores()),
-        ),
-        initialFilters: selectedFilters,
-        onFiltersChanged: (value) => selectedFilters = value,
-      ),
-      1 => LiveOrders(
-        key: ValueKey('orders$refreshVersion'),
-        policy: widget.policy,
-        bucket: selectedBucket,
-        status: selectedStatus,
-        initialFilters: selectedFilters,
-        onFiltersChanged: (value) => selectedFilters = value,
-      ),
-      2 => LiveOrderForm(
-        key: ValueKey('form$refreshVersion'),
-        policy: widget.policy,
-        onSaved: (id) {
-          go(1);
-          if (id != null && id.isNotEmpty) {
-            Navigator.push(
-              context,
-              MaterialPageRoute<void>(
-                builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
-              ),
-            );
-          }
-        },
-        onBack: () => go(1),
-      ),
-      3 => LiveCompanies(
-        key: ValueKey('company$refreshVersion'),
-        policy: widget.policy,
-      ),
-      4 => LiveMembers(
-        key: ValueKey('people$refreshVersion'),
-        policy: widget.policy,
-      ),
-      6 => LiveNotices(
-        key: ValueKey('notices$refreshVersion'),
-        policy: widget.policy,
-      ),
-      5 => LiveAudit(key: ValueKey('audit$refreshVersion')),
-      7 => LiveReports(
-        key: ValueKey('reports$refreshVersion'),
-        policy: widget.policy,
-      ),
-      8 => LiveSyncCenter(key: ValueKey('sync$refreshVersion')),
-      _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
-    };
-    return Scaffold(
-      key: scaffoldKey,
-      drawer: wide ? null : _drawer(context),
-      drawerEnableOpenDragGesture: !wide,
-      bottomNavigationBar: isPhoneShellWidth(w)
-          ? VelnixBottomBar(
-              selectedIndex: selected,
-              slots: phoneSlots,
-              titles: titles,
-              icons: icons,
-              onSelect: go,
-              onCreateOrder: () => go(2),
-              onOpenMenu: () => scaffoldKey.currentState?.openDrawer(),
-              onSearch: _openSearch,
-            )
-          : null,
-      appBar: AppBar(
-        toolbarHeight: 70,
-        backgroundColor: Colors.white,
-        // The phone bar owns the menu action; the automatic drawer button
-        // would duplicate it. Tablets/desktops still get it.
-        automaticallyImplyLeading: !isPhoneShellWidth(w),
-        title: Row(
-          children: [
-            const VBrandMark(size: 34),
-            const SizedBox(width: 9),
-            const Text(
-              'Velnix',
-              style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
-            ),
-            const Spacer(),
-            if (w >= 430)
-              Text(
-                widget.policy.roleLabel,
-                style: const TextStyle(fontSize: 12, color: VColors.muted),
-              ),
+            Expanded(child: _tabs(entries)),
           ],
         ),
-      ),
-      body: Row(
-        children: [
-          if (wide)
-            Container(
-              width: extended && !railCollapsed ? 230 : 85,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(left: BorderSide(color: VColors.line)),
-              ),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: IconButton(
-                        tooltip: railCollapsed ? 'توسيع القائمة' : 'طي القائمة',
-                        onPressed: () =>
-                            setState(() => railCollapsed = !railCollapsed),
-                        icon: Icon(
-                          railCollapsed
-                              ? Icons.chevron_right_outlined
-                              : Icons.chevron_left_outlined,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        children: [
-                          for (final index in entries)
-                            _navEntry(
-                              index,
-                              expanded: extended && !railCollapsed,
-                            ),
-                        ],
-                      ),
-                    ),
-                    _accountPanel(expanded: extended && !railCollapsed),
-                  ],
-                ),
-              ),
-            ),
-          Expanded(child: screen),
-        ],
       ),
     );
   }

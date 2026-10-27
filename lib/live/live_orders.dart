@@ -38,6 +38,14 @@ class _LiveOrdersState extends State<LiveOrders> {
   String? error;
   int generation = 0;
   String appliedQuery = '';
+
+  /// Debounce so typing settles before a query is issued, while the submit
+  /// action and the magnifier still fire immediately. Without this the field
+  /// only ran on an explicit Enter/search tap, so on phones the list appeared
+  /// to ignore the query entirely.
+  static const searchDebounce = Duration(milliseconds: 320);
+  Timer? _debounce;
+
   @override
   void initState() {
     super.initState();
@@ -54,9 +62,22 @@ class _LiveOrdersState extends State<LiveOrders> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     search.dispose();
     searchFocus.dispose();
     super.dispose();
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    // Clearing the box restores the plain list immediately.
+    if (value.trim().isEmpty) {
+      if (appliedQuery.isNotEmpty) load(reset: true);
+      return;
+    }
+    _debounce = Timer(searchDebounce, () {
+      if (mounted && search.text.trim() != appliedQuery) load(reset: true);
+    });
   }
 
   Future<void> load({bool reset = false, bool fresh = false}) async {
@@ -177,15 +198,21 @@ class _LiveOrdersState extends State<LiveOrders> {
     controller: search,
     focusNode: searchFocus,
     textInputAction: TextInputAction.search,
-    onChanged: (_) => setState(() {}),
-    onSubmitted: (_) => load(reset: true),
+    onChanged: _onQueryChanged,
+    onSubmitted: (_) {
+      _debounce?.cancel();
+      load(reset: true);
+    },
     decoration: InputDecoration(
       prefixIcon: const Icon(Icons.search),
       labelText: 'بحث في كل الطلبات المسموح لك بها',
       hintText: 'رقم الطلب، رقم الهاتف الكامل أو بداية الاسم',
       suffixIcon: IconButton(
         tooltip: 'تنفيذ البحث',
-        onPressed: () => load(reset: true),
+        onPressed: () {
+          _debounce?.cancel();
+          load(reset: true);
+        },
         icon: const Icon(Icons.search),
       ),
     ),
