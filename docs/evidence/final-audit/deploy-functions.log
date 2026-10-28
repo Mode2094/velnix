@@ -8,12 +8,12 @@ i  functions: ensuring required API cloudbuild.googleapis.com is enabled...
 i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled...
 i  functions: Loaded environment variables from functions/.env
 i  functions: Loading and analyzing source code for codebase default to determine what to deploy
-Serving at port 8680
+Serving at port 8185
 
 i  extensions: ensuring required API firebaseextensions.googleapis.com is enabled...
 i  functions: Loaded environment variables from functions/.env
 i  functions: preparing functions directory for uploading...
-i  functions: packaged /Users/mrik/Desktop/Velnix/functions (358.51 KB) for uploading
+i  functions: packaged /Users/mrik/Desktop/Velnix/functions (362.47 KB) for uploading
 i  functions: ensuring required API cloudscheduler.googleapis.com is enabled...
 i  functions: ensuring required API run.googleapis.com is enabled...
 i  functions: ensuring required API eventarc.googleapis.com is enabled...
@@ -22,7 +22,6 @@ i  functions: ensuring required API storage.googleapis.com is enabled...
 i  functions: generating the service identity for pubsub.googleapis.com...
 i  functions: generating the service identity for eventarc.googleapis.com...
 ✔  functions: functions source uploaded successfully
-i  functions: creating Node.js 22 (2nd Gen) function correctOrderStatus(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function joinSession(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function listJoinRequests(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function decideJoinRequest(europe-west1)...
@@ -48,6 +47,7 @@ i  functions: updating Node.js 22 (2nd Gen) function getOrdersByIds(europe-west1
 i  functions: updating Node.js 22 (2nd Gen) function createOrder(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function updateOrder(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function changeOrderStatus(europe-west1)...
+i  functions: updating Node.js 22 (2nd Gen) function correctOrderStatus(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function assignCompany(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function listCompanies(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function saveCompany(europe-west1)...
@@ -78,60 +78,60 @@ i  functions: updating Node.js 22 (2nd Gen) function listOrderCreators(europe-we
 i  functions: updating Node.js 22 (2nd Gen) function getSettings(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function saveSettings(europe-west1)...
 i  functions: updating Node.js 22 (2nd Gen) function orderEventNotice(us-central1)...
-✔  functions[correctOrderStatus(europe-west1)] Successful create operation.
-✔  functions[reconcileClickShipment(europe-west1)] Successful update operation.
-✔  functions[me(europe-west1)] Successful update operation.
-✔  functions[listBulkOperations(europe-west1)] Successful update operation.
-✔  functions[bulkChangeStatus(europe-west1)] Successful update operation.
 ✔  functions[listJoinRequests(europe-west1)] Successful update operation.
-✔  functions[sendOrderToDelivery(europe-west1)] Successful update operation.
-✔  functions[decideJoinRequest(europe-west1)] Successful update operation.
-✔  functions[assignCompany(europe-west1)] Successful update operation.
-✔  functions[testCompanyConnection(europe-west1)] Successful update operation.
-✔  functions[getOrdersByIds(europe-west1)] Successful update operation.
-✔  functions[archivePage(europe-west1)] Successful update operation.
-✔  functions[restoreCompany(europe-west1)] Successful update operation.
-✔  functions[syncClickOrder(europe-west1)] Successful update operation.
-✔  functions[changeOrderStatus(europe-west1)] Successful update operation.
-✔  functions[listOrders(europe-west1)] Successful update operation.
-✔  functions[recoverStuckDispatch(europe-west1)] Successful update operation.
-✔  functions[restorePage(europe-west1)] Successful update operation.
-✔  functions[listAllowedPages(europe-west1)] Successful update operation.
-✔  functions[deleteMember(europe-west1)] Successful update operation.
-✔  functions[joinSession(europe-west1)] Successful update operation.
-✔  functions[resolveBarcodes(europe-west1)] Successful update operation.
-✔  functions[companyStats(europe-west1)] Successful update operation.
-✔  functions[bulkAssignCompany(europe-west1)] Successful update operation.
-✔  functions[createOrder(europe-west1)] Successful update operation.
-✔  functions[saveCompany(europe-west1)] Successful update operation.
-✔  functions[savePage(europe-west1)] Successful update operation.
-✔  functions[listMembers(europe-west1)] Successful update operation.
-✔  functions[deliveryWebhook(europe-west1)] Successful update operation.
-✔  functions[updateOrder(europe-west1)] Successful update operation.
-✔  functions[listCompanies(europe-west1)] Successful update operation.
-✔  functions[searchOrders(europe-west1)] Successful update operation.
-✔  functions[saveMember(europe-west1)] Successful update operation.
-✔  functions[getOrder(europe-west1)] Successful update operation.
-✔  functions[dashboardStats(europe-west1)] Successful update operation.
 ✔  functions[resolveDispatchException(europe-west1)] Successful update operation.
+✔  functions[companyStats(europe-west1)] Successful update operation.
+✔  functions[updateOrder(europe-west1)] Successful update operation.
+✔  functions[correctOrderStatus(europe-west1)] Successful update operation.
+✔  functions[listBulkOperations(europe-west1)] Successful update operation.
+✔  functions[testCompanyConnection(europe-west1)] Successful update operation.
+✔  functions[assignCompany(europe-west1)] Successful update operation.
+✔  functions[listPages(europe-west1)] Successful update operation.
+✔  functions[reconcileClickShipment(europe-west1)] Successful update operation.
+✔  functions[listOrders(europe-west1)] Successful update operation.
+✔  functions[decideJoinRequest(europe-west1)] Successful update operation.
 ✔  functions[bulkDispatch(europe-west1)] Successful update operation.
 ✔  functions[syncClickStatuses(europe-west1)] Successful update operation.
-✔  functions[resetEmployeePassword(europe-west1)] Successful update operation.
-✔  functions[createEmployee(europe-west1)] Successful update operation.
-✔  functions[listNotices(europe-west1)] Successful update operation.
+✔  functions[joinSession(europe-west1)] Successful update operation.
+✔  functions[changeOrderStatus(europe-west1)] Successful update operation.
+✔  functions[getOrdersByIds(europe-west1)] Successful update operation.
+✔  functions[me(europe-west1)] Successful update operation.
+✔  functions[restoreCompany(europe-west1)] Successful update operation.
+✔  functions[recoverStuckDispatch(europe-west1)] Successful update operation.
+✔  functions[dashboardStats(europe-west1)] Successful update operation.
+✔  functions[searchOrders(europe-west1)] Successful update operation.
+✔  functions[deleteMember(europe-west1)] Successful update operation.
 ✔  functions[listSyncEvents(europe-west1)] Successful update operation.
-✔  functions[registerDevice(europe-west1)] Successful update operation.
-✔  functions[listOrderCreators(europe-west1)] Successful update operation.
 ✔  functions[markNoticeRead(europe-west1)] Successful update operation.
-✔  functions[getSettings(europe-west1)] Successful update operation.
-✔  functions[listAudit(europe-west1)] Successful update operation.
-✔  functions[listPages(europe-west1)] Successful update operation.
-✔  functions[pageStats(europe-west1)] Successful update operation.
 ✔  functions[unregisterDevice(europe-west1)] Successful update operation.
-✔  functions[saveSettings(europe-west1)] Successful update operation.
+✔  functions[resetEmployeePassword(europe-west1)] Successful update operation.
 ✔  functions[pushNotice(europe-west1)] Successful update operation.
+✔  functions[deliveryWebhook(europe-west1)] Successful update operation.
 ✔  functions[reconcileDeliveryStatuses(europe-west1)] Successful update operation.
+✔  functions[saveSettings(europe-west1)] Successful update operation.
+✔  functions[restorePage(europe-west1)] Successful update operation.
+✔  functions[sendOrderToDelivery(europe-west1)] Successful update operation.
+✔  functions[resolveBarcodes(europe-west1)] Successful update operation.
+✔  functions[createOrder(europe-west1)] Successful update operation.
+✔  functions[pageStats(europe-west1)] Successful update operation.
+✔  functions[saveCompany(europe-west1)] Successful update operation.
+✔  functions[savePage(europe-west1)] Successful update operation.
+✔  functions[listAllowedPages(europe-west1)] Successful update operation.
+✔  functions[syncClickOrder(europe-west1)] Successful update operation.
+✔  functions[listCompanies(europe-west1)] Successful update operation.
+✔  functions[bulkAssignCompany(europe-west1)] Successful update operation.
+✔  functions[saveMember(europe-west1)] Successful update operation.
+✔  functions[archivePage(europe-west1)] Successful update operation.
 ✔  functions[getBulkOperation(europe-west1)] Successful update operation.
+✔  functions[listNotices(europe-west1)] Successful update operation.
+✔  functions[createEmployee(europe-west1)] Successful update operation.
+✔  functions[listAudit(europe-west1)] Successful update operation.
+✔  functions[listOrderCreators(europe-west1)] Successful update operation.
+✔  functions[registerDevice(europe-west1)] Successful update operation.
+✔  functions[getSettings(europe-west1)] Successful update operation.
+✔  functions[getOrder(europe-west1)] Successful update operation.
+✔  functions[bulkChangeStatus(europe-west1)] Successful update operation.
+✔  functions[listMembers(europe-west1)] Successful update operation.
 ✔  functions[archiveCompany(europe-west1)] Successful update operation.
 ✔  functions[orderEventNotice(us-central1)] Successful update operation.
 Function URL (deliveryWebhook(europe-west1)): https://deliverywebhook-i32ccqmgqq-ew.a.run.app

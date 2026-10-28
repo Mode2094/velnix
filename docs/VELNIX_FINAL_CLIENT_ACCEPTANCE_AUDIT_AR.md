@@ -1,8 +1,8 @@
 # VELNIX — تدقيق القبول النهائي للعميل (بوابة الإغلاق)
 
 **المشروع:** `velnix-6c1a2` · https://velnix-6c1a2.web.app
-**الفرع:** `main` · **Commit الكود المدقق:** `61c3967`
-**CI:** https://github.com/Mode2094/velnix/actions/runs/40734399317 — ✅ نجح (flutter / firebase / android / emulator-ui)
+**الفرع:** `main` · **Commit الكود المدقق:** `ff8268e`
+**CI:** https://github.com/Mode2094/velnix/actions/runs/40758795161 — ✅ نجح (flutter / firebase / android / emulator-ui)
 **تاريخ التنفيذ:** 28 أكتوبر 2026
 **بيانات الاختبار:** اصطناعية بالكامل — لا بيانات عملاء ولا شحنات Click حقيقية.
 
@@ -20,7 +20,7 @@
 | Demo browser smoke | ✅ 30 شاشة، 0 أخطاء صفحة |
 | Code128 + QR | ✅ **45/45** على 203/300/600 DPI |
 | النشر | ✅ Functions + Hosting، وبصمة الويب مطابقة للبناء |
-| APK | ✅ `delivery/apk/Velnix-release.apk` — SHA-256 `307879499fc91ffb…388be8` |
+| APK | ✅ `delivery/apk/Velnix-release.apk` — SHA-256 `f9a02768073cde07…f2e25a` |
 
 الأدلة المنظمة في `docs/evidence/final-audit/`، وهذا الملف يربط كل بند بدليله.
 
@@ -253,10 +253,10 @@
 
 | البند | الدليل |
 |---|---|
-| Functions | 55 دالة محدثة على `europe-west1` — `docs/evidence/final-audit/deploy-functions.log` |
-| Hosting | HTTP 200، وبصمة `main.dart.js` المنشورة = البناء المحلي (`c1d7830ba5aa949988af…`) — `deploy-hosting.log`, `deployment.json` |
+| Functions | 56 دالة محدثة على `europe-west1` — `docs/evidence/final-audit/deploy-functions.log` |
+| Hosting | HTTP 200، وبصمة `main.dart.js` المنشورة = البناء المحلي (`4bccea8baf529d2cf757…`) — `deploy-hosting.log`, `deployment.json` |
 | حارس الدالة الجديدة | `correctOrderStatus` بلا مصادقة يعيد `UNAUTHENTICATED` |
-| APK | `delivery/apk/Velnix-release.apk` — 81,131,692 بايت — SHA-256 `307879499fc91ffbf211bbad5ec01ec772731e681747ad9b8246f4c1aa388be8` — `apk-sha256.txt` |
+| APK | `delivery/apk/Velnix-release.apk` — 81,131,692 بايت — SHA-256 `f9a02768073cde078c384fd5bd80dce440d151ae97cbdb6a741fe75f74f2e25a` — `apk-sha256.txt` |
 | قواعد/فهارس Firestore | بلا تغيير في هذه الجولة — لم تُنشر |
 
 ---
@@ -268,7 +268,7 @@
 | Flutter | **488** | `flutter test` (Linux container) |
 | Functions unit | **195** | `docs/evidence/final-audit/functions-unit.log` |
 | Functions emulator + rules | **241** | `docs/evidence/final-audit/functions-emulator.log` |
-| Playwright 5 أدوار | **21/21** | CI run `40734399317` (job `emulator-ui`) |
+| Playwright 5 أدوار | **21/21** | CI run `40758795161` (job `emulator-ui`) |
 | Demo smoke | 30 شاشة / 0 أخطاء | `docs/evidence/final-audit/demo-browser-results.json` |
 | Barcode/QR | **45/45** | `barcode-decode.log`, `barcode-decode-results.json` |
 

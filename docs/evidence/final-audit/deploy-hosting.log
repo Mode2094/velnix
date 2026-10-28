@@ -4,7 +4,7 @@
 i  deploying hosting
 i  hosting[velnix-6c1a2]: beginning deploy...
 i  hosting[velnix-6c1a2]: found 44 files in build/web
-i  hosting: uploading new files [0/3] (0%)
+i  hosting: uploading new files [0/2] (0%)
 i  hosting: upload complete
 ✔  hosting[velnix-6c1a2]: file upload complete
 i  hosting[velnix-6c1a2]: finalizing version...
