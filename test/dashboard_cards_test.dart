@@ -87,11 +87,10 @@ void main() {
     expect(find.text('كل الطلبات'), findsOneWidget);
     expect(find.text('طلبات شركات التوصيل'), findsOneWidget);
     expect(find.text('جميع طلبات المتجر'), findsOneWidget);
-    // كل الطلبات (18) and طلبات شركات التوصيل (9) are scopes; the store card
-    // counts the internal, non-delivery orders only (3).
-    expect(find.text('18'), findsOneWidget);
+    // The store card mirrors the reference: the full order book (18), including
+    // orders routed to delivery companies.
+    expect(find.text('18'), findsWidgets);
     expect(find.text('9'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
     expect(find.textContaining('جديد'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -127,7 +126,7 @@ void main() {
     for (final entry in {
       'كل الطلبات': 'all:all',
       'طلبات شركات التوصيل': 'delivery:all',
-      'جميع طلبات المتجر': 'internal:all',
+      'جميع طلبات المتجر': 'all:all',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);
@@ -170,7 +169,6 @@ void main() {
     for (final entry in {
       'كل الطلبات': 'all',
       'طلبات شركات التوصيل': 'delivery',
-      'جميع طلبات المتجر': 'internal',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);

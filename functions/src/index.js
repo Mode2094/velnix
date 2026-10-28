@@ -12,7 +12,7 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
@@ -130,7 +130,7 @@ async function applyCompanyAssignment(ref,user,id){
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -278,12 +278,25 @@ exports.searchOrders=callable(async req=>{
   // returned (dedup across sub-queries).
   const g0=cursor.g;
   let anySubHasMore=false;
+  // The last candidate actually examined in this window (matching or not). It is
+  // the only safe anchor when a page is short/empty but another sub-query still
+  // has candidates: otherwise the cursor would stay at the same boundary and the
+  // search would loop forever or end prematurely.
+  let lastExamined=null;
+  const after=(a,b)=>{
+    const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
+    if(at!==bt)return sort==='asc'?at>bt:at<bt;
+    return (a.id>b.id?1:-1)*(sort==='asc'?1:-1)>0;
+  };
   for(const sub of subs){
     let q=sub.builder().orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort);
     if(g0)q=q.startAfter(Timestamp.fromMillis(g0.c),g0.i);
     q=q.limit(STEP);
     const snap=await q.get();
-    for(const doc of snap.docs)accept(doc,{strict:!sub.exact});
+    for(const doc of snap.docs){
+      accept(doc,{strict:!sub.exact});
+      if(!lastExamined||after(doc,lastExamined))lastExamined=doc;
+    }
     if(snap.size>=STEP)anySubHasMore=true;
   }
   const all=[...matches.values()];
@@ -306,15 +319,20 @@ exports.searchOrders=callable(async req=>{
   const filtered=all.filter(afterBoundary);
   const page=filtered.slice(0,pageSize);
   const last=page.at(-1);
-  // Accurate end detection: there is more only if a full page was returned AND
-  // (a sub-query still has data OR the current window had extra matches).
-  const hasMore=page.length===pageSize&&(anySubHasMore||filtered.length>pageSize);
-  const nextCursor=hasMore?encodeCursor({
+  // Accurate end detection: a short page is NOT the end while any sub-query
+  // still has candidates past this window (common terms combined with an
+  // in-memory filter such as city/amount/area can starve the first window).
+  // Continue whenever a sub-query has more, or this window held extra matches.
+  const hasMore=anySubHasMore||filtered.length>pageSize;
+  // A full page resumes after the last returned match; a short/empty page has
+  // already examined the whole window, so it resumes after the last candidate.
+  const anchor=page.length>=pageSize?last:(anySubHasMore?lastExamined:last);
+  const nextCursor=hasMore&&anchor?encodeCursor({
     key:cursorKey,
     sort,
     pageSize,
     direction:req.data?.direction??null,
-    g:last?{c:last.data().createdAt?.toMillis?.()||0,i:last.id}:null,
+    g:{c:anchor.data().createdAt?.toMillis?.()||0,i:anchor.id},
   }):null;
   return {
     items:page.map(d=>orderForUser(user,d)),
@@ -444,7 +462,11 @@ async function resolveOrderPage(user,pageIdRaw){
     const allowed=Array.isArray(user.allowedPageIds)?user.allowedPageIds:[];
     if(!allowed.includes(pageId))fail('permission-denied','هذه الصفحة الإلكترونية غير مصرح لك بها');
   }
-  return {pageId,pageName:page.name||'',pageFacebookUrl:page.facebookUrl||''};
+  // Contact snapshot: the label is a historical order record, so it captures the
+  // page contacts at creation. Archiving later does not rewrite history and the
+  // print flow never queries archived pages for live contact data.
+  return {pageId,pageName:page.name||'',pageFacebookUrl:page.facebookUrl||'',
+    pagePhone:page.phone||'',pageWhatsapp:page.whatsapp||''};
 }
 // Optional delivery company chosen at creation time. Assigning here does NOT
 // send the shipment; sending stays an explicit, separately guarded action.
@@ -472,6 +494,10 @@ async function resolveAllowedPageIds(raw){
 exports.createOrder=callable(async req=>{
   const user=await requireAuth(req);if(!user.active)fail('permission-denied','الحساب معطل');
   let fields;try{fields=validateOrderFields(req.data||{});}catch(e){return firebaseError(e);}
+  // Final commercial contract: the client form has no quantity field and every
+  // NEW order is a single parcel. Force 1 server-side instead of trusting the
+  // payload; legacy orders keep their stored quantity (updateOrder preserves it).
+  fields.quantity=1;
   // The electronic page is mandatory for new orders and must be an active page
   // the caller is allowed to use. The snapshot is copied onto the order so
   // history and printing survive later page renames/archival.
@@ -543,11 +569,15 @@ exports.updateOrder=callable(async req=>{
   const pageSnapshot=req.data?.pageId!=null
     ? await resolveOrderPage(user,req.data.pageId)
     : existingPageId
-      ? {pageId:existingPageId,pageName:snap.data().pageName||'',pageFacebookUrl:snap.data().pageFacebookUrl||''}
+      ? {pageId:existingPageId,pageName:snap.data().pageName||'',pageFacebookUrl:snap.data().pageFacebookUrl||'',
+          pagePhone:snap.data().pagePhone||'',pageWhatsapp:snap.data().pageWhatsapp||''}
       : {};
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);
   const old=snap.data();
+  // Preserve the historical quantity on edit: legacy orders may carry >1 and
+  // editing must not silently rewrite that record to the new contract.
+  fields.quantity=Number.isSafeInteger(old.quantity)&&old.quantity>0?old.quantity:1;
   // Recompute derived search fields on edit; keep the immutable identifiers.
   const searchFields=buildSearchFields({...fields,orderNumber:old.orderNumber,barcodeValue:old.barcodeValue||`VNX/${ref.id}`,...pageSnapshot,
     clickOrderRef:old.clickOrderRef,trackingNumber:old.trackingNumber,providerOrderId:old.providerOrderId});
@@ -565,6 +595,35 @@ exports.changeOrderStatus=callable(async req=>{
   const user=await requireAuth(req);const {ref}=await oneOrder(user,req.data?.id);
   const target=str(req.data?.status,30);
   return applyStatusChange(ref,user,target);
+});
+// Authorized administrative correction for INTERNAL orders only (general manager).
+// Direct transition with a mandatory reason, revision guard and audit/event. It
+// refuses any order that has a carrier contract, Click markers or an active
+// dispatch lock, so it can never fake a Click state or bypass dispatch safety.
+exports.correctOrderStatus=callable(async req=>{
+  const user=await requireAuth(req);
+  if(user.role!=='generalManager')fail('permission-denied','التصحيح الإداري متاح للمدير العام فقط');
+  const {ref}=await oneOrder(user,req.data?.id);
+  const target=str(req.data?.status,30);
+  const reason=str(req.data?.reason,300).trim();
+  if(reason.length<3)fail('invalid-argument','أدخل سبب التصحيح (3 أحرف على الأقل)');
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    if(user.role!=='generalManager')fail('permission-denied','التصحيح الإداري متاح للمدير العام فقط');
+    const latest=await tx.get(ref);
+    if(!latest.exists)fail('not-found','الطلب غير موجود');
+    const o=latest.data();
+    if(!canCorrectInternalStatus(o))fail('failed-precondition','لا يمكن تصحيح طلب مرتبط بشحنة أو إرسال شركة توصيل');
+    const allowed=correctionTargets(o);
+    if(!allowed.includes(target))fail('failed-precondition','الحالة الهدف غير مسموحة لهذا الطلب');
+    if(Number.isSafeInteger(req.data?.revision)&&req.data.revision!==(o.revision||0))fail('aborted','تم تعديل الطلب بواسطة مستخدم آخر؛ أعد تحميله');
+    const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
+    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={from:o.status,to:target,reason};
+    await addEvent(ref.id,'status_corrected',user,detail,tx);
+    await audit('order.status_corrected',user,ref.id,detail,tx);
+  });
+  return {ok:true};
 });
 exports.assignCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');const {ref}=await oneOrder(user,req.data?.id);
@@ -780,7 +839,7 @@ async function dispatchOrder(ref,user){
     await db.runTransaction(async tx=>{
       const current=await tx.get(ref);
       if(current.data().dispatchLockId!==lockId)fail('aborted','تغيّر قفل الإرسال');
-      tx.update(ref,{revision:FieldValue.increment(1),status:'dispatched',dispatchState:'sent',nextPollAt:Timestamp.now(),trackingNumber:tracking,dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp(),syncError:null});
+      tx.update(ref,{revision:FieldValue.increment(1),status:'dispatched',dispatchState:'sent',nextPollAt:Timestamp.now(),trackingNumber:tracking,sentAt:FieldValue.serverTimestamp(),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp(),syncError:null});
       await addEvent(ref.id,'sent_to_delivery',user,{companyId:snapshot.companyId,tracking},tx);
       await audit('order.sent_to_delivery',user,ref.id,{companyId:snapshot.companyId},tx);
     });return {ok:true,trackingNumber:tracking};
@@ -830,7 +889,7 @@ exports.resolveDispatchException=callable(async req=>{
     const doc=await tx.get(ref),o=doc.data();
     if(!o)fail('not-found','الطلب غير موجود');
     if(!canResolveDispatch(o))fail('failed-precondition','الطلب لا يحتاج هذه المراجعة');
-    const change=outcome==='shipment_exists'?{status:'dispatched',trackingNumber:tracking,dispatchState:'sent',nextPollAt:Timestamp.now()}
+    const change=outcome==='shipment_exists'?{status:'dispatched',trackingNumber:tracking,dispatchState:'sent',nextPollAt:Timestamp.now(),sentAt:FieldValue.serverTimestamp()}
       :{dispatchState:'idle',trackingNumber:null};
     tx.update(ref,{...change,revision:FieldValue.increment(1),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'dispatch_exception_resolved',user,{outcome,trackingNumber:tracking,reason},tx);
@@ -880,7 +939,7 @@ exports.reconcileClickShipment=callable(async req=>{
     }
     if(o.providerOrderId===clickOrderId&&o.clickOrderRef===clickOrderRef&&o.shippingStatus===state&&o.shippingStatusSource==='manual')return;
     if(!['ready','dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
-    tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',
+    tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',sentAt:o.sentAt||FieldValue.serverTimestamp(),
       status:o.status==='ready'?'dispatched':o.status,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'click_reconciled',user,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
     await audit('order.click_reconciled',user,ref.id,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
@@ -984,6 +1043,7 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
     const resolvingReview=o.dispatchState==='needs_review';
     if(resolvingReview){
       patch.dispatchState='sent';
+      patch.sentAt=o.sentAt||now;
       patch.dispatchLockId=FieldValue.delete();
       patch.dispatchLockUntil=FieldValue.delete();
       patch.syncError=null;
@@ -1263,13 +1323,10 @@ exports.resetEmployeePassword=callable(async req=>{
   const member=await db.doc('members/'+id).get();
   if(!member.exists)fail('not-found','الموظف غير موجود');
   const target=member.data();
-  // Mirror saveMember's privilege ceiling: only a general manager may reset a
-  // general manager or a manager; a delegated manager may reset roles that rank
-  // below them and may not touch an equal/higher or a general manager.
-  if(user.role!=='generalManager'){
-    if(['generalManager','manager'].includes(target.role)||target.role===user.role)fail('permission-denied','لا يمكنك إعادة تعيين كلمة مرور هذا الحساب');
-    if(target.role==='warehouse'&&!can(user,'updateOrderStatus')&&user.role!=='warehouse')fail('permission-denied','لا يمكنك إعادة تعيين كلمة مرور هذا الحساب');
-  }
+  // Full server-side rank matrix: only the general manager bypasses it; every
+  // delegated manager may reset strictly-lower operational roles under the same
+  // team/operational conditions used by the employee editor.
+  if(!canAdministerMember(user,target.role))fail('permission-denied','لا يمكنك إعادة تعيين كلمة مرور هذا الحساب');
   const record=await getAuth().getUser(id).catch(e=>{if(e.code==='auth/user-not-found')fail('not-found','حساب الدخول غير موجود');throw e;});
   if(!record.providerData.some(p=>p.providerId==='password'))fail('failed-precondition','هذا الحساب لا يستخدم الدخول بالبريد وكلمة المرور');
   await getAuth().updateUser(id,{password});

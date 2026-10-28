@@ -127,13 +127,15 @@ extension OrderPaperFormat on OrderPaper {
       };
 }
 
-/// Visual template of the slip. `professional` is the full branded voucher for
-/// normal paper; `thermal` is the compact layout for 58/80mm rolls.
-enum OrderTemplate { professional, thermal }
+/// Visual template of the slip. `professional` is the colored branded voucher;
+/// `plain` is the same information order in a white/black layout; `thermal` is
+/// the compact layout for 58/80mm rolls.
+enum OrderTemplate { professional, plain, thermal }
 
 extension OrderTemplateFormat on OrderTemplate {
   String get label => switch (this) {
-    OrderTemplate.professional => 'بوليصة احترافية',
+    OrderTemplate.professional => 'بوليصة ملونة',
+    OrderTemplate.plain => 'بوليصة بيضاء',
     OrderTemplate.thermal => 'بوليصة حرارية مختصرة',
   };
 }
@@ -244,22 +246,76 @@ class OrderInvoicePdf {
     final pageName = order['pageName']?.toString() ?? '';
     final pageLogo = _pageLogo(order['logoDataUri']);
     final orderType = orderTypeLabel(order['orderType']);
+    final pagePhone = order['pagePhone']?.toString().trim() ?? '';
+    final pageWhatsapp = order['pageWhatsapp']?.toString().trim() ?? '';
+    final colored = template == OrderTemplate.professional && !thermal;
+    final brandColor = colored ? PdfColors.indigo800 : PdfColors.black;
 
-    final label = pw.TextStyle(font: bold, fontSize: thermal ? 7.5 : 9.5);
-    final valueStyle = pw.TextStyle(font: font, fontSize: thermal ? 7.5 : 9.5);
     pw.Widget row(String name, dynamic value) => pw.RichText(
       overflow: pw.TextOverflow.span,
       text: pw.TextSpan(
         children: [
-          pw.TextSpan(text: '$name: ', style: label),
+          pw.TextSpan(
+            text: '$name: ',
+            style: pw.TextStyle(font: bold, fontSize: thermal ? 7.5 : 10),
+          ),
           pw.TextSpan(
             text:
                 '${value?.toString().isNotEmpty == true ? value.toString() : '—'}\n',
-            style: valueStyle,
+            style: pw.TextStyle(font: font, fontSize: thermal ? 7.5 : 10),
           ),
         ],
       ),
     );
+    // A single very long paragraph cannot be split by MultiPage and can overflow
+    // a small page. Long free-text values are emitted as bounded chunks so the
+    // page flow keeps every character visible and the symbols land intact.
+    pw.Widget flowRow(String name, dynamic value) {
+      final text = value?.toString().trim() ?? '';
+      if (text.isEmpty) return row(name, value);
+      const chunk = 220;
+      if (text.length <= chunk) return row(name, text);
+      final parts = <String>[];
+      var start = 0;
+      while (start < text.length) {
+        var end = (start + chunk).clamp(0, text.length);
+        if (end < text.length) {
+          final space = text.lastIndexOf(' ', end);
+          if (space > start + 40) end = space;
+        }
+        parts.add(text.substring(start, end).trim());
+        start = end;
+      }
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < parts.length; i++)
+            pw.RichText(
+              overflow: pw.TextOverflow.span,
+              text: pw.TextSpan(
+                children: [
+                  if (i == 0)
+                    pw.TextSpan(
+                      text: '$name: ',
+                      style: pw.TextStyle(
+                        font: bold,
+                        fontSize: thermal ? 7.5 : 10,
+                      ),
+                    ),
+                  pw.TextSpan(
+                    text: '${parts[i]}\n',
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: thermal ? 7.5 : 10,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      );
+    }
+
     final border = pw.Border(
       bottom: pw.BorderSide(color: PdfColors.grey400, width: .7),
     );
@@ -315,8 +371,16 @@ class OrderInvoicePdf {
 
     // ---- Header: Velnix + page identity + order number + type ----
     final header = pw.Container(
-      padding: pw.EdgeInsets.only(bottom: thermal ? 6 : 10),
-      decoration: pw.BoxDecoration(border: border),
+      padding: pw.EdgeInsets.only(
+        bottom: thermal ? 6 : 10,
+        top: colored ? 8 : 0,
+        left: colored ? 8 : 0,
+        right: colored ? 8 : 0,
+      ),
+      decoration: pw.BoxDecoration(
+        border: border,
+        color: colored ? const PdfColor.fromInt(0xFFEEF2FF) : null,
+      ),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -337,17 +401,37 @@ class OrderInvoicePdf {
                   style: pw.TextStyle(
                     font: bold,
                     fontSize: thermal ? 15 : 20,
-                    color: PdfColors.indigo800,
+                    color: brandColor,
                   ),
                 ),
                 pw.Text(
                   pageName.isNotEmpty ? pageName : 'بوليصة شحن',
                   style: pw.TextStyle(font: bold, fontSize: thermal ? 10 : 13),
                 ),
+                if (pagePhone.isNotEmpty || pageWhatsapp.isNotEmpty)
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 1),
+                    child: pw.Text(
+                      [
+                        if (pagePhone.isNotEmpty) 'هاتف الصفحة: $pagePhone',
+                        if (pageWhatsapp.isNotEmpty) 'واتساب: $pageWhatsapp',
+                      ].join('  •  '),
+                      textDirection: pw.TextDirection.rtl,
+                      style: pw.TextStyle(
+                        font: font,
+                        fontSize: thermal ? 6.5 : 8,
+                        color: colored
+                            ? PdfColors.indigo700
+                            : PdfColors.grey800,
+                      ),
+                    ),
+                  ),
                 pw.SizedBox(height: 2),
+                // No forced LTR: the line mixes Arabic and Latin, and forcing a
+                // paragraph direction corrupts the bidi of following rich-text
+                // rows in the PDF engine.
                 pw.Text(
                   'رقم الطلب: ${order['orderNumber'] ?? id}',
-                  textDirection: pw.TextDirection.ltr,
                   style: pw.TextStyle(font: bold, fontSize: thermal ? 9 : 12),
                 ),
                 pw.Text(
@@ -380,8 +464,10 @@ class OrderInvoicePdf {
         verticalMargin,
       ),
       textDirection: pw.TextDirection.rtl,
-      // One slip per page: a voucher is never split across two pages.
-      maxPages: 1,
+      // MultiPage may continue a very long slip; symbols are emitted as complete
+      // widgets, so they are never split. maxPages is only a runaway guard and
+      // never truncates a real order.
+      maxPages: 50,
       build: (_) => [
         header,
         pw.SizedBox(height: thermal ? 5 : 9),
@@ -393,11 +479,11 @@ class OrderInvoicePdf {
         row('المحافظة', order['city']),
         row('المنطقة', order['area']),
         if ((order['address']?.toString() ?? '').isNotEmpty)
-          row('العنوان', order['address']),
+          flowRow('العنوان', order['address']),
         pw.SizedBox(height: thermal ? 4 : 8),
         pw.Divider(color: PdfColors.grey400),
         // ---- Contents / financial ----
-        row('وصف المحتويات', order['description']),
+        flowRow('وصف المحتويات', order['description']),
         row('الكمية', order['quantity']),
         row('طريقة الدفع', order['paymentMethod']),
         if ((order['companyName']?.toString() ?? '').isNotEmpty)
@@ -408,7 +494,7 @@ class OrderInvoicePdf {
         if ((order['clickOrderRef']?.toString() ?? '').isNotEmpty)
           row('مرجع الشحنة', order['clickOrderRef']),
         if ((order['note']?.toString() ?? '').isNotEmpty)
-          row('ملاحظات', order['note']),
+          flowRow('ملاحظات', order['note']),
         pw.SizedBox(height: thermal ? 8 : 14),
         // ---- Symbols: Code128 + QR ----
         // Sizes derive from the printable width: side-by-side when it fits,
@@ -418,7 +504,7 @@ class OrderInvoicePdf {
         pw.SizedBox(height: thermal ? 6 : 10),
         // ---- Footer ----
         if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
-          row('معلومات المؤسسة', order['receiptFooter']),
+          flowRow('معلومات المؤسسة', order['receiptFooter']),
         pw.Text(
           'امسح الباركود أو رمز QR للعثور على الطلب بالمعرّف الداخلي. لا يحتوي الرمز على بيانات العميل.',
           style: pw.TextStyle(

@@ -63,6 +63,7 @@ const eventLabels = {
   'created': 'إنشاء الطلب',
   'edited': 'تعديل بيانات الطلب',
   'status_changed': 'تغيير الحالة',
+  'status_corrected': 'تصحيح إداري للحالة',
   'company_assigned': 'إسناد شركة توصيل',
   'company_unassigned': 'إزالة إسناد شركة التوصيل',
   'sent_to_delivery': 'إرسال الشحنة',
@@ -94,6 +95,8 @@ String syncSourceLabel(dynamic source) => switch (source) {
 /// Arabic label for a known event-detail key, falling back to the raw key.
 String eventDetailLabel(dynamic key) => switch (key?.toString()) {
   'status' => 'الحالة الجديدة',
+  'from' => 'من حالة',
+  'to' => 'إلى حالة',
   'companyId' => 'شركة التوصيل',
   'tracking' || 'trackingNumber' => 'رقم التتبع',
   'outcome' => 'النتيجة',
@@ -206,6 +209,8 @@ Future<List<Map<String, dynamic>>> decorateOrdersForPrint(
   } catch (_) {}
   final logoByPage = <String, String>{};
   final nameByPage = <String, String>{};
+  final phoneByPage = <String, String>{};
+  final whatsappByPage = <String, String>{};
   try {
     final pages = await VelnixGateway.instance.allowedPages();
     for (final p in (pages['items'] as List? ?? []).map(
@@ -218,6 +223,12 @@ Future<List<Map<String, dynamic>>> decorateOrdersForPrint(
       }
       if (p['name'] != null) {
         nameByPage[id] = p['name'].toString();
+      }
+      if ((p['phone'] ?? '').toString().isNotEmpty) {
+        phoneByPage[id] = p['phone'].toString();
+      }
+      if ((p['whatsapp'] ?? '').toString().isNotEmpty) {
+        whatsappByPage[id] = p['whatsapp'].toString();
       }
     }
   } catch (_) {}
@@ -236,6 +247,15 @@ Future<List<Map<String, dynamic>>> decorateOrdersForPrint(
         if ((o['pageName'] ?? '').toString().isEmpty &&
             nameByPage[o['pageId']?.toString()] != null)
           'pageName': nameByPage[o['pageId']?.toString()],
+        // Contact fallback only for active allowed pages. Archived pages are
+        // intentionally absent from this list; their orders keep the snapshot
+        // captured at creation and are never enriched from a closed page.
+        if ((o['pagePhone'] ?? '').toString().isEmpty &&
+            phoneByPage[o['pageId']?.toString()] != null)
+          'pagePhone': phoneByPage[o['pageId']?.toString()],
+        if ((o['pageWhatsapp'] ?? '').toString().isEmpty &&
+            whatsappByPage[o['pageId']?.toString()] != null)
+          'pageWhatsapp': whatsappByPage[o['pageId']?.toString()],
       },
   ];
 }
@@ -1284,6 +1304,11 @@ class _LiveShellState extends State<LiveShell> {
       status: selectedStatus,
       initialFilters: selectedFilters,
       onFiltersChanged: (value) => selectedFilters = value,
+      onCreated: () {
+        VelnixGateway.instance.invalidate('dashboard');
+        VelnixGateway.instance.invalidate('orders');
+        go(0);
+      },
     ),
     2 => LiveOrderForm(
       key: ValueKey('form$refreshVersion'),

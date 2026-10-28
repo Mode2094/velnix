@@ -176,6 +176,39 @@ void main() {
         format: PdfPageFormat.a4,
       );
       await File('${directory.path}/amount_hidden.pdf').writeAsBytes(hidden);
+      // Final-gate visuals: white vs colored templates and a long slip with
+      // page contacts. Same synthetic identifiers so the decoder can verify.
+      final contactOrder = {
+        ...order,
+        'pagePhone': '0791111111',
+        'pageWhatsapp': '0792222222',
+      };
+      await File('${directory.path}/a4_colored_contact.pdf').writeAsBytes(
+        await OrderInvoicePdf.generate(
+          order: contactOrder,
+          format: PdfPageFormat.a4,
+          template: OrderTemplate.professional,
+        ),
+      );
+      await File('${directory.path}/a4_white_contact.pdf').writeAsBytes(
+        await OrderInvoicePdf.generate(
+          order: contactOrder,
+          format: PdfPageFormat.a4,
+          template: OrderTemplate.plain,
+        ),
+      );
+      final veryLong = {
+        ...contactOrder,
+        'description': List.filled(80, 'منتج طويل جداً للاختبار').join(' '),
+        'note': List.filled(80, 'ملاحظة طويلة جداً للاختبار').join(' '),
+      };
+      await File('${directory.path}/a6_long.pdf').writeAsBytes(
+        await OrderInvoicePdf.generate(
+          order: veryLong,
+          format: PdfPageFormat.a6,
+          template: OrderTemplate.professional,
+        ),
+      );
     },
   );
 }

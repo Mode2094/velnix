@@ -105,6 +105,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Change the status filter; the query must ride along, not be dropped.
+    await tester.ensureVisible(find.text('جميع الحالات').first);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('جميع الحالات').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('قيد المراجعة').last);

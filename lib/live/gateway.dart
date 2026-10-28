@@ -262,6 +262,23 @@ class VelnixGateway {
     _invalidateOrderData();
   }
 
+  /// General-manager administrative correction for internal (non-carrier)
+  /// orders. A reason is mandatory and is recorded in the order event + audit.
+  Future<void> correctStatus(
+    String id,
+    String status, {
+    required String reason,
+    int? revision,
+  }) async {
+    await call('correctOrderStatus', {
+      'id': id,
+      'status': status,
+      'reason': reason,
+      'revision': ?revision,
+    });
+    _invalidateOrderData();
+  }
+
   Future<void> assignCompany(String id, String? companyId) async {
     await call('assignCompany', {'id': id, 'companyId': companyId});
     _invalidateOrderData();
@@ -591,16 +608,35 @@ class SessionPolicy {
       active &&
       (role == 'generalManager' ||
           (data['permissions'] as List? ?? []).contains(perm));
-  bool canGrantRole(String target) =>
-      role == 'generalManager' ||
-      (can('manageEmployees') &&
-          ['warehouse', 'sales', 'dataEntry'].contains(target) &&
-          (!['warehouse', 'sales'].contains(target) ||
-              role == 'warehouse' ||
-              can('viewAllOrders')) &&
-          (target != 'warehouse' ||
-              role == 'warehouse' ||
-              can('updateOrderStatus')));
+
+  /// Server mirror of `canAdministerMember`: a delegated manager may grant or
+  /// administer only strictly-lower operational roles under the same team and
+  /// operational conditions. Peers/higher roles need the general manager.
+  static const roleRank = {
+    'generalManager': 50,
+    'manager': 40,
+    'sales': 30,
+    'warehouse': 20,
+    'dataEntry': 10,
+  };
+  bool canGrantRole(String target) {
+    if (role == 'generalManager') return true;
+    if (!can('manageEmployees')) return false;
+    if (!['warehouse', 'sales', 'dataEntry'].contains(target)) return false;
+    if ((roleRank[target] ?? 0) >= (roleRank[role] ?? 0)) return false;
+    if ((target == 'warehouse' || target == 'sales') &&
+        role != 'warehouse' &&
+        !can('viewAllOrders')) {
+      return false;
+    }
+    if (target == 'warehouse' &&
+        role != 'warehouse' &&
+        !can('updateOrderStatus')) {
+      return false;
+    }
+    return true;
+  }
+
   bool get canChangeStatus =>
       active &&
       (role == 'generalManager' ||

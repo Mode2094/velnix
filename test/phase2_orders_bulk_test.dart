@@ -187,6 +187,8 @@ void main() {
     });
     await tester.pumpWidget(app(LiveOrders(policy: gm())));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('المزيد من الفلاتر'));
+    await tester.pumpAndSettle();
     expect(find.text('نوع الطلب'), findsOneWidget);
     expect(find.text('الصفحة الإلكترونية'), findsOneWidget);
     expect(find.text('المحافظة'), findsOneWidget);

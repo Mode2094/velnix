@@ -1,12 +1,13 @@
 'use strict';
-const {can,canEditOrder,allowedTransition,STATUSES,dispatchBlocked,canResolveDispatch}=require('./policy');
+const {can,canEditOrder,allowedTransition,STATUSES,dispatchBlocked,canResolveDispatch,correctionTargets}=require('./policy');
 const {shippingStatus,isApiConfirmed,isExceptionStatus}=require('./shipping_status');
 const safeDate=v=>v?.toDate?.()?.toISOString?.() ?? null;
 function publicOrder(d) {
   const o=d.data();
   return {id:d.id,orderNumber:o.orderNumber||null,barcodeValue:o.barcodeValue||`VNX-${d.id}`,customer:o.customer,phone:o.phone,extraPhone:o.extraPhone||'',city:o.city,area:o.area,
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
-    pageId:o.pageId||null,pageName:o.pageName||null,pageFacebookUrl:o.pageFacebookUrl||null,orderType:o.orderType||'normal',
+    pageId:o.pageId||null,pageName:o.pageName||null,pageFacebookUrl:o.pageFacebookUrl||null,
+    pagePhone:o.pagePhone||'',pageWhatsapp:o.pageWhatsapp||'',orderType:o.orderType||'normal',
     paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
     companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,
     clickOrderRef:o.clickOrderRef||null,clickClientSerial:o.clickClientSerial||null,clickStatusRaw:o.clickStatusRaw||null,clickStatusDate:o.clickStatusDate||null,
@@ -25,6 +26,7 @@ function orderForUser(user,d) {
     assign:can(user,'sendToDelivery')&&!dispatchBlocked(source)&&['created','review','preparing','ready'].includes(source.status),
     dispatch:can(user,'sendToDelivery')&&source.status==='ready'&&!!source.companyId&&!dispatchBlocked(source),
     resolve:user.role==='generalManager'&&canResolveDispatch(source),
+    corrections:user.role==='generalManager'?correctionTargets(source):[],
   };
   return data;
 }

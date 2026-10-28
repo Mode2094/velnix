@@ -227,7 +227,6 @@ class _LiveDashboardState extends State<LiveDashboard> {
 
   Widget _cards(Map<String, dynamic> counters, _ScopeTotals all) {
     final delivery = _scopeTotals(counters['delivery']);
-    final internal = _scopeTotals(counters['internal']);
     final allCard = _allCard(all);
     final deliveryCard = _scopeCard(
       title: 'طلبات شركات التوصيل',
@@ -235,14 +234,17 @@ class _LiveDashboardState extends State<LiveDashboard> {
       data: delivery,
       bucket: 'delivery',
     );
-    final internalCard = _scopeCard(
+    final storeCard = _scopeCard(
       title: 'جميع طلبات المتجر',
       icon: Icons.storefront_outlined,
-      data: internal,
-      bucket: 'internal',
+      data: all,
+      bucket: 'all',
+      // The client reference shows the store-wide order book (all delivery
+      // companies and all statuses), not only the unassigned subset.
+      onOpen: () => widget.onNavigate('all', null),
     );
     final storesCard = _storesCard();
-    final cards = [allCard, deliveryCard, internalCard, storesCard];
+    final cards = [allCard, deliveryCard, storeCard, storesCard];
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
@@ -391,8 +393,9 @@ class _LiveDashboardState extends State<LiveDashboard> {
     required IconData icon,
     required _ScopeTotals data,
     required String bucket,
+    VoidCallback? onOpen,
   }) => _cardShell(
-    onTap: () => _openBucket(bucket),
+    onTap: onOpen ?? () => _openBucket(bucket),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

@@ -5,6 +5,28 @@ const STATUSES = ['created','review','preparing','ready','dispatched','inTransit
 // and from Click shipment states; only 'normal' maps to a plain Click setorder.
 const ORDER_TYPES = ['normal','return','exchange','partial_receipt'];
 const PERMISSIONS = ['viewAllOrders','editAllOrders','updateOrderStatus','sendToDelivery','viewReports','viewAmounts','manageEmployees','manageCompanies','managePages','viewSync','viewAudit','manageSettings'];
+// Administrative hierarchy for employee/password actions. Higher rank may act on
+// a strictly lower rank; equal or higher ranks are never administrable by a
+// non-general-manager, regardless of permissions. This is the server mirror of
+// SessionPolicy.canGrantRole in lib/live/gateway.dart.
+const ROLE_RANK = Object.freeze({generalManager:50, manager:40, sales:30, warehouse:20, dataEntry:10});
+function canAdministerMember(actor, targetRole) {
+  if (!actor || actor.active !== true || !validRole(targetRole)) return false;
+  if (actor.role === 'generalManager') return true;
+  if (!can(actor, 'manageEmployees')) return false;
+  // Only operational staff may be administered by a delegated manager.
+  if (!['warehouse','sales','dataEntry'].includes(targetRole)) return false;
+  // Strictly-lower rank only: peers and higher roles are out of scope.
+  if ((ROLE_RANK[targetRole] || 0) >= (ROLE_RANK[actor.role] || 0)) return false;
+  // Sales/warehouse accounts are team-scoped; only a warehouse lead or a
+  // reviewer with cross-team visibility may administer them.
+  if (['warehouse','sales'].includes(targetRole) &&
+      actor.role !== 'warehouse' && !can(actor, 'viewAllOrders')) return false;
+  // Warehouse accounts additionally require operational status-change rights.
+  if (targetRole === 'warehouse' &&
+      actor.role !== 'warehouse' && !can(actor, 'updateOrderStatus')) return false;
+  return true;
+}
 const JORDAN_CITIES = new Set(['عمان','عمّان','إربد','الزرقاء','البلقاء','المفرق','جرش','عجلون','مادبا','الكرك','الطفيلة','معان','العقبة','الأغوار الشمالية','الأغوار الجنوبية']);
 const CLOSED = new Set(['delivered','returned','cancelled']);
 const REMOTE = new Set(['inTransit','delivered','returned']);
@@ -111,6 +133,26 @@ function safeStatusMap(obj) {
   return map;
 }
 function dispatchBlocked(order) { return ['sending','sent','needs_review'].includes(order?.dispatchState); }
+// Administrative correction is limited to orders that never entered a carrier
+// contract. It can never fake Click states or bypass dispatch protection.
+const INTERNAL_CORRECTION_STATUSES = ['created','review','preparing','ready','cancelled','delivered'];
+function canCorrectInternalStatus(order) {
+  if (!order) return false;
+  if (dispatchBlocked(order)) return false;
+  if (order.hasDelivery === true || order.trackingNumber || order.clickOrderRef ||
+      order.providerOrderId || order.remoteStatus) return false;
+  if (['dispatched','inTransit','returned'].includes(order.status)) return false;
+  return true;
+}
+function correctionTargets(order) {
+  if (!canCorrectInternalStatus(order)) return [];
+  return INTERNAL_CORRECTION_STATUSES.filter(target => {
+    if (target === order.status) return false;
+    // Internal completion keeps the same prerequisite as the normal flow.
+    if (target === 'delivered') return order.status === 'ready' && !order.companyId;
+    return true;
+  });
+}
 function canResolveDispatch(order, now=Date.now()) {
   return order?.status==='ready' && (order.dispatchState==='needs_review' ||
     (order.dispatchState==='sending' && Number.isFinite(order.dispatchLockUntil?.toMillis?.()) && order.dispatchLockUntil.toMillis()<=now));
@@ -119,4 +161,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES};

@@ -130,6 +130,48 @@ void main() {
       expect(bytes.length, greaterThan(2000));
     });
 
+    test(
+      'white and colored templates both render with page contacts',
+      () async {
+        final order = syntheticOrder(
+          extra: {'pagePhone': '0791111111', 'pageWhatsapp': '0792222222'},
+        );
+        for (final template in [
+          OrderTemplate.professional,
+          OrderTemplate.plain,
+        ]) {
+          final bytes = await OrderInvoicePdf.generate(
+            order: order,
+            format: PdfPageFormat.a4,
+            template: template,
+          );
+          expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+          expect(bytes.length, greaterThan(3000));
+        }
+      },
+    );
+
+    test(
+      'a very long slip flows across pages without dropping the symbols',
+      () async {
+        final long = syntheticOrder(
+          extra: {
+            'description': List.filled(80, 'منتج طويل جداً للاختبار').join(' '),
+            'note': List.filled(80, 'ملاحظة طويلة جداً للاختبار').join(' '),
+            'pagePhone': '0791111111',
+          },
+        );
+        final bytes = await OrderInvoicePdf.generate(
+          order: long,
+          format: PdfPageFormat.a6,
+        );
+        expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+        // MultiPage continues instead of clipping; the fixture generator and the
+        // Python decoder independently verify >1 page and both symbols.
+        expect(bytes.length, greaterThan(4000));
+      },
+    );
+
     test('bulk generation honors the thermal template', () async {
       final bytes = await OrderInvoicePdf.generateMany(
         orders: [

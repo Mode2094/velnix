@@ -60,3 +60,32 @@ test('internal completion is ready-only and never bypasses carrier or terminal s
     for(const status of ['delivered','returned','cancelled'])for(const target of ['created','review','preparing','ready','dispatched','inTransit','delivered','returned','cancelled'])assert.equal(allowedTransition(actor,{...ready,status},target),false);
   }
 });
+
+test('role hierarchy is a complete strict server-side matrix for password administration',()=>{
+  const {ROLE_RANK,canAdministerMember}=require('../src/policy');
+  const roles=Object.keys(ROLE_RANK);
+  const actor=(role,permissions=['manageEmployees'],extra={})=>({id:'actor',role,active:true,permissions,...extra});
+  // general manager may administer every role.
+  for(const target of roles)assert.equal(canAdministerMember(actor('generalManager',[]),target),true,`gm -> ${target}`);
+  // delegated managers may never administer the general manager or a manager.
+  for(const role of roles.filter(r=>r!=='generalManager'))for(const target of ['generalManager','manager'])assert.equal(canAdministerMember(actor(role),target),false,`${role} -> ${target}`);
+  // dataEntry cannot administer anyone, including another dataEntry, even with manageEmployees.
+  for(const target of roles)assert.equal(canAdministerMember(actor('dataEntry'),target),false,`dataEntry -> ${target}`);
+  // manager -> sales/warehouse/dataEntry is allowed only with the documented extras.
+  assert.equal(canAdministerMember(actor('manager',['manageEmployees','viewAllOrders','updateOrderStatus']),'sales'),true);
+  assert.equal(canAdministerMember(actor('manager',['manageEmployees','updateOrderStatus']),'sales'),false);
+  assert.equal(canAdministerMember(actor('manager',['manageEmployees','viewAllOrders']),'warehouse'),false);
+  assert.equal(canAdministerMember(actor('manager',['manageEmployees']),'dataEntry'),true);
+  // sales cannot administer a peer sales or warehouse without cross-team rights.
+  assert.equal(canAdministerMember(actor('sales'),'sales'),false);
+  assert.equal(canAdministerMember(actor('sales'),'warehouse'),false);
+  assert.equal(canAdministerMember(actor('sales',['manageEmployees'],{salesSupervisorId:'sup'}),'dataEntry'),true);
+  // warehouse may administer itself as a lead? no: equal rank is refused.
+  assert.equal(canAdministerMember(actor('warehouse',['manageEmployees','updateOrderStatus','viewAllOrders']),'warehouse'),false);
+  // warehouse leads may administer only lower-ranked entry staff, not sales.
+  assert.equal(canAdministerMember(actor('warehouse',['manageEmployees']),'sales'),false);
+  assert.equal(canAdministerMember(actor('warehouse',['manageEmployees']),'dataEntry'),true);
+  // inactive or permission-less actors never pass.
+  assert.equal(canAdministerMember({id:'x',role:'manager',active:false,permissions:['manageEmployees']},'dataEntry'),false);
+  assert.equal(canAdministerMember(actor('manager',[]),'dataEntry'),false);
+});

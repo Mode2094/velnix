@@ -174,8 +174,8 @@ test('barcode resolution maps codes to orders and hides unauthorized ones',async
   assert.equal(hidden.results[0].status,'not_found');
 });
 
-test('resolveBarcodes rejects more than 20 codes',async()=>{
-  const codes=Array.from({length:21},(_,i)=>'VNX-'+i);
+test('resolveBarcodes rejects more than the bounded 30-code cap',async()=>{
+  const codes=Array.from({length:31},(_,i)=>'VNX-'+i);
   await assert.rejects(invoke('resolveBarcodes','gm',{codes}),{code:'invalid-argument'});
 });
 
@@ -392,9 +392,15 @@ test('search returns all 300 matches across pages without loss or duplication',a
 
 // --- listOrders continues past the 2000-scan cap ---
 test('listOrders exposes a cursor past the scan cap instead of faking the end',async()=>{
-  const batch=db.bulkWriter(),now=Date.now();
-  for(let i=0;i<2001;i++)batch.set(db.doc('orders/revscan_'+String(i).padStart(4,'0')),{customer:'غير مطابق '+i,phone:'0778800000',amountMinor:1000,pageId:'p1',status:'created',hasDelivery:false,companyId:null,createdBy:'gm',city:'إربد',area:'x',description:'x',quantity:1,createdAt:Timestamp.fromMillis(now-i*1000)});
-  await batch.close();
+  const now=Date.now();
+  // Chunked WriteBatches: BulkWriter's wall-clock rate limiter can observe a
+  // container clock step and abort the seed (deterministic in Docker).
+  let batch=db.batch(),pending=0;
+  for(let i=0;i<2001;i++){
+    batch.set(db.doc('orders/revscan_'+String(i).padStart(4,'0')),{customer:'غير مطابق '+i,phone:'0778800000',amountMinor:1000,pageId:'p1',status:'created',hasDelivery:false,companyId:null,createdBy:'gm',city:'إربد',area:'x',description:'x',quantity:1,createdAt:Timestamp.fromMillis(now-i*1000)});
+    if(++pending===400){await batch.commit();batch=db.batch();pending=0;}
+  }
+  if(pending)await batch.commit();
   const match=await invoke('createOrder','gm',{...base,customer:'مطابق بعد الدفعات',phone:'0778111222',city:'عمان',requestKey:'rev_scan_match_0001'});
   await db.doc('orders/'+match.id).update({createdAt:Timestamp.fromMillis(Date.now()-9000000)});
   let found=false,afterId=null,guard=0;

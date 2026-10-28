@@ -111,6 +111,47 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test(
+    'print decoration attaches active page contacts but never archived ones',
+    () async {
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        if (name == 'getSettings') return {'organizationName': 'Velnix'};
+        if (name == 'listAllowedPages') {
+          return {
+            'items': [
+              {
+                'id': 'active_page',
+                'name': 'صفحة نشطة',
+                'phone': '0791111111',
+                'whatsapp': '0792222222',
+                'logoDataUri': '',
+              },
+            ],
+          };
+        }
+        throw StateError(name);
+      });
+      final decorated = await decorateOrdersForPrint([
+        {'id': 'o1', 'pageId': 'active_page'},
+        // Legacy order from an archived page: no live lookup, no invented contact.
+        {'id': 'o2', 'pageId': 'archived_page'},
+        // Historical snapshot captured before archiving survives.
+        {
+          'id': 'o3',
+          'pageId': 'archived_page',
+          'pagePhone': '0793333333',
+          'pageWhatsapp': '0794444444',
+        },
+      ]);
+      expect(decorated[0]['pagePhone'], '0791111111');
+      expect(decorated[0]['pageWhatsapp'], '0792222222');
+      expect(decorated[1].containsKey('pagePhone'), isFalse);
+      expect(decorated[1].containsKey('pageWhatsapp'), isFalse);
+      expect(decorated[2]['pagePhone'], '0793333333');
+      expect(decorated[2]['pageWhatsapp'], '0794444444');
+    },
+  );
+
   testWidgets('bulk printing offers a template selector next to paper size', (
     tester,
   ) async {
@@ -144,7 +185,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(find.text('نوع البوليصة'), findsOneWidget);
-    expect(find.text('بوليصة احترافية'), findsOneWidget);
+    expect(find.text('بوليصة ملونة'), findsOneWidget);
     expect(find.text('حجم الورق'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

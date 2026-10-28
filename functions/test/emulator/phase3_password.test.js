@@ -22,7 +22,13 @@ before(async()=>{
   await mk('manager','mgr',{permissions:['manageEmployees']});
   await mk('manager','peer',{permissions:['manageEmployees']});
   await mk('dataEntry','entry',{});
+  await mk('dataEntry','entry2',{});
+  await mk('dataEntry','entryboss',{permissions:['manageEmployees']});
+  await mk('manager','managerfull',{permissions:['manageEmployees','viewAllOrders','updateOrderStatus']});
+  await mk('sales','salesboss',{permissions:['manageEmployees']});
+  await mk('sales','sales',{});
   await mk('warehouse','wh',{});
+  await mk('warehouse','whboss',{permissions:['manageEmployees','viewAllOrders']});
   // Google-only account: no password provider.
   await mk('dataEntry','googleonly',{},null);
 });
@@ -58,4 +64,22 @@ test('delegated manager resets lower-ranked employees but not privileged warehou
 test('employees without the permission are refused and Google-only accounts are refused',async()=>{
   await assert.rejects(invoke('resetEmployeePassword','entry',{id:'entry',password:'AnotherPassword123!'}),{code:'permission-denied'});
   await assert.rejects(invoke('resetEmployeePassword','gm',{id:'googleonly',password:'AnotherPassword123!'}),{code:'failed-precondition'});
+});
+
+test('rank matrix: dataEntry and sales cannot reset a higher or peer role',async()=>{
+  // A data entry account holding manageEmployees still cannot reset sales.
+  await assert.rejects(invoke('resetEmployeePassword','entryboss',{id:'sales',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  await assert.rejects(invoke('resetEmployeePassword','entryboss',{id:'entry2',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  await assert.rejects(invoke('resetEmployeePassword','entryboss',{id:'managerfull',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  // A sales lead may reset entry staff, but not a peer or warehouse.
+  await invoke('resetEmployeePassword','salesboss',{id:'entry2',password:'AnotherPassword123!'});
+  await assert.rejects(invoke('resetEmployeePassword','salesboss',{id:'sales',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  await assert.rejects(invoke('resetEmployeePassword','salesboss',{id:'wh',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  // A warehouse lead may reset entry staff only.
+  await invoke('resetEmployeePassword','whboss',{id:'entry2',password:'AnotherPassword123!'});
+  await assert.rejects(invoke('resetEmployeePassword','whboss',{id:'sales',password:'AnotherPassword123!'}),{code:'permission-denied'});
+  // A fully delegated manager may reset sales and warehouse (cross-team rights).
+  await invoke('resetEmployeePassword','managerfull',{id:'sales',password:'AnotherPassword123!'});
+  await invoke('resetEmployeePassword','managerfull',{id:'wh',password:'AnotherPassword123!'});
+  await assert.rejects(invoke('resetEmployeePassword','managerfull',{id:'mgr',password:'AnotherPassword123!'}),{code:'permission-denied'});
 });

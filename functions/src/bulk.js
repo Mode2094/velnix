@@ -71,9 +71,11 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     const user=await requireAuth(req);
     const codes=Array.isArray(req.data?.codes)?req.data.codes:[];
     if(codes.length===0)fail('invalid-argument','لا توجد أكواد لمسحها');
-    if(codes.length>20)fail('invalid-argument','الحد الأقصى 20 باركوداً في المسح الواحد');
+    // The client requires at least 20 codes per batch. 30 is the bounded cap:
+    // every code is resolved with exact lookups only, never a broad scan.
+    if(codes.length>30)fail('invalid-argument','الحد الأقصى 30 باركوداً في المسح الواحد');
     const results=[];const seenOrders=new Set();
-    for(const code of codes.slice(0,20)){
+    for(const code of codes.slice(0,30)){
       try{
         const id=await resolveCodeToId(code);
         const snap=await db.doc('orders/'+id).get();

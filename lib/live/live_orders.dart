@@ -10,6 +10,7 @@ class LiveOrders extends StatefulWidget {
     this.initialFilters = const {},
     this.onFiltersChanged,
     this.autoSearchFocus = false,
+    this.onCreated,
   });
   final SessionPolicy policy;
   final String bucket;
@@ -21,6 +22,11 @@ class LiveOrders extends StatefulWidget {
   /// When true the search field is focused on open, so the phone bar's search
   /// shortcut lands directly in the query box.
   final bool autoSearchFocus;
+
+  /// Called after a NEW order is saved from the orders list. The shell uses it
+  /// to land on the dashboard exactly like the dedicated create tab, so every
+  /// entry point has one post-create destination.
+  final VoidCallback? onCreated;
   @override
   State<LiveOrders> createState() => _LiveOrdersState();
 }
@@ -796,20 +802,13 @@ class _LiveOrdersState extends State<LiveOrders> {
                             MaterialPageRoute<void>(
                               builder: (_) => LiveOrderForm(
                                 policy: widget.policy,
-                                onSaved: (id) {
+                                onSaved: (_) {
                                   Navigator.pop(context);
                                   load(reset: true);
-                                  if (id != null && id.isNotEmpty) {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => LiveOrderDetail(
-                                          id: id,
-                                          policy: widget.policy,
-                                        ),
-                                      ),
-                                    );
-                                  }
+                                  // Unified client flow: every successful NEW
+                                  // order returns to the dashboard. The form
+                                  // already showed the order number.
+                                  widget.onCreated?.call();
                                 },
                               ),
                             ),
@@ -2256,6 +2255,17 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             ),
           );
         }
+        final corrections = actions['corrections'] is List
+            ? (actions['corrections'] as List).cast<String>()
+            : const <String>[];
+        if (corrections.isNotEmpty) {
+          more.add(
+            const PopupMenuItem(
+              value: 'correct',
+              child: Text('تصحيح إداري للحالة'),
+            ),
+          );
+        }
         if (actions['resolve'] == true) {
           more.add(
             const PopupMenuItem(
@@ -2358,6 +2368,13 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                           onSelected: (value) {
                             if (value == 'resolve') {
                               _resolveDispatch();
+                            } else if (value == 'correct') {
+                              _correctStatus(
+                                corrections,
+                                revision: int.tryParse(
+                                  '${o['revision'] ?? ''}',
+                                ),
+                              );
                             } else if (value == 'reconcile') {
                               _reconcileClick();
                             } else if (value.startsWith('status:')) {
@@ -2953,6 +2970,86 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     }
   }
 
+  /// Authorized administrative correction (general manager only). The target
+  /// list comes from the server DTO and never includes carrier/Click states.
+  Future<void> _correctStatus(List<String> targets, {int? revision}) async {
+    if (targets.isEmpty) return;
+    final reason = TextEditingController();
+    final chosen = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          var target = targets.first;
+          return AlertDialog(
+            title: const Text('تصحيح إداري للحالة'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'للطلبات الداخلية فقط. لن يغيّر هذا الإجراء حالة شركة التوصيل ولن يرسل شحنة.',
+                  style: TextStyle(fontSize: 12, color: VColors.muted),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: target,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'الحالة الهدف'),
+                  items: [
+                    for (final t in targets)
+                      DropdownMenuItem(
+                        value: t,
+                        child: Text(statusLabels[t] ?? t),
+                      ),
+                  ],
+                  onChanged: (v) => setLocal(() => target = v ?? targets.first),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: reason,
+                  autofocus: true,
+                  maxLength: 300,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'سبب التصحيح *',
+                    hintText: 'مثال: تصحيح إدخال خاطئ بعد مراجعة الطلب',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('تراجع'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final text = reason.text.trim();
+                  if (text.length < 3) {
+                    showError(ctx, 'أدخل سبب التصحيح (3 أحرف على الأقل)');
+                    return;
+                  }
+                  Navigator.pop(ctx, {'status': target, 'reason': text});
+                },
+                child: const Text('تطبيق التصحيح'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    reason.dispose();
+    if (chosen == null) return;
+    await action(
+      () => VelnixGateway.instance.correctStatus(
+        widget.id,
+        chosen['status']!,
+        reason: chosen['reason']!,
+        revision: revision,
+      ),
+    );
+  }
+
   Future<void> _changeStatus(String target) async {
     if (target == 'cancelled' || target == 'delivered') {
       final yes = await showDialog<bool>(
@@ -2966,7 +3063,7 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
           content: Text(
             target == 'delivered'
                 ? 'سيُسجّل إكمال الطلب داخلياً بحالة نهائية. تأكد من تسليمه؛ هذا الإجراء لا يمثل تأكيد شركة توصيل.'
-                : 'سيتم وضع الطلب بحالة ملغي مع الاحتفاظ بسجل الطلب. لا يمكن إعادة فتحه بهذه المرحلة.',
+                : 'سيتم وضع الطلب بحالة ملغي مع الاحتفاظ بسجل الطلب. المدير العام قادر على تصحيح الحالة إدارياً عند الحاجة.',
           ),
           actions: [
             TextButton(

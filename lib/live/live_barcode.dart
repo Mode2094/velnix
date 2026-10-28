@@ -1,6 +1,6 @@
 part of 'live_app.dart';
 
-/// Barcode scanner + batch collection (up to 20 unique codes).
+/// Barcode scanner + batch collection (up to 30 unique codes).
 ///
 /// The camera (Code128 by default, QR when present) fills a list of codes; the
 /// user can also type a code manually. Resolution to orders happens server-side
@@ -26,7 +26,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   String? status;
   // Debounce so a single frame burst cannot add dozens of codes.
   DateTime _lastAccept = DateTime.fromMillisecondsSinceEpoch(0);
-  static const maxCodes = 20;
+  // The client requires at least 20 codes per scan; 30 leaves headroom while
+  // keeping the server resolution bounded (no unlimited queries).
+  static const maxCodes = 30;
 
   @override
   void dispose() {

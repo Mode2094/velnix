@@ -547,9 +547,11 @@ void main() {
     });
     await tester.pumpWidget(
       app(
-        OrderFilters(
-          initialFilters: {'companyId': 'gone', 'createdBy': 'gone'},
-          onChanged: (_) {},
+        SingleChildScrollView(
+          child: OrderFilters(
+            initialFilters: {'companyId': 'gone', 'createdBy': 'gone'},
+            onChanged: (_) {},
+          ),
         ),
       ),
     );
