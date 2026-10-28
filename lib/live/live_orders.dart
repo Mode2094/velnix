@@ -94,8 +94,8 @@ class _LiveOrdersState extends State<LiveOrders> {
       builder: (ctx) => AlertDialog(
         title: const Text('تحديد جميع النتائج المطابقة'),
         content: const Text(
-          'سيتم تحديد كل الطلبات المطابقة للبحث والفلاتر الحالية (حتى 500 طلب). '
-          'طلباتك المخفية لا تُحدَّد.',
+          'سيتم تحديد كل الطلبات المطابقة للبحث والفلاتر الحالية (حتى $_maxSelectable طلب). '
+          'إن تجاوزت النتائج هذا الحد فحدّد الفلاتر أو اطبع على دفعات. طلباتك المخفية لا تُحدَّد.',
         ),
         actions: [
           TextButton(
@@ -462,57 +462,86 @@ class _LiveOrdersState extends State<LiveOrders> {
   Future<void> _bulkPrint() async {
     if (selected.isEmpty) return;
     final ids = selected.toList();
+    // Large selections are printed in explicit chunks with a warning, never
+    // silently truncated.
+    final chunks = <List<String>>[];
+    const printChunk = 100;
+    for (var i = 0; i < ids.length; i += printChunk) {
+      chunks.add(
+        ids.sublist(
+          i,
+          (i + printChunk) > ids.length ? ids.length : i + printChunk,
+        ),
+      );
+    }
     if (bulkBusy) return;
+    if (chunks.length > 1) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('طباعة ${ids.length} طلباً'),
+          content: Text(
+            'سيتم توليد ${chunks.length} ملفات PDF (بحد أقصى $printChunk بوليصات لكل ملف) '
+            'لعرضها/طباعتها بالتتابع. لا تُسقَط أي بوليصات.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('متابعة'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
     setState(() => bulkBusy = true);
-    List<Map<String, dynamic>> orders;
+    var missing = 0;
     try {
-      // Fetch the authorized DTO for EVERY selected id (including orders from
-      // pages that are not loaded). The server re-checks permission and hides
-      // amounts the caller may not see. Chunked at the server's 60-id limit.
-      orders = [];
-      for (var i = 0; i < ids.length; i += 60) {
-        orders.addAll(
-          await gateway.ordersByIds(
-            ids.sublist(i, (i + 60) > ids.length ? ids.length : i + 60),
+      for (final chunk in chunks) {
+        final orders = <Map<String, dynamic>>[];
+        for (var i = 0; i < chunk.length; i += 60) {
+          orders.addAll(
+            await gateway.ordersByIds(
+              chunk.sublist(i, (i + 60) > chunk.length ? chunk.length : i + 60),
+            ),
+          );
+        }
+        missing += chunk.length - orders.length;
+        if (orders.isEmpty) continue;
+        var merged = orders;
+        try {
+          final settings = await gateway.settings(fresh: true);
+          merged = [
+            for (final o in orders)
+              {
+                ...o,
+                if (!o.containsKey('organizationName'))
+                  'organizationName': settings['organizationName'],
+                if (!o.containsKey('receiptFooter'))
+                  'receiptFooter': settings['receiptFooter'],
+              },
+          ];
+        } catch (_) {}
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => BulkPrintScreen(orders: merged),
           ),
         );
       }
     } catch (e) {
-      if (mounted) {
-        showError(context, e);
-        setState(() => bulkBusy = false);
-      }
-      return;
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => bulkBusy = false);
     }
-    try {
-      final settings = await gateway.settings(fresh: true);
-      orders = [
-        for (final o in orders)
-          {
-            ...o,
-            if (!o.containsKey('organizationName'))
-              'organizationName': settings['organizationName'],
-            if (!o.containsKey('receiptFooter'))
-              'receiptFooter': settings['receiptFooter'],
-          },
-      ];
-    } catch (_) {}
-    if (mounted) setState(() => bulkBusy = false);
-    if (!mounted) return;
-    if (orders.isEmpty) {
-      showError(context, 'لا توجد طلبات مصرّح بها للطباعة');
-      return;
+    if (mounted && missing > 0) {
+      showSuccess(context, 'تم استثناء $missing طلباً لا تملك صلاحية عرضها.');
     }
-    if (orders.length < ids.length) {
-      showSuccess(
-        context,
-        'تم تضمين ${orders.length} من ${ids.length} طلباً لا تملك صلاحية عرضها.',
-      );
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => BulkPrintScreen(orders: orders)),
-    );
   }
 
   void _showBulkResult(String title, Map<String, dynamic> result) {
@@ -706,11 +735,28 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     );
     if (confirm != true) return;
-    await _runBulkChunked(
-      selected.toList(),
-      (chunk) => gateway.bulkDispatch(chunk),
-      chunkSize: _dispatchChunk,
-    );
+    // The client creates a stable operation id BEFORE dispatch so it can recover
+    // the results after a dropped connection or an app restart. Each chunk is its
+    // own operation (a distinct id set) so the same id is never reused with
+    // different content.
+    final base =
+        'op${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
+        '${Random.secure().nextInt(1 << 30).toRadixString(36)}';
+    final ids = selected.toList();
+    var chunkIndex = 0;
+    final opIds = <String>[];
+    await _runBulkChunked(ids, (chunk) {
+      final opId = '${base}_$chunkIndex';
+      chunkIndex++;
+      opIds.add(opId);
+      return gateway.bulkDispatch(chunk, operationId: opId);
+    }, chunkSize: _dispatchChunk);
+    if (mounted && opIds.isNotEmpty) {
+      showSuccess(
+        context,
+        'معرّفات عمليات الإرسال: ${opIds.join('، ')} — يمكن تتبعها من سجل العمليات.',
+      );
+    }
   }
 
   @override

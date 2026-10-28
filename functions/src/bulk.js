@@ -1,5 +1,6 @@
 'use strict';
-const {documentId,canSeeOrder,can,STATUSES,ORDER_TYPES}=require('./policy');
+const crypto=require('node:crypto');
+const {documentId,canSeeOrder,STATUSES,ORDER_TYPES}=require('./policy');
 const {foldDigits}=require('./search');
 
 // Bounded bulk operations. Each order is validated independently against the
@@ -140,22 +141,49 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
   // durable record is written before the client is told anything.
   const MAX_DISPATCH = 10;
 
-  // Runs a bounded slice of a durable bulk dispatch. Each order's outcome is
-  // written to `bulkOperations/{opId}` BEFORE the client is told anything, so a
-  // timeout or lost connection never loses the record and never triggers a
-  // resend. A caller paginates through the ids; `hasMore` tells the client to
-  // call again with the next chunk. No order is ever dispatched twice because
-  // the single-order flow's lock/needs_review protection is unchanged.
+  // Fingerprints an operation's order-id set so the same operationId can only be
+  // used with the same content. Order-independent and stable.
+  function fingerprint(ids){
+    const sorted=[...ids].sort();
+    return crypto.createHash('sha256').update(sorted.join('|')).digest('hex');
+  }
+
+  // Runs (or resumes) a durable bulk dispatch. The CLIENT creates the
+  // operationId and passes it in, so it knows the id before the call returns and
+  // can recover after a dropped connection. The record stores the actor, the
+  // frozen ordered id set, a content fingerprint and a durable per-order result
+  // subcollection. Re-invoking the SAME operation with the SAME ids never
+  // re-dispatches an order that already has a result, and never lets a different
+  // user take over the operation. `setorder` is only ever called through the
+  // single-order flow, whose lock/needs_review protection is unchanged.
   async function bulkDispatch(req){
     const user=await requireAuth(req);
     requiredPerm(user,'sendToDelivery');
     const ids=idList(req.data?.ids);
-    if(ids.length>MAX_DISPATCH)fail('invalid-argument',`الحد الأقصى ${MAX_DISPATCH} طلباً في دفعة الإرسال الواحدة؛ أرسل الدفعة على stages`);
-    const opId=typeof req.data?.operationId==='string'&&/^[a-zA-Z0-9_-]{8,80}$/.test(req.data.operationId)?req.data.operationId:null;
-    const opRef=opId?db.doc('bulkOperations/'+opId):db.collection('bulkOperations').doc();
-    await opRef.set({actorId:user.id,actorName:user.name||'',kind:'dispatch',startedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()},{merge:true});
+    if(ids.length>MAX_DISPATCH)fail('invalid-argument',`الحد الأقصى ${MAX_DISPATCH} طلباً في دفعة الإرسال الواحدة`);
+    const opId=typeof req.data?.operationId==='string'&&/^[a-zA-Z0-9_-]{16,80}$/.test(req.data.operationId)?req.data.operationId:null;
+    if(!opId)fail('invalid-argument','معرّف العملية مطلوب (16 حرفاً على الأقل)');
+    const fp=fingerprint(ids);
+    const opRef=db.doc('bulkOperations/'+opId);
+    // Create-or-validate the operation atomically: never steal another user's id
+    // and never accept the same id with different content.
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(opRef);
+      if(snap.exists){
+        const d=snap.data();
+        if(d.actorId!==user.id)fail('permission-denied','معرّف العملية مستخدم من قبل حساب آخر');
+        if(d.fingerprint&&d.fingerprint!==fp)fail('already-exists','معرّف العملية مستخدم ببيانات مختلفة');
+        return;
+      }
+      tx.create(opRef,{actorId:user.id,actorName:user.name||'',kind:'dispatch',ids,fingerprint:fp,status:'running',
+        startedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+    });
+    const resultsRef=opRef.collection('results');
     const results=[];
     for(const id of ids){
+      // Skip orders that already have a durable result (idempotent resume).
+      const existing=await resultsRef.doc(id).get();
+      if(existing.exists){results.push(existing.data());continue;}
       let entry;
       try{
         const ref=await loadVisible(user,id);
@@ -169,26 +197,31 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
         entry={id,ok:false,code,uncertain:code==='unavailable',message:typeof e?.message==='string'?e.message.slice(0,200):'',at:new Date().toISOString()};
       }
       results.push(entry);
-      // Persist each result immediately so a later timeout cannot lose it.
-      try{await opRef.set({results:FieldValue.arrayUnion(entry),updatedAt:FieldValue.serverTimestamp()},{merge:true});}catch(e){logger.warn&&logger.warn('bulk op persist failed',{id:opRef.id});}
+      // Durable, per-order, written BEFORE the summary. A failure to persist must
+      // fail the call so the client never sees a fabricated success.
+      await resultsRef.doc(id).set(entry);
     }
     const succeeded=results.filter(r=>r.ok).length;
     const uncertain=results.filter(r=>r.uncertain).length;
-    await opRef.set({finishedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),succeeded,failed:results.length-succeeded,uncertain},{merge:true});
-    return {operationId:opRef.id,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length};
+    await opRef.set({status:'finished',finishedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),succeeded,failed:results.length-succeeded,uncertain},{merge:true});
+    return {operationId:opId,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length};
   }
 
   // Reads a durable bulk operation so the client can recover results after a
   // timeout, a network drop or an app restart — without re-dispatching anything.
+  // Only the operator who started it may read it: sendToDelivery alone is NOT a
+  // licence to read every user's operations.
   async function getBulkOperation(req){
     const user=await requireAuth(req);
-    const opId=documentId(req.data?.operationId);
+    const opId=typeof req.data?.operationId==='string'?documentId(req.data.operationId):fail('invalid-argument','معرّف العملية مطلوب');
     const snap=await db.doc('bulkOperations/'+opId).get();
     if(!snap.exists)fail('not-found','لم يتم العثور على العملية');
     const d=snap.data();
-    // Only the operator who started it (or a manager) may read the record.
-    if(d.actorId!==user.id&&!can(user,'sendToDelivery'))fail('permission-denied','لا يمكنك الوصول لهذه العملية');
-    return {operationId:opId,kind:d.kind,results:d.results||[],succeeded:d.succeeded||0,failed:d.failed||0,uncertain:d.uncertain||0,finished:!!d.finishedAt};
+    if(d.actorId!==user.id)fail('permission-denied','لا يمكنك الوصول لهذه العملية');
+    const resultsSnap=await db.doc('bulkOperations/'+opId).collection('results').get();
+    const results=resultsSnap.docs.map(x=>x.data());
+    return {operationId:opId,kind:d.kind,status:d.status||'running',ids:d.ids||[],results,
+      succeeded:d.succeeded||0,failed:d.failed||0,uncertain:d.uncertain||0,finished:d.status==='finished'};
   }
 
   return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,getBulkOperation,MAX_BULK,MAX_DISPATCH};

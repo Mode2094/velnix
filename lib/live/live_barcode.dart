@@ -437,11 +437,15 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
       ),
     );
     if (ok != true) return;
-    await _runChunked(
-      selected.toList(),
-      (chunk) => VelnixGateway.instance.bulkDispatch(chunk),
-      chunkSize: _dispatchChunk,
-    );
+    final base =
+        'bc${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
+        '${Random.secure().nextInt(1 << 30).toRadixString(36)}';
+    var idx = 0;
+    await _runChunked(selected.toList(), (chunk) {
+      final opId = '${base}_$idx';
+      idx++;
+      return VelnixGateway.instance.bulkDispatch(chunk, operationId: opId);
+    }, chunkSize: _dispatchChunk);
   }
 
   @override

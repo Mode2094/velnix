@@ -193,4 +193,59 @@ void main() {
     expect(find.text('حالة الإرسال'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('bulk dispatch passes a stable operationId to the server', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 1600);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final opIds = <String>[];
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listOrders':
+          return {
+            'items': [order('1'), order('2')],
+            'nextAfterId': null,
+          };
+        case 'listCompanies':
+          return {
+            'items': [
+              {'id': 'c1', 'name': 'شركة', 'enabled': true, 'archived': false},
+            ],
+          };
+        case 'listAllowedPages':
+        case 'listOrderCreators':
+          return {'items': <dynamic>[]};
+        case 'bulkDispatch':
+          opIds.add(data['operationId']?.toString() ?? '');
+          return {
+            'operationId': data['operationId'],
+            'results': [
+              {'id': 'x', 'ok': false, 'code': 'failed-precondition'},
+            ],
+            'succeeded': 0,
+            'failed': 1,
+            'uncertain': 0,
+          };
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إرسال'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إرسال').last);
+    await tester.pumpAndSettle();
+    expect(opIds, hasLength(1));
+    expect(opIds.first.length, greaterThanOrEqualTo(16));
+    expect(opIds.first, isNot(contains('null')));
+  });
 }

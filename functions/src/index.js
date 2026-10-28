@@ -189,8 +189,12 @@ exports.listOrders=callable(async req=>{
     if(!broke&&results.every(r=>r.size<CHUNK))exhausted=true;
   }
   const page=collected.slice(0,size);
-  const more=collected.length>size||(!exhausted&&scanned<MAX_SCAN);
-  return {items:page.map(d=>orderForUser(user,d)),nextAfterId:more&&lastRaw?lastRaw.id:null,limited:scanned>=MAX_SCAN};
+  // `more` is true when a full page was returned, when the scan cap was reached
+  // (there may still be unread data), or when the data is not exhausted. Never
+  // report the end of the list while a cursor can continue.
+  const capReached=scanned>=MAX_SCAN;
+  const more=collected.length>size||capReached||(!exhausted&&lastRaw!=null);
+  return {items:page.map(d=>orderForUser(user,d)),nextAfterId:more&&lastRaw?lastRaw.id:null,limited:capReached};
 });
 // Authenticated server-side search; never scan only the client's loaded page.
 // Indexed exact phone / Arabic-normalized name prefix / exact document ID.
@@ -205,11 +209,10 @@ exports.searchOrders=callable(async req=>{
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
   if((filters.amountMin!=null||filters.amountMax!=null)&&!(user.role==='generalManager'||can(user,'viewAmounts')))fail('permission-denied','لا يمكنك التصفية حسب المبلغ');
   const {normalizeSearch,tokenize}=require('./search');
+  const sort=req.data?.sort==='asc'?'asc':'desc';
   const searchPrefix=normalizeSearch(query);
   const tokens=tokenize(query);
   const pageSize=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
-  // Cursor: {c: createdAt millis, i: id}. Stable across pages.
-  const cursor=parseCursor(req.data?.cursor);
   const matchesQuery=(d)=>{
     if(tokens.length===0)return true;
     const orderTokens=Array.isArray(d.searchTokens)?d.searchTokens:[];
@@ -220,6 +223,36 @@ exports.searchOrders=callable(async req=>{
     if(digits.length>=5&&typeof d.phoneDigits==='string'&&d.phoneDigits.includes(digits))return true;
     return tokens.every(t=>orderTokens.some(ot=>typeof ot==='string'&&ot.startsWith(t)));
   };
+  const scopes=scopeQueries(user,filters);
+  // Every sub-query is an `array-contains` (or equality) predicate ordered by
+  // (createdAt, id), so it pages with a TRUE Firestore cursor. No in-memory
+  // re-scan of the first page on every page.
+  const subs=[];
+  const addSub=(key,builder,opts={})=>subs.push({key,builder,exact:opts.exact===true});
+  const upper=query.toUpperCase();
+  const orderNumber=upper.startsWith('VNX-')?upper:null;
+  if(orderNumber){
+    addSub('num',()=>db.collection('orders').where('orderNumber','==',orderNumber),{exact:true});
+    addSub('bc',()=>db.collection('orders').where('barcodeValue','==',orderNumber),{exact:true});
+    addSub('bc2',()=>db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)),{exact:true});
+  }
+  addSub('clickref',()=>db.collection('orders').where('clickOrderRef','==',query),{exact:true});
+  addSub('track',()=>db.collection('orders').where('trackingNumber','==',query),{exact:true});
+  for(let si=0;si<scopes.length;si++){
+    const base=scopes[si];
+    if(digits.length>=5){
+      addSub('ph'+si,()=>base.where('phoneDigits','==',digits));
+      addSub('phs'+si,()=>base.where('searchPhoneSuffixes','array-contains',digits.slice(-Math.min(digits.length,12))));
+    }
+    // Full normalized name prefix and any-word prefixes are stored as tokens.
+    if(searchPrefix.length>=2){
+      addSub('sp'+si,()=>base.where('searchPrefixes','array-contains',searchPrefix));
+      for(const token of tokens.filter(t=>t.length>=2).slice(0,4))addSub('spk'+si+':'+token,()=>base.where('searchPrefixes','array-contains',token));
+    }
+    for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4))addSub('tk'+si+':'+token,()=>base.where('searchTokens','array-contains',token));
+  }
+  const cursorMap=parseCursorMap(req.data?.cursor);
+  const PER=Math.max(pageSize,30);
   const matches=new Map();
   const accept=(doc,{strict=true}={})=>{
     if(!doc.exists)return;
@@ -228,83 +261,66 @@ exports.searchOrders=callable(async req=>{
     if(strict&&!matchesQuery(d))return;
     matches.set(doc.id,doc);
   };
-  const upper=query.toUpperCase();
-  const orderNumber=upper.startsWith('VNX-')?upper:null;
+  // Direct document-id hit (cheap, always included).
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get(),{strict:false});
-  const scoped=scopeQueries(user,filters);
-  // Per-subquery cap. Bounded so a single search never scans unbounded data;
-  // pagination then walks the ordered result set.
-  const SCAN=200;
-  const searches=[];
-  if(orderNumber){
-    for(const s of await Promise.all([
-      db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get(),
-      db.collection('orders').where('barcodeValue','==',orderNumber).limit(5).get(),
-      db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)).limit(5).get(),
-    ]))for(const doc of s.docs)accept(doc,{strict:false});
+  const nextCursorMap={};
+  let exhaustedSubs=0;
+  for(const sub of subs){
+    let q=sub.builder();
+    // Push the global boundary into the query so we never re-read already-returned
+    // pages. `createdAt < g.c` is valid with an equality/array-contains predicate.
+    if(cursorMap.__g)q=q.where('createdAt','<',Timestamp.fromMillis(cursorMap.__g.c));
+    q=q.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(PER*8);
+    const snap=await q.get();
+    for(const doc of snap.docs)accept(doc,{strict:!sub.exact});
+    if(snap.size<PER*8)exhaustedSubs++;
   }
-  for(const s of await Promise.all([
-    db.collection('orders').where('clickOrderRef','==',query).limit(5).get(),
-    db.collection('orders').where('trackingNumber','==',query).limit(5).get(),
-  ]))for(const doc of s.docs)accept(doc,{strict:false});
-  for(const base of scoped){
-    if(digits.length>=5){
-      searches.push(base.where('phoneDigits','==',digits).limit(SCAN).get());
-      searches.push(base.where('phoneDigits','>=',digits).where('phoneDigits','<=',digits+'\uf8ff').orderBy('phoneDigits').limit(SCAN).get());
-      // Middle-of-phone: exact digit suffix tokens (bounded, indexed).
-      searches.push(base.where('searchPhoneSuffixes','array-contains',digits.slice(-Math.min(digits.length,12))).limit(SCAN).get());
-    }
-    searches.push(base.where('customerKey','>=',needle).where('customerKey','<=',needle+'\uf8ff').orderBy('customerKey').limit(SCAN).get());
-    if(searchPrefix.length>=2){
-      searches.push(base.where('searchText','>=',searchPrefix).where('searchText','<=',searchPrefix+'\uf8ff').orderBy('searchText').limit(SCAN).get());
-      // Any-word prefix: matches the middle/end words of a name, product or note.
-      searches.push(base.where('searchPrefixes','array-contains',searchPrefix).limit(SCAN).get());
-      if(tokens.length){
-        for(const token of tokens.filter(t=>t.length>=2).slice(0,4)){
-          searches.push(base.where('searchPrefixes','array-contains',token).limit(SCAN).get());
-        }
-      }
-    }
-    for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4)){
-      searches.push(base.where('searchTokens','array-contains',token).limit(SCAN).get());
-    }
-  }
-  const results=await Promise.all(searches);
-  for(const snap of results)for(const doc of snap.docs)accept(doc);
   const all=[...matches.values()];
   all.sort((a,b)=>{
     const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
-    if(at!==bt)return bt-at; // newest first
-    return a.id===b.id?0:a.id>b.id?-1:1;
+    if(at!==bt)return sort==='asc'?(at-bt):(bt-at);
+    if(a.id===b.id)return 0;
+    return (a.id>b.id?1:-1)*(sort==='asc'?1:-1);
   });
-  // Apply the cursor: skip until we pass the last returned (createdAt, id).
-  let startIndex=0;
-  if(cursor){
-    startIndex=all.findIndex(d=>(d.data().createdAt?.toMillis?.()||0)<cursor.c||((d.data().createdAt?.toMillis?.()||0)===cursor.c&&d.id<cursor.i));
-    if(startIndex<0)startIndex=all.length;
-  }
-  const window=all.slice(startIndex,startIndex+pageSize);
-  const last=window.at(-1);
-  const hasMore=startIndex+window.length<all.length;
-  const nextCursor=hasMore&&last?encodeCursor(last.data().createdAt?.toMillis?.()||0,last.id):null;
+  // Global boundary guarantee: exclude anything at or before the previous page's
+  // last (createdAt,id). This removes duplicates even when different sub-queries
+  // surface the same document on later pages.
+  const g=cursorMap.__g;
+  const afterBoundary=(d)=>{
+    if(!g)return true;
+    const c=d.data().createdAt?.toMillis?.()||0;
+    if(sort==='desc')return c<g.c||(c===g.c&&d.id<g.i);
+    return c>g.c||(c===g.c&&d.id>g.i);
+  };
+  const filtered=all.filter(afterBoundary);
+  const page=filtered.slice(0,pageSize);
+  const last=page.at(-1);
+  // A full page means there may be more; the final call returns an empty page
+  // with nextCursor=null. `limited` also flags that a sub-query still had data.
+  const hasMore=page.length===pageSize;
+  if(last)nextCursorMap.__g={c:last.data().createdAt?.toMillis?.()||0,i:last.id};
   return {
-    items:window.map(d=>orderForUser(user,d)),
-    nextCursor,
-    // `limited` reports that the bounded scan may hide matches beyond SCAN per
-    // sub-query; pagination still lets the user browse everything found.
-    limited:results.some(r=>r.size>=SCAN),
+    items:page.map(d=>orderForUser(user,d)),
+    nextCursor:hasMore?encodeCursorMap(nextCursorMap):null,
+    limited:hasMore&&exhaustedSubs<subs.length,
   };
 });
-// Opaque, validated pagination cursor for searchOrders.
-function encodeCursor(millis,id){return Buffer.from(JSON.stringify({c:millis,i:id}),'utf8').toString('base64url');}
-function parseCursor(raw){
-  if(typeof raw!=='string'||raw.length===0||raw.length>400)return null;
+// Opaque, validated cursor map pagination for searchOrders.
+function encodeCursorMap(map){return Buffer.from(JSON.stringify(map),'utf8').toString('base64url');}
+function parseCursorMap(raw){
+  if(typeof raw!=='string'||raw.length===0||raw.length>8000)return {};
   try{
     const d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
-    if(!Number.isFinite(d.c)||typeof d.i!=='string'||d.i.length>140)return null;
-    return {c:d.c,i:d.i};
-  }catch(e){return null;}
+    if(!d||typeof d!=='object'||Array.isArray(d))return {};
+    const out={};
+    for(const [k,v] of Object.entries(d)){
+      if(typeof k!=='string'||k.length>80)continue;
+      if(!v||!Number.isFinite(v.c)||typeof v.i!=='string'||v.i.length>140)continue;
+      out[k]={c:v.c,i:v.i};
+    }
+    return out;
+  }catch(e){return {};}
 }
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.

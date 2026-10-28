@@ -182,7 +182,7 @@ test('resolveBarcodes rejects more than 20 codes',async()=>{
 test('bulkDispatch refuses a wrong-type order and never creates a shipment',async()=>{
   const ret=await invoke('createOrder','gm',{...base,customer:'إرسال ممنوع',phone:'0777000001',orderType:'return',companyId:'c1',requestKey:'p2_bulk_dispatch_ret'});
   await db.doc('orders/'+ret.id).update({status:'ready'});
-  const res=await invoke('bulkDispatch','gm',{ids:[ret.id]});
+  const res=await invoke('bulkDispatch','gm',{ids:[ret.id],operationId:'rev_wrongtype_op_0001'});
   assert.equal(res.succeeded,0);
   assert.equal(res.results[0].ok,false);
   const d=(await db.doc('orders/'+ret.id).get()).data();
@@ -197,7 +197,7 @@ test('bulkDispatch and bulkAssignCompany reject callers without sendToDelivery b
   const o=await invoke('createOrder','gm',{...base,customer:'أمان',phone:'0778000010',companyId:'c1',requestKey:'rev_sec_order_0001'});
   await db.doc('orders/'+o.id).update({status:'ready'});
   for(const who of ['entry','noSend']){
-    await assert.rejects(invoke('bulkDispatch',who,{ids:[o.id]}),{code:'permission-denied'});
+    await assert.rejects(invoke('bulkDispatch',who,{ids:[o.id],operationId:'rev_noPerm_op_0001'}),{code:'permission-denied'});
     await assert.rejects(invoke('bulkAssignCompany',who,{ids:[o.id],companyId:'c1'}),{code:'permission-denied'});
   }
   // No external send happened; the order is untouched.
@@ -311,16 +311,95 @@ test('getOrdersByIds returns only authorized orders and hides amounts',async()=>
   assert.equal(asEntry.items[0].id,own.id);
 });
 
-// --- Durable bulk operation record ---
-test('bulkDispatch writes a durable operation record that can be read later',async()=>{
+// --- Durable bulk operation identity, resume, isolation (review fixes) ---
+test('bulkDispatch requires a client operation id',async()=>{
   const o=await invoke('createOrder','gm',{...base,customer:'سجل',phone:'0778000040',orderType:'return',companyId:'c1',requestKey:'rev_op_0001xxxxxxxx'});
   await db.doc('orders/'+o.id).update({status:'ready'});
-  const before=await db.collection('bulkOperations').get();
-  const res=await invoke('bulkDispatch','gm',{ids:[o.id]});
-  assert.ok(res.operationId);
-  const after=await db.collection('bulkOperations').get();
-  assert.equal(after.size,before.size+1);
-  const rec=await invoke('getBulkOperation','gm',{operationId:res.operationId});
+  await assert.rejects(invoke('bulkDispatch','gm',{ids:[o.id]}),{code:'invalid-argument'});
+});
+
+test('reusing an operation id with the same orders never re-dispatches',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'سجل',phone:'0778000041',orderType:'return',companyId:'c1',requestKey:'rev_op_0002xxxxxxxx'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const opId='rev_resume_op_0001';
+  const r1=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  assert.equal(r1.results[0].ok,false);
+  // Second call with the SAME id and same order returns the SAME stored result
+  // (no new dispatch attempt).
+  const r2=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  assert.equal(r2.results.length,1);
+  assert.deepEqual(r2.results[0],r1.results[0]);
+  const results=await db.doc('bulkOperations/'+opId).collection('results').get();
+  assert.equal(results.size,1,'exactly one durable result per order');
+});
+
+test('reusing an operation id with different orders is rejected',async()=>{
+  const a=await invoke('createOrder','gm',{...base,customer:'opREJECT',phone:'0778000042',companyId:'c1',requestKey:'rev_op_0003xxxxxxxx'});
+  const b=await invoke('createOrder','gm',{...base,customer:'opREJECT2',phone:'0778000043',companyId:'c1',requestKey:'rev_op_0004xxxxxxxx'});
+  await db.doc('orders/'+a.id).update({status:'ready'});
+  await db.doc('orders/'+b.id).update({status:'ready'});
+  const opId='rev_conflict_op_0001';
+  await invoke('bulkDispatch','gm',{ids:[a.id],operationId:opId});
+  await assert.rejects(invoke('bulkDispatch','gm',{ids:[b.id],operationId:opId}),{code:'already-exists'});
+});
+
+test('another user cannot take over an operation id or read its results',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'opOWN',phone:'0778000044',companyId:'c1',requestKey:'rev_op_0005xxxxxxxx'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const opId='rev_owner_op_0001';
+  await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  // sender is authorized to send but must not read gm's operation.
+  await assert.rejects(invoke('getBulkOperation','sender',{operationId:opId}),{code:'permission-denied'});
+  await assert.rejects(invoke('bulkDispatch','sender',{ids:[o.id],operationId:opId}),{code:'permission-denied'});
+});
+
+test('getBulkOperation returns the creator own operation with results',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'opREAD',phone:'0778000045',orderType:'return',companyId:'c1',requestKey:'rev_op_0006xxxxxxxx'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const opId='rev_read_op_0001';
+  const r=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  const rec=await invoke('getBulkOperation','gm',{operationId:opId});
+  assert.equal(rec.operationId,opId);
   assert.equal(rec.results.length,1);
-  assert.equal(rec.results[0].ok,false,'a return type is refused before any send');
+  assert.equal(rec.finished,true);
+  assert.equal(r.results[0].ok,false,'return type is refused before any send');
+});
+
+// --- Search pagination beyond a single sub-query window (300 matches) ---
+test('search returns all 300 matches across pages without loss or duplication',async()=>{
+  const {buildSearchFields}=require('../../src/search');
+  const batch=db.bulkWriter(),now=Date.now();
+  for(let i=0;i<300;i++){
+    const o={customer:'عميل ثلاثمئة',phone:'07799000'+String(i%100).padStart(2,'0'),
+      amountMinor:1000,pageId:'p1',status:'created',hasDelivery:false,companyId:null,createdBy:'gm',city:'عمان',area:'x',description:'طقم',quantity:1,
+      createdAt:Timestamp.fromMillis(now-i*1000)};
+    batch.set(db.doc('orders/rev300_'+String(i).padStart(3,'0')),{...o,...buildSearchFields(o)});
+  }
+  await batch.close();
+  const seen=new Set();let cursor=null,pages=0;
+  for(let i=0;i<40;i++){
+    const r=await invoke('searchOrders','gm',{query:'عميل ثلاثمئة',pageSize:50,cursor});
+    for(const it of r.items){assert.equal(seen.has(it.id),false,'no duplicate');seen.add(it.id);}
+    pages++;cursor=r.nextCursor;
+    if(!cursor)break;
+  }
+  assert.ok(seen.size>=300,`expected 300 unique, got ${seen.size}`);
+  assert.ok(pages>=6,`expected several pages, got ${pages}`);
+});
+
+// --- listOrders continues past the 2000-scan cap ---
+test('listOrders exposes a cursor past the scan cap instead of faking the end',async()=>{
+  const batch=db.bulkWriter(),now=Date.now();
+  for(let i=0;i<2001;i++)batch.set(db.doc('orders/revscan_'+String(i).padStart(4,'0')),{customer:'غير مطابق '+i,phone:'0778800000',amountMinor:1000,pageId:'p1',status:'created',hasDelivery:false,companyId:null,createdBy:'gm',city:'إربد',area:'x',description:'x',quantity:1,createdAt:Timestamp.fromMillis(now-i*1000)});
+  await batch.close();
+  const match=await invoke('createOrder','gm',{...base,customer:'مطابق بعد الدفعات',phone:'0778111222',city:'عمان',requestKey:'rev_scan_match_0001'});
+  await db.doc('orders/'+match.id).update({createdAt:Timestamp.fromMillis(Date.now()-9000000)});
+  let found=false,afterId=null,guard=0;
+  while(!found&&guard++<60){
+    const r=await invoke('listOrders','gm',{city:'عمان',pageSize:30,afterId});
+    if(r.items.some(x=>x.id===match.id)){found=true;break;}
+    afterId=r.nextAfterId;
+    if(!afterId)break;
+  }
+  assert.ok(found,'reachable via continuation cursors');
 });
