@@ -331,9 +331,15 @@ function fingerprintSearch(query,filters,sort,companyId,bucket,status){
 function cursorFromRequest(raw,key,pageSize,sort,direction){
   const empty={key,sort,pageSize,g:null,subs:{}};
   if(typeof raw!=='string'||raw.length===0)return empty;
-  let d;try{d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));}catch(e){return empty;}
-  if(!d||typeof d!=='object'||d.key!==key||d.sort!==sort||d.pageSize!==pageSize)return empty;
-  if(direction!==undefined&&d.direction!==direction)return empty;
+  let d=null;
+  try{d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));}catch(e){fail('invalid-argument','مؤشر البحث غير صالح؛ أعد تنفيذ البحث');}
+  if(!d||typeof d!=='object'||Array.isArray(d))fail('invalid-argument','مؤشر البحث غير صالح؛ أعد تنفيذ البحث');
+  // A structurally valid cursor that belongs to a DIFFERENT search (query,
+  // filters, sort, page size or direction) is rejected explicitly — never
+  // silently restarted from page one.
+  if(d.key!==key||d.sort!==sort||d.pageSize!==pageSize||(d.direction??null)!==(direction??null)){
+    fail('invalid-argument','مؤشر البحث لا يطابق معايير البحث الحالية؛ أعد البحث');
+  }
   const subs={};
   for(const [k,v] of Object.entries(d.subs||{})){
     if(typeof k==='string'&&k.length<=80&&v&&Number.isFinite(v.c)&&typeof v.i==='string'&&v.i.length<=140)subs[k]={c:v.c,i:v.i};

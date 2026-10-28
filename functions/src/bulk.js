@@ -141,7 +141,12 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
   // operation as `partial` so the client can resume the remaining orders. A hard
   // batch cap (10) plus the deadline guarantees the function returns in time.
   const MAX_DISPATCH = 10;
-  const DISPATCH_DEADLINE_MS = 45000; // leave headroom inside the 60s timeout
+  // Wall-clock budget for starting new sends within one call. The callable's
+  // total timeout is 60s; this leaves headroom. `VELNIX_DISPATCH_DEADLINE_MS`
+  // lets tests exercise the deadline deterministically without waiting 45s.
+  const DISPATCH_DEADLINE_MS = Number(process.env.VELNIX_DISPATCH_DEADLINE_MS) > 0
+    ? Number(process.env.VELNIX_DISPATCH_DEADLINE_MS)
+    : 45000;
 
   // Fingerprints an operation's order-id set so the same operationId can only be
   // used with the same content. Order-independent and stable.
@@ -153,9 +158,14 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
   // Runs (or resumes) a durable bulk dispatch. The CLIENT creates the
   // operationId and passes it in. Each order is CLAIMED atomically before any
   // external call, so two concurrent calls with the same operation/order can
-  // never both send; the loser sees the winner's claim and skips. A transient
-  // failure result never overwrites a confirmed success. `dispatchOrder` (the
-  // single-order flow) still owns the Click lock and needs_review protection.
+  // never both send. A `claimed` record is explicitly NOT a final result: it is
+  // never counted as success or failure, and it keeps the operation `running`
+  // until it resolves. A stale claim (a worker that died) is reconciled safely:
+  // if Click was not started the order can be re-claimed; if the attempt may
+  // have started it is left to the single-order lock/needs_review, never
+  // re-sent. `succeeded/failed/uncertain/remaining` are computed from the
+  // durable results, not from transient in-memory state.
+  const CLAIM_TTL_MS = 120000; // > function timeout: a claim older than this is stale
   async function bulkDispatch(req){
     const user=await requireAuth(req);
     requiredPerm(user,'sendToDelivery');
@@ -177,54 +187,79 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
         startedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     });
     const resultsRef=opRef.collection('results');
-    const results=[];
-    const deadline=Date.now()+DISPATCH_DEADLINE_MS;
+    const now=Date.now();
+    const deadline=now+DISPATCH_DEADLINE_MS;
     let stoppedEarly=false;
+    let pending=0; // live claims left for a concurrent worker
     for(const id of ids){
-      // Resume: a durable result already exists.
-      const existing=await resultsRef.doc(id).get();
-      if(existing.exists){results.push(existing.data());continue;}
-      // Deadline: stop starting new sends; leave the order for a resumed call.
-      if(Date.now()>=deadline){stoppedEarly=true;break;}
-      // Atomically CLAIM this order inside the operation before any send. If a
-      // concurrent call wins the claim, skip it (its result will be read next).
-      const claim=await db.runTransaction(async tx=>{
-        const ref=resultsRef.doc(id);
+      const ref=resultsRef.doc(id);
+      // One transaction decides: final result exists → reuse; live claim → count
+      // as pending and skip; stale claim → reconcile; none → claim and send.
+      const decision=await db.runTransaction(async tx=>{
         const cur=await tx.get(ref);
-        if(cur.exists)return cur.data();
-        tx.create(ref,{id,state:'claimed',claimedBy:user.id,claimedAt:new Date().toISOString()});
-        return null;
+        if(!cur.exists){tx.create(ref,{id,state:'claimed',vendorStarted:false,claimedBy:user.id,claimedAtMs:Date.now(),claimedAt:new Date().toISOString()});return {act:'send'};}
+        const d=cur.data();
+        if(d.state!=='claimed')return {act:'final',entry:d}; // final result (has ok)
+        const age=Date.now()-(d.claimedAtMs||0);
+        if(age<CLAIM_TTL_MS)return {act:'pending'}; // a live concurrent worker owns it
+        // Stale claim: mark it stale in place; the send loop reconciles below.
+        tx.update(ref,{state:'claimed',claimedBy:user.id,claimedAtMs:Date.now(),claimedAt:new Date().toISOString()});
+        return {act:'stale',vendorStarted:d.vendorStarted===true};
       });
-      if(claim){results.push(claim.id?claim:{id});continue;}
+      if(decision.act==='pending'){pending++;continue;}
+      if(decision.act==='final'){continue;} // durable; recomputed at the end
+      if(decision.act==='stale'){
+        // A stale claim that may have reached Click must never be re-sent.
+        if(decision.vendorStarted){
+          await db.runTransaction(async tx=>{
+            const ref2=resultsRef.doc(id);const cur=await tx.get(ref2);
+            if(cur.data()?.state==='claimed')tx.set(ref2,{id,ok:false,uncertain:true,code:'unavailable',message:'توقفت المحاولة بعد احتمال بدء الإرسال؛ راجع شركة التوصيل. لا تُعد الإرسال.',at:new Date().toISOString()});
+          });
+          continue;
+        }
+        // Not started: safe to send under the new claim.
+      }
+      if(Date.now()>=deadline){stoppedEarly=true;break;}
+      // Mark vendorStarted=true BEFORE the external call so a crash mid-send is
+      // never mistaken for "not started".
+      await resultsRef.doc(id).update({vendorStarted:true,claimedAtMs:Date.now()});
       let entry;
       try{
-        const ref=await loadVisible(user,id);
-        if(!ref){entry={id,ok:false,code:'permission-denied',at:new Date().toISOString()};}
+        const visible=await loadVisible(user,id);
+        if(!visible){entry={id,ok:false,code:'permission-denied',at:new Date().toISOString()};}
         else{
-          const out=await runDispatch(ref,user);
+          const out=await runDispatch(visible,user);
           entry={id,ok:true,trackingNumber:out?.trackingNumber||null,at:new Date().toISOString()};
         }
       }catch(e){
         const code=e?.code||'failed-precondition';
         entry={id,ok:false,code,uncertain:code==='unavailable',message:typeof e?.message==='string'?e.message.slice(0,200):'',at:new Date().toISOString()};
       }
-      results.push(entry);
-      // Monotonic result write inside a transaction: never overwrite a confirmed
-      // success with a transient failure.
+      // Monotonic write: never overwrite a confirmed success with a transient
+      // failure; the final entry replaces the claim.
       await db.runTransaction(async tx=>{
-        const ref=resultsRef.doc(id);
-        const cur=await tx.get(ref);
-        const prev=cur.data();
-        if(prev&&prev.ok===true&&entry.ok!==true)return; // keep the success
-        tx.set(ref,entry);
+        const ref2=resultsRef.doc(id);const cur=await tx.get(ref2);const prev=cur.data();
+        if(prev&&prev.state!=='claimed'&&prev.ok===true&&entry.ok!==true)return;
+        tx.set(ref2,entry);
       });
     }
-    const succeeded=results.filter(r=>r.ok).length;
-    const uncertain=results.filter(r=>r.uncertain).length;
-    const status=stoppedEarly?'partial':'finished';
-    await opRef.set({status,finishedAt:stoppedEarly?null:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
-      succeeded,failed:results.length-succeeded,uncertain,remaining:stoppedEarly?ids.length-results.length:0},{merge:true});
-    return {operationId:opId,status,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length,hasMore:stoppedEarly};
+    // Aggregates are computed from the DURABLE results, never from claims.
+    const all=await resultsRef.get();
+    let succeeded=0,failed=0,uncertain=0,claimed=0,remaining=0;
+    for(const d of all.docs){
+      const v=d.data();
+      if(v.state==='claimed'){claimed++;continue;}
+      if(v.ok===true)succeeded++;else{failed++;if(v.uncertain===true)uncertain++;}
+    }
+    const total=ids.length;
+    const finalized=succeeded+failed;
+    remaining=Math.max(0,total-finalized);
+    // Only "finished" when every order has a final result AND no live claim bars.
+    const finished=pending===0&&claimed===0&&remaining===0;
+    const status=finished?'finished':'partial';
+    await opRef.set({status,finishedAt:finished?FieldValue.serverTimestamp():null,updatedAt:FieldValue.serverTimestamp(),
+      succeeded,failed,uncertain,claimed,remaining},{merge:true});
+    return {operationId:opId,status,succeeded,failed,uncertain,claimed,remaining,pending,hasMore:!finished};
   }
 
   // Lists the caller's own bulk operations (newest first) so the app can recover
@@ -238,7 +273,7 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     for(const d of snap.docs){
       const v=d.data();
       items.push({operationId:d.id,kind:v.kind,status:v.status||'running',ids:v.ids||[],
-        succeeded:v.succeeded||0,failed:v.failed||0,uncertain:v.uncertain||0,remaining:v.remaining||0,
+        succeeded:v.succeeded||0,failed:v.failed||0,uncertain:v.uncertain||0,claimed:v.claimed||0,remaining:v.remaining||0,
         startedAt:v.startedAt?.toDate?.()?.toISOString?.()||null});
     }
     return {items};
@@ -256,9 +291,17 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     const d=snap.data();
     if(d.actorId!==user.id)fail('permission-denied','لا يمكنك الوصول لهذه العملية');
     const resultsSnap=await db.doc('bulkOperations/'+opId).collection('results').get();
-    const results=resultsSnap.docs.map(x=>x.data());
-    return {operationId:opId,kind:d.kind,status:d.status||'running',ids:d.ids||[],results,
-      succeeded:d.succeeded||0,failed:d.failed||0,uncertain:d.uncertain||0,finished:d.status==='finished'};
+    // Split final results from orders that are still claimed (in progress).
+    const results=[];const claimed=[];
+    for(const x of resultsSnap.docs){const v=x.data();if(v.state==='claimed')claimed.push({id:v.id,vendorStarted:v.vendorStarted===true});else results.push(v);}
+    const succeeded=results.filter(r=>r.ok===true).length;
+    const uncertain=results.filter(r=>r.uncertain===true).length;
+    const failed=results.length-succeeded;
+    const total=(d.ids||[]).length;
+    const remaining=Math.max(0,total-(succeeded+failed));
+    const finished=claimed.length===0&&remaining===0&&d.status==='finished';
+    return {operationId:opId,kind:d.kind,status:d.status||'running',ids:d.ids||[],results,claimed,
+      succeeded,failed,uncertain,remaining,finished};
   }
 
   return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,getBulkOperation,listBulkOperations,MAX_BULK,MAX_DISPATCH};

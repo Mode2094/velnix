@@ -184,7 +184,7 @@ test('bulkDispatch refuses a wrong-type order and never creates a shipment',asyn
   await db.doc('orders/'+ret.id).update({status:'ready'});
   const res=await invoke('bulkDispatch','gm',{ids:[ret.id],operationId:'rev_wrongtype_op_0001'});
   assert.equal(res.succeeded,0);
-  assert.equal(res.results[0].ok,false);
+  assert.equal(res.failed,1);
   const d=(await db.doc('orders/'+ret.id).get()).data();
   assert.equal(d.dispatchState,'idle');
   assert.equal(d.trackingNumber,null);
@@ -323,14 +323,17 @@ test('reusing an operation id with the same orders never re-dispatches',async()=
   await db.doc('orders/'+o.id).update({status:'ready'});
   const opId='rev_resume_op_0001';
   const r1=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
-  assert.equal(r1.results[0].ok,false);
+  const rec1=await invoke('getBulkOperation','gm',{operationId:opId});
+  assert.equal(rec1.results[0].ok,false);
   // Second call with the SAME id and same order returns the SAME stored result
   // (no new dispatch attempt).
-  const r2=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
-  assert.equal(r2.results.length,1);
-  assert.deepEqual(r2.results[0],r1.results[0]);
+  await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  const rec2=await invoke('getBulkOperation','gm',{operationId:opId});
+  assert.equal(rec2.results.length,1);
+  assert.deepEqual(rec2.results[0],rec1.results[0]);
   const results=await db.doc('bulkOperations/'+opId).collection('results').get();
   assert.equal(results.size,1,'exactly one durable result per order');
+  void r1;
 });
 
 test('reusing an operation id with different orders is rejected',async()=>{
@@ -357,12 +360,12 @@ test('getBulkOperation returns the creator own operation with results',async()=>
   const o=await invoke('createOrder','gm',{...base,customer:'opREAD',phone:'0778000045',orderType:'return',companyId:'c1',requestKey:'rev_op_0006xxxxxxxx'});
   await db.doc('orders/'+o.id).update({status:'ready'});
   const opId='rev_read_op_0001';
-  const r=await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
   const rec=await invoke('getBulkOperation','gm',{operationId:opId});
   assert.equal(rec.operationId,opId);
   assert.equal(rec.results.length,1);
   assert.equal(rec.finished,true);
-  assert.equal(r.results[0].ok,false,'return type is refused before any send');
+  assert.equal(rec.results[0].ok,false,'return type is refused before any send');
 });
 
 // --- Search pagination beyond a single sub-query window (300 matches) ---
@@ -429,30 +432,39 @@ test('300 orders sharing the exact same createdAt are all returned once (desc & 
   }
 });
 
-test('search cursor is rejected when the filters or sort change',async()=>{
+test('search cursor from different conditions is rejected with invalid-argument',async()=>{
   const r1=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'desc'});
   assert.ok(r1.nextCursor,'a cursor is returned');
-  // Same cursor with a different sort must not be honored (starts from the top).
-  const r2=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'asc',cursor:r1.nextCursor});
-  assert.notEqual(r2.items[0]?.id,r1.items[0]?.id,'cursor not reused across sort');
-  // Different query with the same cursor is ignored too.
-  const r3=await invoke('searchOrders','gm',{query:'غير موجود اطلاقا',pageSize:30,cursor:r1.nextCursor});
-  assert.equal(r3.items.length,0);
+  const c=r1.nextCursor;
+  // Different sort.
+  await assert.rejects(invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'asc',cursor:c}),{code:'invalid-argument'});
+  // Different query.
+  await assert.rejects(invoke('searchOrders','gm',{query:'غير موجود اطلاقا',pageSize:30,cursor:c}),{code:'invalid-argument'});
+  // Different page size.
+  await assert.rejects(invoke('searchOrders','gm',{query:'توأم زمني',pageSize:50,cursor:c}),{code:'invalid-argument'});
+  // Different filters.
+  await assert.rejects(invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,city:'إربد',cursor:c}),{code:'invalid-argument'});
+  // A malformed cursor is rejected too (never silently restarts at page 1).
+  await assert.rejects(invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,cursor:'not-a-valid-cursor'}),{code:'invalid-argument'});
+  // The SAME conditions accept the cursor.
+  const ok=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'desc',cursor:c});
+  assert.ok(Array.isArray(ok.items));
 });
 
 // --- F2: concurrent dispatch claims the order exactly once ---
-test('two concurrent bulkDispatch calls send an order only once',async()=>{
+test('two concurrent bulkDispatch calls mark the order claimed exactly once',async()=>{
   const o=await invoke('createOrder','gm',{...base,customer:'تزامن',phone:'0776500010',companyId:'c1',requestKey:'fin_concurrency_0001'});
   await db.doc('orders/'+o.id).update({status:'ready'});
   const opId='fin_concurrency_op_0001';
-  // Fire both calls before either completes.
-  const [a,b]=await Promise.allSettled([
-    invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId}),
-    invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId}),
-  ]);
-  // At most one external send; the operation has exactly one durable result.
+  const [a,b]=await Promise.all([invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId}),invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId})]);
+  // Exactly one result document; its state is either claimed (in progress) or a
+  // single final result — never two, and never both final.
   const results=await db.doc('bulkOperations/'+opId).collection('results').get();
-  assert.equal(results.size,1,'exactly one durable result');
+  assert.equal(results.size,1,'exactly one result document per order');
+  const d=results.docs[0].data();
+  // The single durable record is either still claimed (in progress) or one final
+  // result — never two competing final resolutions.
+  assert.ok(d.state==='claimed'||d.ok===true||d.ok===false,'a single durable state');
   void a;void b;
 });
 
@@ -480,8 +492,11 @@ test('bulkDispatch reports partial status when it stops early and can resume',as
   const opId='fin_partial_op_0001';
   const r=await invoke('bulkDispatch','gm',{ids:[a.id],operationId:opId});
   assert.ok(['finished','partial'].includes(r.status));
-  // A resume call returns the same stored result without a second send.
+  assert.equal(r.succeeded+r.failed,1,'one order finalized (refused before send)');
+  // A resume call is idempotent: the durable result is unchanged, no new send.
+  const rec1=await invoke('getBulkOperation','gm',{operationId:opId});
   const r2=await invoke('bulkDispatch','gm',{ids:[a.id],operationId:opId});
-  assert.equal(r2.results.length,1);
-  assert.deepEqual(r2.results[0],r.results[0]);
+  const rec2=await invoke('getBulkOperation','gm',{operationId:opId});
+  assert.deepEqual(rec2.results,rec1.results);
+  assert.equal(r2.succeeded+r2.failed,1);
 });

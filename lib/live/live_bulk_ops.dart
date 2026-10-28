@@ -46,9 +46,17 @@ class _BulkOperationsScreenState extends State<BulkOperationsScreen> {
       final rec = await VelnixGateway.instance.bulkOperation(opId);
       if (!mounted) return;
       setState(() {
-        openOp[opId] = (rec['results'] as List? ?? [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+        final rows = <Map<String, dynamic>>[
+          ...(rec['results'] as List? ?? []).map(
+            (e) => Map<String, dynamic>.from(e as Map),
+          ),
+          // Orders still being processed elsewhere are shown distinctly, never
+          // as success or failure.
+          ...(rec['claimed'] as List? ?? []).map(
+            (e) => {...Map<String, dynamic>.from(e as Map), 'claimed': true},
+          ),
+        ];
+        openOp[opId] = rows;
       });
     } catch (e) {
       if (mounted) showError(context, e);
@@ -56,6 +64,27 @@ class _BulkOperationsScreenState extends State<BulkOperationsScreen> {
   }
 
   Widget _resultRow(Map<String, dynamic> r) {
+    if (r['claimed'] == true && r['ok'] == null) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.hourglass_top_outlined,
+              size: 16,
+              color: VColors.brand,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '•• ${r['id']}: قيد التنفيذ (لم تُحسم بعد)',
+                style: const TextStyle(fontSize: 12, color: VColors.muted),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final ok = r['ok'] == true;
     final uncertain = r['uncertain'] == true;
     final label = ok
