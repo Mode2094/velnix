@@ -125,13 +125,17 @@ class VelnixGateway {
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
+    int pageSize = 30,
+    String? cursor,
   }) {
     final data = <String, dynamic>{
       ...filters,
       'query': query,
       'bucket': bucket,
+      'pageSize': pageSize,
       'status': ?status,
       'companyId': ?companyId,
+      'cursor': ?cursor,
     };
     return call('searchOrders', data);
   }
@@ -143,6 +147,21 @@ class VelnixGateway {
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
   }
+
+  /// Fetches the authorized DTO for a set of order ids (used by bulk print and
+  /// selection actions so orders from unloaded pages are included). Amounts are
+  /// hidden server-side when the caller lacks the permission.
+  Future<List<Map<String, dynamic>>> ordersByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final result = await call('getOrdersByIds', {'ids': ids});
+    return (result['items'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  /// Reads a durable bulk dispatch record (recover results after a timeout).
+  Future<Map<String, dynamic>> bulkOperation(String operationId) =>
+      call('getBulkOperation', {'operationId': operationId});
 
   Future<Map<String, dynamic>> bulkChangeStatus(
     List<String> ids,
@@ -168,8 +187,14 @@ class VelnixGateway {
     return result;
   }
 
-  Future<Map<String, dynamic>> bulkDispatch(List<String> ids) async {
-    final result = await call('bulkDispatch', {'ids': ids});
+  Future<Map<String, dynamic>> bulkDispatch(
+    List<String> ids, {
+    String? operationId,
+  }) async {
+    final result = await call('bulkDispatch', {
+      'ids': ids,
+      'operationId': ?operationId,
+    });
     _invalidateOrderData();
     return result;
   }

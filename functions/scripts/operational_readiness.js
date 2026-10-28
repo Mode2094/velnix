@@ -25,7 +25,7 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const pagesReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(pages);
  // The bulk factory exposes bounded multi-order operations the same way.
  const bulkSrc=fs.readFileSync(path.join(root,'functions/src/bulk.js'),'utf8');
- const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
+ const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
  const bulkBinding='for(const [name,handler] of Object.entries(bulk))if(typeof handler===\'function\')exports[name]=callable(handler);';
  const bulkReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(bulkSrc);
  if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||!text.includes(bulkFactory)||!text.includes(bulkBinding)||[...text.matchAll(/exports\s*\[/g)].length!==3||!returned||!pagesReturned||!bulkReturned)throw Error('source_manifest_requires_review');
@@ -33,8 +33,8 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  if(names.length!==3||new Set(names).size!==names.length||names.some(n=>!['joinSession','listJoinRequests','decideJoinRequest'].includes(n)))throw Error('source_manifest_requires_review');
  const pageNames=pagesReturned[1].split(',').map(n=>n.trim());
  if(pageNames.length!==6||new Set(pageNames).size!==pageNames.length||pageNames.some(n=>!['listPages','listAllowedPages','savePage','archivePage','restorePage','pageStats'].includes(n)))throw Error('source_manifest_requires_review');
- const bulkNames=bulkReturned[1].split(',').map(n=>n.trim()).filter(n=>n!=='MAX_BULK');
- if(bulkNames.length!==4||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch'].includes(n)))throw Error('source_manifest_requires_review');
+ const bulkNames=bulkReturned[1].split(',').map(n=>n.trim()).filter(n=>!['MAX_BULK','MAX_DISPATCH'].includes(n));
+ if(bulkNames.length!==5||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch','getBulkOperation'].includes(n)))throw Error('source_manifest_requires_review');
  functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...pageNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...bulkNames.map(name=>({name,kind:'callable',region:'europe-west1'})));

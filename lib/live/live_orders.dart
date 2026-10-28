@@ -33,6 +33,8 @@ class _LiveOrdersState extends State<LiveOrders> {
   Map<String, dynamic> filters = {};
   String sort = 'desc';
   String? after, status;
+  // Cursor for search pagination (keyword search), separate from list `after`.
+  String? searchCursor;
   late String bucket;
   bool busy = false, more = true, limited = false;
   String? error;
@@ -43,8 +45,13 @@ class _LiveOrdersState extends State<LiveOrders> {
   bool selectionMode = false;
   // Selected order ids (stable identifiers), never positional indices.
   final Set<String> selected = {};
-  // Bulk operation progress / last result summary.
   bool bulkBusy = false;
+  // Hard cap on how many results "select all matching" may select. Bulk calls
+  // are chunked to the server's per-call limit (50); dispatch is chunked to its
+  // own smaller limit (10) with an explicit warning in the confirm dialog.
+  static const int _maxSelectable = 200;
+  static const int _bulkChunk = 50;
+  static const int _dispatchChunk = 10;
 
   void _enterSelection(String id) {
     setState(() {
@@ -106,21 +113,26 @@ class _LiveOrdersState extends State<LiveOrders> {
     setState(() => bulkBusy = true);
     try {
       final ids = <String>[];
-      const pageSize = 50;
-      String? cursor;
+      String? listCursor;
+      String? searchPageCursor;
       final query = appliedQuery;
-      for (var i = 0; i < 10 && ids.length < 500; i++) {
-        final result = query.length >= 2
+      final isSearch = query.length >= 2;
+      // Walk every page (search cursor or list cursor) up to a hard cap so the
+      // selection matches the whole result set, not just the loaded page.
+      for (var i = 0; i < 20 && ids.length < _maxSelectable; i++) {
+        final result = isSearch
             ? await gateway.searchOrders(
                 query,
                 status: status,
                 bucket: bucket,
                 companyId: widget.companyId,
                 filters: filters,
+                pageSize: 50,
+                cursor: searchPageCursor,
               )
             : await gateway.orders(
-                afterId: cursor,
-                pageSize: pageSize,
+                afterId: listCursor,
+                pageSize: 50,
                 sort: sort,
                 status: status,
                 bucket: bucket,
@@ -130,15 +142,20 @@ class _LiveOrdersState extends State<LiveOrders> {
               );
         final list = gateway.listResult(result);
         ids.addAll(list.map((o) => o['id'].toString()));
-        cursor = query.length >= 2 ? null : result['nextAfterId'] as String?;
-        if (query.length >= 2 || cursor == null) break;
+        if (isSearch) {
+          searchPageCursor = result['nextCursor'] as String?;
+          if (searchPageCursor == null) break;
+        } else {
+          listCursor = result['nextAfterId'] as String?;
+          if (listCursor == null) break;
+        }
       }
       if (mounted) {
         setState(() {
           selectionMode = true;
           selected
             ..clear()
-            ..addAll(ids.take(500));
+            ..addAll(ids.take(_maxSelectable));
         });
       }
     } catch (e) {
@@ -199,6 +216,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         appliedQuery = search.text.trim();
         rows = [];
         after = null;
+        searchCursor = null;
         more = true;
       }
     });
@@ -208,13 +226,16 @@ class _LiveOrdersState extends State<LiveOrders> {
       if (query.isNotEmpty && query.length < 2) {
         throw VelnixException('اكتب حرفين على الأقل للبحث');
       }
-      final result = query.length >= 2
+      final isSearch = query.length >= 2;
+      final result = isSearch
           ? await gateway.searchOrders(
               query,
               status: status,
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
+              pageSize: 30,
+              cursor: searchCursor,
             )
           : await gateway.orders(
               afterId: token,
@@ -230,8 +251,13 @@ class _LiveOrdersState extends State<LiveOrders> {
       setState(() {
         limited = result['limited'] == true;
         rows.addAll(list);
-        after = query.length >= 2 ? null : result['nextAfterId'] as String?;
-        more = after != null;
+        if (isSearch) {
+          searchCursor = result['nextCursor'] as String?;
+          more = searchCursor != null;
+        } else {
+          after = result['nextAfterId'] as String?;
+          more = after != null;
+        }
         // Keep selection consistent: drop ids that are no longer visible, and
         // never keep duplicates.
         if (reset) {
@@ -250,6 +276,7 @@ class _LiveOrdersState extends State<LiveOrders> {
           if (reset) {
             rows = [];
             after = null;
+            searchCursor = null;
             more = false;
           }
         });
@@ -432,16 +459,34 @@ class _LiveOrdersState extends State<LiveOrders> {
     );
   }
 
-  List<Map<String, dynamic>> get _selectedOrders =>
-      rows.where((o) => selected.contains(o['id'].toString())).toList();
-
   Future<void> _bulkPrint() async {
-    final orders = _selectedOrders;
-    if (orders.isEmpty) return;
-    var merged = orders;
+    if (selected.isEmpty) return;
+    final ids = selected.toList();
+    if (bulkBusy) return;
+    setState(() => bulkBusy = true);
+    List<Map<String, dynamic>> orders;
+    try {
+      // Fetch the authorized DTO for EVERY selected id (including orders from
+      // pages that are not loaded). The server re-checks permission and hides
+      // amounts the caller may not see. Chunked at the server's 60-id limit.
+      orders = [];
+      for (var i = 0; i < ids.length; i += 60) {
+        orders.addAll(
+          await gateway.ordersByIds(
+            ids.sublist(i, (i + 60) > ids.length ? ids.length : i + 60),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showError(context, e);
+        setState(() => bulkBusy = false);
+      }
+      return;
+    }
     try {
       final settings = await gateway.settings(fresh: true);
-      merged = [
+      orders = [
         for (final o in orders)
           {
             ...o,
@@ -452,10 +497,21 @@ class _LiveOrdersState extends State<LiveOrders> {
           },
       ];
     } catch (_) {}
+    if (mounted) setState(() => bulkBusy = false);
     if (!mounted) return;
+    if (orders.isEmpty) {
+      showError(context, 'لا توجد طلبات مصرّح بها للطباعة');
+      return;
+    }
+    if (orders.length < ids.length) {
+      showSuccess(
+        context,
+        'تم تضمين ${orders.length} من ${ids.length} طلباً لا تملك صلاحية عرضها.',
+      );
+    }
     await Navigator.push(
       context,
-      MaterialPageRoute<void>(builder: (_) => BulkPrintScreen(orders: merged)),
+      MaterialPageRoute<void>(builder: (_) => BulkPrintScreen(orders: orders)),
     );
   }
 
@@ -511,13 +567,35 @@ class _LiveOrdersState extends State<LiveOrders> {
     };
   }
 
-  Future<void> _runBulk(Future<Map<String, dynamic>> Function() action) async {
-    if (bulkBusy) return;
+  /// Runs a bulk call in chunks of [_bulkChunk] and merges per-order results so
+  /// a selection larger than the server's per-call limit is processed fully and
+  /// reported accurately (partial success is never presented as full success).
+  Future<void> _runBulkChunked(
+    List<String> ids,
+    Future<Map<String, dynamic>> Function(List<String> chunk) call, {
+    int chunkSize = _bulkChunk,
+  }) async {
+    if (bulkBusy || ids.isEmpty) return;
     setState(() => bulkBusy = true);
+    final merged = <String, dynamic>{'results': <dynamic>[]};
+    var succeeded = 0, failed = 0, uncertain = 0;
     try {
-      final result = await action();
+      for (var i = 0; i < ids.length; i += chunkSize) {
+        final chunk = ids.sublist(
+          i,
+          (i + chunkSize) > ids.length ? ids.length : i + chunkSize,
+        );
+        final result = await call(chunk);
+        (merged['results'] as List).addAll(result['results'] as List? ?? []);
+        succeeded += (result['succeeded'] as num?)?.toInt() ?? 0;
+        failed += (result['failed'] as num?)?.toInt() ?? 0;
+        uncertain += (result['uncertain'] as num?)?.toInt() ?? 0;
+      }
+      merged['succeeded'] = succeeded;
+      merged['failed'] = failed;
+      merged['uncertain'] = uncertain;
       if (!mounted) return;
-      _showBulkResult('نتيجة العملية', result);
+      _showBulkResult('نتيجة العملية — ${ids.length} طلب', merged);
       await load(reset: true, fresh: true);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -546,7 +624,10 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     );
     if (target == null) return;
-    await _runBulk(() => gateway.bulkChangeStatus(selected.toList(), target));
+    await _runBulkChunked(
+      selected.toList(),
+      (chunk) => gateway.bulkChangeStatus(chunk, target),
+    );
   }
 
   Future<void> _bulkAssign() async {
@@ -594,17 +675,23 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     );
     if (confirm != true) return;
-    await _runBulk(() => gateway.bulkAssignCompany(selected.toList(), id));
+    await _runBulkChunked(
+      selected.toList(),
+      (chunk) => gateway.bulkAssignCompany(chunk, id),
+    );
   }
 
   Future<void> _bulkDispatch() async {
+    final count = selected.length;
+    final batches = (count / _dispatchChunk).ceil();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('إرسال ${selected.length} طلب إلى شركة التوصيل'),
-        content: const Text(
+        title: Text('إرسال $count طلب إلى شركة التوصيل'),
+        content: Text(
           'سيؤدي هذا إلى إنشاء شحنات فعلية لدى الشركة للطلبات الجاهزة فقط. '
-          'الطلبات غير الجاهزة أو غير المؤكدة لن تُرسل، ولن يُعاد إرسال أي شحنة.',
+          'الطلبات غير الجاهزة أو غير المؤكدة لن تُرسل، ولن يُعاد إرسال أي شحنة.'
+          '${count > _dispatchChunk ? '\n\nسيُرسل على $batches دفعات (بحد أقصى $_dispatchChunk لكل دفعة) وقد يستغرق وقتاً.' : ''}',
         ),
         actions: [
           TextButton(
@@ -619,7 +706,11 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     );
     if (confirm != true) return;
-    await _runBulk(() => gateway.bulkDispatch(selected.toList()));
+    await _runBulkChunked(
+      selected.toList(),
+      (chunk) => gateway.bulkDispatch(chunk),
+      chunkSize: _dispatchChunk,
+    );
   }
 
   @override

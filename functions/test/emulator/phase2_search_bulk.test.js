@@ -22,6 +22,10 @@ before(async()=>{
   };
   await mk('generalManager','gm');
   await mk('dataEntry','entry',{allowedPageIds:['p1']});
+  // A plain dataEntry with NO sendToDelivery (for the authorization tests).
+  await mk('dataEntry','noSend',{allowedPageIds:['p1']});
+  // A delegated manager WITH sendToDelivery (authorized sender).
+  await mk('manager','sender',{permissions:['sendToDelivery','viewAllOrders','updateOrderStatus']});
   await db.doc('pages/p1').set({name:'تاج ماركت',nameLower:'تاج ماركت',active:true,archived:false,status:'active'});
   await db.doc('companies/c1').set({name:'شركة أ',enabled:true,archived:false,provider:'generic_v1',statusMap:{}});
 });
@@ -184,4 +188,139 @@ test('bulkDispatch refuses a wrong-type order and never creates a shipment',asyn
   const d=(await db.doc('orders/'+ret.id).get()).data();
   assert.equal(d.dispatchState,'idle');
   assert.equal(d.trackingNumber,null);
+});
+
+// ================= Independent-review fixes =================
+
+// --- Security: bulk send/assign require sendToDelivery ---
+test('bulkDispatch and bulkAssignCompany reject callers without sendToDelivery before any send',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'أمان',phone:'0778000010',companyId:'c1',requestKey:'rev_sec_order_0001'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  for(const who of ['entry','noSend']){
+    await assert.rejects(invoke('bulkDispatch',who,{ids:[o.id]}),{code:'permission-denied'});
+    await assert.rejects(invoke('bulkAssignCompany',who,{ids:[o.id],companyId:'c1'}),{code:'permission-denied'});
+  }
+  // No external send happened; the order is untouched.
+  const d=(await db.doc('orders/'+o.id).get()).data();
+  assert.equal(d.dispatchState,'idle');assert.equal(d.trackingNumber,null);
+});
+
+test('a dataEntry cannot assign a company it is not allowed to send for, even via bulk',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'إسناد',phone:'0778000011',requestKey:'rev_sec_order_0002'});
+  await assert.rejects(invoke('bulkAssignCompany','entry',{ids:[o.id],companyId:'c1'}),{code:'permission-denied'});
+});
+
+test('an authorized sender (sendToDelivery) can bulk assign but the shared flow still blocks wrong states',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'إسناد مسموح',phone:'0778000012',requestKey:'rev_sec_order_0003'});
+  const res=await invoke('bulkAssignCompany','sender',{ids:[o.id],companyId:'c1'});
+  assert.equal(res.succeeded,1);
+  // An order already sent cannot have its company changed.
+  await db.doc('orders/'+o.id).update({status:'dispatched',dispatchState:'sent',companyId:'c1'});
+  const res2=await invoke('bulkAssignCompany','sender',{ids:[o.id],companyId:null});
+  assert.equal(res2.results[0].ok,false);
+});
+
+test('bulkChangeStatus cannot bypass needs_review and is skipped per order',async()=>{
+  const a=await invoke('createOrder','gm',{...base,customer:'حالة أ',phone:'0778000013',requestKey:'rev_sec_order_0004'});
+  const b=await invoke('createOrder','gm',{...base,customer:'حالة ب',phone:'0778000014',requestKey:'rev_sec_order_0005'});
+  await db.doc('orders/'+b.id).update({dispatchState:'needs_review'});
+  const res=await invoke('bulkChangeStatus','gm',{ids:[a.id,b.id],status:'review'});
+  assert.equal(res.succeeded,1);
+  assert.equal(res.results.find(r=>r.id===b.id).ok,false);
+});
+
+test('bulkDispatch bounds a single call to a small batch to fit the function timeout',async()=>{
+  const ids=[];
+  for(let i=0;i<11;i++){
+    const o=await invoke('createOrder','gm',{...base,customer:'دفعة '+i,phone:'0778000020',companyId:'c1',requestKey:'rev_bound_'+i+'xxxxxxxx'});
+    await db.doc('orders/'+o.id).update({status:'ready'});
+    ids.push(o.id);
+  }
+  await assert.rejects(invoke('bulkDispatch','gm',{ids}),{code:'invalid-argument'});
+});
+
+// --- Pagination in search ---
+test('search paginates beyond 50 results without duplicates',async()=>{
+  for(let i=0;i<65;i++){
+    await invoke('createOrder','gm',{...base,customer:'عميل بحث متكرر',phone:'07790000'+String(i).padStart(2,'0'),requestKey:'rev_pag_'+String(i).padStart(3,'0')+'xxxxxxxx'});
+  }
+  const seen=new Set();let cursor=null,pages=0;
+  for(let i=0;i<10;i++){
+    const r=await invoke('searchOrders','gm',{query:'عميل بحث متكرر',pageSize:30,cursor});
+    for(const it of r.items){assert.equal(seen.has(it.id),false,'no duplicate across pages');seen.add(it.id);}
+    pages++;cursor=r.nextCursor;if(!cursor)break;
+  }
+  assert.ok(seen.size>=65,`expected >=65 unique, got ${seen.size}`);
+  assert.ok(pages>=3);
+});
+
+test('listOrders with an in-memory filter finds a match beyond the first window',async()=>{
+  const batch=db.bulkWriter();
+  for(let i=0;i<220;i++)batch.set(db.doc('orders/rev_far_'+i),{...base,customer:'غير مطابق '+i,phone:'07788888'+String(i%100).padStart(2,'0'),amountMinor:1000,pageId:'p1',status:'created',hasDelivery:false,companyId:null,createdBy:'gm',city:'إربد',area:'x',createdAt:Timestamp.fromMillis(Date.now()-i*1000)});
+  await batch.close();
+  const match=await invoke('createOrder','gm',{...base,customer:'مطابق بعيد',phone:'0777777777',city:'عمان',requestKey:'rev_far_match_0001'});
+  await db.doc('orders/'+match.id).update({createdAt:Timestamp.fromMillis(Date.now()-500000)});
+  // Follow pagination until the far match is found (proves it is not silently
+  // dropped by the in-memory filter window).
+  let found=false,afterId=null;
+  for(let i=0;i<30&&!found;i++){
+    const r=await invoke('listOrders','gm',{city:'عمان',pageSize:30,afterId});
+    if(r.items.some(x=>x.id===match.id)){found=true;break;}
+    afterId=r.nextAfterId;
+    if(!afterId)break;
+  }
+  assert.ok(found,'the matching order beyond the first window is reachable via pagination');
+});
+
+// --- Middle-of-text and middle-of-phone search ---
+test('search matches the middle of a name, product, note and phone',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'عبد الرحمن المومني',phone:'0791239876',description:'طقم شرعي أسود فاخر',note:'يرجى الاتصال قبل التسليم',requestKey:'rev_mid_0001xxxxxxxx'});
+  for(const q of ['الرحمن','المومني','شرعي','الاتصال','239876']){
+    const r=await invoke('searchOrders','gm',{query:q});
+    assert.ok(r.items.some(x=>x.id===o.id),`middle match for "${q}"`);
+  }
+});
+
+// --- Backfill idempotency (in-emulator proof) ---
+test('backfill_search_keys is safe and idempotent on legacy orders',async()=>{
+  const {execSync}=require('node:child_process');
+  const path=require('node:path');
+  const fnDir=path.resolve(__dirname,'../..');
+  await db.doc('orders/rev_legacy_1').set({customer:'أحمد القديم',phone:'0791110000',description:'طقم',quantity:1});
+  const dry=execSync('node scripts/backfill_search_keys.js',{cwd:fnDir,encoding:'utf8'});
+  const applied=execSync('node scripts/backfill_search_keys.js --apply',{cwd:fnDir,encoding:'utf8'});
+  const again=execSync('node scripts/backfill_search_keys.js --apply',{cwd:fnDir,encoding:'utf8'});
+  const changed=n=>Number(/"changed":(\d+)/.exec(n)?.[1]||0);
+  assert.ok(changed(applied)>=1,'apply writes the legacy order');
+  assert.equal(changed(again),0,'second apply is idempotent');
+  const d=(await db.doc('orders/rev_legacy_1').get()).data();
+  assert.ok(Array.isArray(d.searchPrefixes)&&d.searchPrefixes.length>0);
+  assert.ok(typeof d.searchText==='string'&&d.searchText.length>0);
+  void dry;
+});
+
+// --- getOrdersByIds (bulk print source) ---
+test('getOrdersByIds returns only authorized orders and hides amounts',async()=>{
+  const a=await invoke('createOrder','gm',{...base,customer:'طباعة أ',phone:'0778000030',amount:'99.000',requestKey:'rev_byids_0001xxxx'});
+  const own=await invoke('createOrder','entry',{...base,customer:'طباعة خاصة',phone:'0778000031',requestKey:'rev_byids_0002xxxx'});
+  const asGm=await invoke('getOrdersByIds','gm',{ids:[a.id,own.id]});
+  assert.equal(asGm.items.length,2);
+  // entry cannot see the gm order.
+  const asEntry=await invoke('getOrdersByIds','entry',{ids:[a.id,own.id]});
+  assert.equal(asEntry.items.length,1);
+  assert.equal(asEntry.items[0].id,own.id);
+});
+
+// --- Durable bulk operation record ---
+test('bulkDispatch writes a durable operation record that can be read later',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'سجل',phone:'0778000040',orderType:'return',companyId:'c1',requestKey:'rev_op_0001xxxxxxxx'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const before=await db.collection('bulkOperations').get();
+  const res=await invoke('bulkDispatch','gm',{ids:[o.id]});
+  assert.ok(res.operationId);
+  const after=await db.collection('bulkOperations').get();
+  assert.equal(after.size,before.size+1);
+  const rec=await invoke('getBulkOperation','gm',{operationId:res.operationId});
+  assert.equal(rec.results.length,1);
+  assert.equal(rec.results[0].ok,false,'a return type is refused before any send');
 });

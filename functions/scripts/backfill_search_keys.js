@@ -34,6 +34,8 @@ async function main(){
       if(data.customerKey!==customerKey)patch.customerKey=customerKey;
       if(JSON.stringify(data.searchText||null)!==JSON.stringify(derived.searchText))patch.searchText=derived.searchText;
       if(JSON.stringify(data.searchTokens||null)!==JSON.stringify(derived.searchTokens))patch.searchTokens=derived.searchTokens;
+      if(JSON.stringify(data.searchPrefixes||null)!==JSON.stringify(derived.searchPrefixes))patch.searchPrefixes=derived.searchPrefixes;
+      if(JSON.stringify(data.searchPhoneSuffixes||null)!==JSON.stringify(derived.searchPhoneSuffixes))patch.searchPhoneSuffixes=derived.searchPhoneSuffixes;
       if(Object.keys(patch).length===0)continue;
       changed++;
       if(apply){batch.update(doc.ref,patch);writes++;}

@@ -15,6 +15,16 @@
 const MAX_TOKENS = 40;
 const MAX_TOKEN_LEN = 60;
 const MAX_TEXT_LEN = 900;
+// Prefixes of each word (bounded) let a query match the START of any word, not
+// just the start of the whole joined string. Numbered prefixes (>= MIN_PREFIX)
+// keep the index small while covering realistic partial queries.
+const MAX_PREFIXES = 120;
+const MIN_PREFIX = 2;
+const PREFIX_TOKEN_CAP = 24;
+// Digit suffixes (bounded) let a query match digits in the MIDDLE of a phone.
+const MAX_PHONE_SUFFIXES = 40;
+const PHONE_SUFFIX_MIN = 4;
+const PHONE_SUFFIX_CAP = 12;
 
 // Arabic/Persian digits -> ASCII, and drop diacritics.
 function foldDigits(value) {
@@ -86,7 +96,52 @@ function buildSearchFields(order = {}) {
   // searchText: token then its own value, space separated, so both a prefix of
   // the token and a prefix of the joined text can match.
   const searchText = tokenList.join(' ').slice(0, MAX_TEXT_LEN);
-  return { searchTokens: tokenList, searchText };
+
+  // Word prefixes: every prefix (length >= MIN_PREFIX) of each token, capped, so
+  // `array-contains` matches a partial word anywhere in the order (e.g. "شرعي"
+  // inside "طقم شرعي أسود", or the second part of an Arabic name).
+  const prefixes = new Set();
+  for (const token of tokenList) {
+    if (token.length > PREFIX_TOKEN_CAP) continue;
+    for (let n = MIN_PREFIX; n <= token.length && prefixes.size < MAX_PREFIXES; n++) {
+      prefixes.add(token.slice(0, n));
+    }
+    if (prefixes.size >= MAX_PREFIXES) break;
+  }
+
+  // Phone digit suffixes: every suffix (length >= PHONE_SUFFIX_MIN) of each phone
+  // number, capped, so `array-contains` matches digits in the middle of a phone.
+  const phoneSuffixes = new Set();
+  for (const phone of [order.phone, order.extraPhone]) {
+    const digits = foldDigits(phone).replace(/\D/g, '');
+    if (!digits) continue;
+    const start = Math.max(0, digits.length - PHONE_SUFFIX_CAP);
+    for (let i = start; i < digits.length; i++) {
+      const suffix = digits.slice(i);
+      if (suffix.length >= PHONE_SUFFIX_MIN && phoneSuffixes.size < MAX_PHONE_SUFFIXES) {
+        phoneSuffixes.add(suffix);
+      }
+    }
+  }
+
+  return {
+    searchTokens: tokenList,
+    searchText,
+    searchPrefixes: [...prefixes],
+    searchPhoneSuffixes: [...phoneSuffixes],
+  };
 }
 
-module.exports = { foldDigits, normalizeSearch, tokenize, buildSearchFields, MAX_TOKENS, MAX_TOKEN_LEN, MAX_TEXT_LEN };
+module.exports = {
+  foldDigits,
+  normalizeSearch,
+  tokenize,
+  buildSearchFields,
+  MAX_TOKENS,
+  MAX_TOKEN_LEN,
+  MAX_TEXT_LEN,
+  MAX_PREFIXES,
+  MIN_PREFIX,
+  MAX_PHONE_SUFFIXES,
+  PHONE_SUFFIX_MIN,
+};

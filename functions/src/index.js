@@ -109,8 +109,11 @@ async function applyStatusChange(ref,user,target){
   return {ok:true};
 }
 // Single-order, permission-checked company assignment. Shared by
-// assignCompany and the bulk assignment operation.
+// assignCompany and the bulk assignment operation. It enforces sendToDelivery
+// itself so no caller (present or future) can reach it without the permission.
 async function applyCompanyAssignment(ref,user,id){
+  requiredPerm(user,'sendToDelivery');
+  if(id){const company=await db.doc('companies/'+id).get();if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const order=await tx.get(ref);
@@ -144,7 +147,7 @@ for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler
 const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
 for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);
 
-const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
+const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
 for(const [name,handler] of Object.entries(bulk))if(typeof handler==='function')exports[name]=callable(handler);
 
 exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,allowedPageIds:user.allowedPageIds||[],email:user.email||''};});
@@ -152,49 +155,71 @@ exports.listOrders=callable(async req=>{
   const user=await requireAuth(req);
   const size=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
-  // Amount filters are only honored for callers allowed to view amounts.
   const canViewAmounts=user.role==='generalManager'||can(user,'viewAmounts');
   if(!canViewAmounts){filters.amountMin=null;filters.amountMax=null;}
   const sort=req.data?.sort||'desc';if(!['asc','desc'].includes(sort))fail('invalid-argument','ترتيب غير صالح');
+  // In-memory filters (city/area/dispatch/amount) may exclude many scanned docs,
+  // so keep scanning in bounded chunks until the page is full or the data ends.
+  // `afterId` is the last RAW document consumed (matched or not) so pagination
+  // never skips or repeats: the client resumes exactly where scanning stopped.
   let previous=null;if(req.data?.afterId)previous=(await oneOrder(user,req.data.afterId)).snap;
-  // Fetch a bounded window so in-memory filters (city/area/dispatch/amount) can
-  // be applied without a full scan; over-fetch up to 4x the page size.
-  const fetchSize=Math.min(200,size*4);
-  const results=await Promise.all(scopeQueries(user,filters).map(base=>{let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(fetchSize);if(previous)query=query.startAfter(previous);return query.get();}));
-  const docs=results.flatMap(result=>result.docs).filter(d=>canSeeOrder(user,d.data())&&matchingFilters(d.data(),filters));
-  docs.sort((a,b)=>{const time=(a.data().createdAt?.toMillis?.()||0)-(b.data().createdAt?.toMillis?.()||0);const comparison=time||(a.id===b.id?0:a.id>b.id?1:-1);return comparison*(sort==='desc'?-1:1);});
-  const page=docs.slice(0,size);return {items:page.map(d=>orderForUser(user,d)),nextAfterId:page.length===size?page.at(-1).id:null};
+  const CHUNK=Math.max(size,100);
+  const MAX_SCAN=2000; // safety cap per call; continuation is still possible
+  const queries=scopeQueries(user,filters);
+  const collected=[];
+  let scanned=0, exhausted=false, lastRaw=null;
+  while(collected.length<size&&!exhausted&&scanned<MAX_SCAN){
+    const results=await Promise.all(queries.map(base=>{
+      let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(CHUNK);
+      if(previous)query=query.startAfter(previous);
+      return query.get();
+    }));
+    const batch=results.flatMap(r=>r.docs);
+    if(!batch.length){exhausted=true;break;}
+    batch.sort((a,b)=>{const t=(a.data().createdAt?.toMillis?.()||0)-(b.data().createdAt?.toMillis?.()||0);const c=t||(a.id===b.id?0:a.id>b.id?1:-1);return c*(sort==='desc'?-1:1);});
+    let broke=false;
+    for(const d of batch){
+      lastRaw=d;scanned++;
+      if(canSeeOrder(user,d.data())&&matchingFilters(d.data(),filters))collected.push(d);
+      previous=d;
+      if(collected.length>=size){broke=true;break;}
+    }
+    // Only claim the data is exhausted when every scope returned a short chunk
+    // AND we consumed the whole merged batch (not stopped early on a full page).
+    if(!broke&&results.every(r=>r.size<CHUNK))exhausted=true;
+  }
+  const page=collected.slice(0,size);
+  const more=collected.length>size||(!exhausted&&scanned<MAX_SCAN);
+  return {items:page.map(d=>orderForUser(user,d)),nextAfterId:more&&lastRaw?lastRaw.id:null,limited:scanned>=MAX_SCAN};
 });
 // Authenticated server-side search; never scan only the client's loaded page.
 // Indexed exact phone / Arabic-normalized name prefix / exact document ID.
-// Results are capped at 50 and MUST still pass canSeeOrder.
+// Authenticated server-side search with stable pagination. Every candidate MUST
+// pass canSeeOrder + matchingFilters + a strict query match. Results are sorted
+// by (createdAt desc, id) and paged with an opaque cursor so more than 50
+// matches can be browsed without loading them all in one call.
 exports.searchOrders=callable(async req=>{
   const user=await requireAuth(req);
   const query=str(req.data?.query,120),needle=normalizeCustomer(query),digits=searchDigits(query);
   if(query.length<2)fail('invalid-argument','اكتب حرفين على الأقل للبحث');
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
-  // A caller may not filter on amount without the amounts permission.
   if((filters.amountMin!=null||filters.amountMax!=null)&&!(user.role==='generalManager'||can(user,'viewAmounts')))fail('permission-denied','لا يمكنك التصفية حسب المبلغ');
   const {normalizeSearch,tokenize}=require('./search');
   const searchPrefix=normalizeSearch(query);
   const tokens=tokenize(query);
-  // Strict post-filter: a candidate must actually match the QUERY, not merely
-  // share one token. Every query token must be a prefix of some order token, or
-  // the normalized query must be a prefix of the order's searchText. This stops
-  // a broad array-contains hit (e.g. "طلب") from returning unrelated orders.
+  const pageSize=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
+  // Cursor: {c: createdAt millis, i: id}. Stable across pages.
+  const cursor=parseCursor(req.data?.cursor);
   const matchesQuery=(d)=>{
     if(tokens.length===0)return true;
     const orderTokens=Array.isArray(d.searchTokens)?d.searchTokens:[];
     const text=typeof d.searchText==='string'?d.searchText:'';
-    if(searchPrefix && text.startsWith(searchPrefix))return true;
-    // Needle/phone fast paths.
-    if(needle && typeof d.customerKey==='string' && d.customerKey.startsWith(needle))return true;
-    if(digits.length>=5 && typeof d.phoneDigits==='string' && d.phoneDigits.startsWith(digits))return true;
-    // All tokens present as prefix of at least one order token.
+    if(searchPrefix&&text.startsWith(searchPrefix))return true;
+    if(needle&&typeof d.customerKey==='string'&&d.customerKey.startsWith(needle))return true;
+    if(digits.length>=5&&typeof d.phoneDigits==='string'&&d.phoneDigits.startsWith(digits))return true;
+    if(digits.length>=5&&typeof d.phoneDigits==='string'&&d.phoneDigits.includes(digits))return true;
     return tokens.every(t=>orderTokens.some(ot=>typeof ot==='string'&&ot.startsWith(t)));
   };
-  // Visibility scope is the same one listOrders uses; every candidate MUST pass
-  // canSeeOrder + matchingFilters before being returned.
   const matches=new Map();
   const accept=(doc,{strict=true}={})=>{
     if(!doc.exists)return;
@@ -203,16 +228,15 @@ exports.searchOrders=callable(async req=>{
     if(strict&&!matchesQuery(d))return;
     matches.set(doc.id,doc);
   };
-  // Exact identifiers: human order number, immutable doc id, barcode (VNX-<id>),
-  // and the unique order number are all cheap direct lookups.
   const upper=query.toUpperCase();
   const orderNumber=upper.startsWith('VNX-')?upper:null;
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get(),{strict:false});
   const scoped=scopeQueries(user,filters);
+  // Per-subquery cap. Bounded so a single search never scans unbounded data;
+  // pagination then walks the ordered result set.
+  const SCAN=200;
   const searches=[];
-  // orderNumber == / clickOrderRef == / trackingNumber == are single-field
-  // equality lookups (auto-indexed) performed on the global collection.
   if(orderNumber){
     for(const s of await Promise.all([
       db.collection('orders').where('orderNumber','==',orderNumber).limit(5).get(),
@@ -220,35 +244,68 @@ exports.searchOrders=callable(async req=>{
       db.collection('orders').where('barcodeValue','==','VNX-'+query.slice(4)).limit(5).get(),
     ]))for(const doc of s.docs)accept(doc,{strict:false});
   }
-  // Exact Click shipment reference / tracking number lookups (single-field).
   for(const s of await Promise.all([
     db.collection('orders').where('clickOrderRef','==',query).limit(5).get(),
     db.collection('orders').where('trackingNumber','==',query).limit(5).get(),
   ]))for(const doc of s.docs)accept(doc,{strict:false});
   for(const base of scoped){
-    if(digits.length>=5)searches.push(base.where('phoneDigits','==',digits).limit(50).get());
-    // Partial phone: prefix range on the stored digit string.
-    if(digits.length>=5)searches.push(base.where('phoneDigits','>=',digits).where('phoneDigits','<=',digits+'\uf8ff').orderBy('phoneDigits').limit(50).get());
-    // Exact Arabic-normalized name prefix (fast path already indexed).
-    searches.push(base.where('customerKey','>=',needle).where('customerKey','<=',needle+'\uf8ff').orderBy('customerKey').limit(50).get());
-    // Derived-token search: prefix range on the joined searchText (covers
-    // description, notes, page name, area, address, refs, partial names).
-    if(searchPrefix.length>=2){
-      searches.push(base.where('searchText','>=',searchPrefix).where('searchText','<=',searchPrefix+'\uf8ff').orderBy('searchText').limit(50).get());
+    if(digits.length>=5){
+      searches.push(base.where('phoneDigits','==',digits).limit(SCAN).get());
+      searches.push(base.where('phoneDigits','>=',digits).where('phoneDigits','<=',digits+'\uf8ff').orderBy('phoneDigits').limit(SCAN).get());
+      // Middle-of-phone: exact digit suffix tokens (bounded, indexed).
+      searches.push(base.where('searchPhoneSuffixes','array-contains',digits.slice(-Math.min(digits.length,12))).limit(SCAN).get());
     }
-    // Exact token matches (array-contains) for compact tokens/refs/phones.
-    // Skip the ubiquitous "vnx" token (present in every barcode/order number)
-    // and very short tokens, which would otherwise match almost everything.
+    searches.push(base.where('customerKey','>=',needle).where('customerKey','<=',needle+'\uf8ff').orderBy('customerKey').limit(SCAN).get());
+    if(searchPrefix.length>=2){
+      searches.push(base.where('searchText','>=',searchPrefix).where('searchText','<=',searchPrefix+'\uf8ff').orderBy('searchText').limit(SCAN).get());
+      // Any-word prefix: matches the middle/end words of a name, product or note.
+      searches.push(base.where('searchPrefixes','array-contains',searchPrefix).limit(SCAN).get());
+      if(tokens.length){
+        for(const token of tokens.filter(t=>t.length>=2).slice(0,4)){
+          searches.push(base.where('searchPrefixes','array-contains',token).limit(SCAN).get());
+        }
+      }
+    }
     for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4)){
-      searches.push(base.where('searchTokens','array-contains',token).limit(30).get());
+      searches.push(base.where('searchTokens','array-contains',token).limit(SCAN).get());
     }
   }
   const results=await Promise.all(searches);
   for(const snap of results)for(const doc of snap.docs)accept(doc);
-  const limited=results.some(r=>r.size>=50)||matches.size>50;
-  const items=[...matches.values()].slice(0,50).map(doc=>orderForUser(user,doc));
-  return {items,limited};
+  const all=[...matches.values()];
+  all.sort((a,b)=>{
+    const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
+    if(at!==bt)return bt-at; // newest first
+    return a.id===b.id?0:a.id>b.id?-1:1;
+  });
+  // Apply the cursor: skip until we pass the last returned (createdAt, id).
+  let startIndex=0;
+  if(cursor){
+    startIndex=all.findIndex(d=>(d.data().createdAt?.toMillis?.()||0)<cursor.c||((d.data().createdAt?.toMillis?.()||0)===cursor.c&&d.id<cursor.i));
+    if(startIndex<0)startIndex=all.length;
+  }
+  const window=all.slice(startIndex,startIndex+pageSize);
+  const last=window.at(-1);
+  const hasMore=startIndex+window.length<all.length;
+  const nextCursor=hasMore&&last?encodeCursor(last.data().createdAt?.toMillis?.()||0,last.id):null;
+  return {
+    items:window.map(d=>orderForUser(user,d)),
+    nextCursor,
+    // `limited` reports that the bounded scan may hide matches beyond SCAN per
+    // sub-query; pagination still lets the user browse everything found.
+    limited:results.some(r=>r.size>=SCAN),
+  };
 });
+// Opaque, validated pagination cursor for searchOrders.
+function encodeCursor(millis,id){return Buffer.from(JSON.stringify({c:millis,i:id}),'utf8').toString('base64url');}
+function parseCursor(raw){
+  if(typeof raw!=='string'||raw.length===0||raw.length>400)return null;
+  try{
+    const d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
+    if(!Number.isFinite(d.c)||typeof d.i!=='string'||d.i.length>140)return null;
+    return {c:d.c,i:d.i};
+  }catch(e){return null;}
+}
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.
 async function sumOrders(query,showAmount){
@@ -304,6 +361,28 @@ exports.getOrder=callable(async req=>{
   const docs=page.docs.slice(0,size);
   const order=orderForUser(user,snap);if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;order.companyProvider=company.data()?.provider||null;}
   return {order,events:docs.map(d=>({id:d.id,...d.data(),createdAt:safeDate(d.data().createdAt)})),eventsMore:page.size>size,eventsAfterId:docs.at(-1)?.id||null};
+});
+// Batch DTO fetch for a set of ids. Each order is permission-checked and only
+// visible ones are returned (unauthorized ids are silently omitted). Amounts are
+// hidden by orderForUser when the caller lacks viewAmounts. Bounded to 60 ids.
+exports.getOrdersByIds=callable(async req=>{
+  const user=await requireAuth(req);
+  const raw=Array.isArray(req.data?.ids)?req.data.ids:[];
+  if(raw.length===0)return {items:[]};
+  if(raw.length>60)fail('invalid-argument','الحد الأقصى 60 طلباً في الطلب الواحد');
+  const ids=[...new Set(raw.map(v=>idValue(v)))];
+  const refs=ids.map(id=>db.doc('orders/'+id));
+  const snaps=await db.getAll(...refs);
+  const items=[];
+  for(const snap of snaps){
+    if(!snap.exists)continue;
+    const d=snap.data();
+    if(!canSeeOrder(user,{...d,id:snap.id}))continue;
+    const order=orderForUser(user,snap);
+    if(order.companyId){const company=await db.doc('companies/'+order.companyId).get();order.companyName=company.data()?.name||null;order.companyProvider=company.data()?.provider||null;}
+    items.push(order);
+  }
+  return {items};
 });
 // Resolves the electronic page for a new/edited order. Returns the immutable
 // pageId plus a small snapshot. Throws when the page is missing, archived or
@@ -607,6 +686,9 @@ async function createDeliveryShipment(company,secrets,order,onAttempt){
 // dispatch operation so both honor the exact same lock/idempotency/needs_review
 // protections. `user` must already hold sendToDelivery.
 async function dispatchOrder(ref,user){
+  // Enforce the permission inside the shared flow so bulkDispatch (and any
+  // future caller) cannot reach an external send without sendToDelivery.
+  requiredPerm(user,'sendToDelivery');
   const lockId=crypto.randomUUID();
   let snapshot;
   await db.runTransaction(async tx=>{

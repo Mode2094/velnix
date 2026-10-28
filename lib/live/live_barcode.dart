@@ -273,6 +273,12 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
   late final List<Map<String, dynamic>> found;
   late final int notFound;
   late final int duplicate;
+  // Selected order ids from the scan results (reuses the shared bulk callables).
+  final selected = <String>{};
+  bool busy = false;
+  static const _bulkChunk = 50;
+  static const _dispatchChunk = 10;
+
   @override
   void initState() {
     super.initState();
@@ -284,6 +290,158 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
         .where((r) => r['status'] == 'not_found' || r['status'] == 'invalid')
         .length;
     duplicate = widget.results.where((r) => r['status'] == 'duplicate').length;
+  }
+
+  void _toggle(String id) => setState(() {
+    if (!selected.remove(id)) selected.add(id);
+  });
+
+  Future<void> _runChunked(
+    List<String> ids,
+    Future<Map<String, dynamic>> Function(List<String> chunk) call, {
+    int chunkSize = _bulkChunk,
+  }) async {
+    if (busy || ids.isEmpty) return;
+    setState(() => busy = true);
+    try {
+      var succeeded = 0, failed = 0;
+      for (var i = 0; i < ids.length; i += chunkSize) {
+        final chunk = ids.sublist(
+          i,
+          (i + chunkSize) > ids.length ? ids.length : i + chunkSize,
+        );
+        final r = await call(chunk);
+        succeeded += (r['succeeded'] as num?)?.toInt() ?? 0;
+        failed += (r['failed'] as num?)?.toInt() ?? 0;
+      }
+      if (mounted) {
+        showSuccess(context, 'نجح: $succeeded • فشل: $failed');
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _print() async {
+    final ids = selected.toList();
+    if (ids.isEmpty || busy) return;
+    setState(() => busy = true);
+    try {
+      final orders = <Map<String, dynamic>>[];
+      for (var i = 0; i < ids.length; i += 60) {
+        orders.addAll(
+          await VelnixGateway.instance.ordersByIds(
+            ids.sublist(i, (i + 60) > ids.length ? ids.length : i + 60),
+          ),
+        );
+      }
+      var merged = orders;
+      try {
+        final s = await VelnixGateway.instance.settings(fresh: true);
+        merged = [
+          for (final o in orders)
+            {
+              ...o,
+              if (!o.containsKey('organizationName'))
+                'organizationName': s['organizationName'],
+              if (!o.containsKey('receiptFooter'))
+                'receiptFooter': s['receiptFooter'],
+            },
+        ];
+      } catch (_) {}
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => BulkPrintScreen(orders: merged),
+        ),
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _changeStatus() async {
+    final target = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('تغيير حالة ${selected.length} طلب'),
+        children: [
+          for (final t in ['review', 'preparing', 'ready'])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, t),
+              child: Text(statusLabels[t] ?? t),
+            ),
+        ],
+      ),
+    );
+    if (target == null) return;
+    await _runChunked(
+      selected.toList(),
+      (chunk) => VelnixGateway.instance.bulkChangeStatus(chunk, target),
+    );
+  }
+
+  Future<void> _assign() async {
+    final companies = (await VelnixGateway.instance.companies())
+        .where((c) => c['enabled'] == true && c['archived'] != true)
+        .toList();
+    if (!mounted) return;
+    final id = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('إسناد شركة لـ ${selected.length} طلب'),
+        children: [
+          for (final c in companies)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, c['id'].toString()),
+              child: Text(c['name'].toString()),
+            ),
+          if (companies.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('لا توجد شركات مفعّلة.'),
+            ),
+        ],
+      ),
+    );
+    if (id == null) return;
+    await _runChunked(
+      selected.toList(),
+      (chunk) => VelnixGateway.instance.bulkAssignCompany(chunk, id),
+    );
+  }
+
+  Future<void> _dispatch() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('إرسال ${selected.length} طلب إلى شركة التوصيل'),
+        content: const Text(
+          'سيؤدي هذا إلى إنشاء شحنات فعلية للطلبات الجاهزة فقط، ولن يُعاد إرسال أي شحنة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إرسال'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _runChunked(
+      selected.toList(),
+      (chunk) => VelnixGateway.instance.bulkDispatch(chunk),
+      chunkSize: _dispatchChunk,
+    );
   }
 
   @override
@@ -301,9 +459,76 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
                 Text('المطابقة: ${found.length}'),
                 Text('غير موجودة: $notFound'),
                 Text('مكررة: $duplicate'),
+                Text('المحدد: ${selected.length}'),
               ],
             ),
           ),
+          if (found.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () => setState(() {
+                            selected
+                              ..clear()
+                              ..addAll(found.map((o) => o['id'].toString()));
+                          }),
+                    child: const Text('تحديد الكل'),
+                  ),
+                  TextButton(
+                    onPressed: busy ? null : () => setState(selected.clear),
+                    child: const Text('إلغاء التحديد'),
+                  ),
+                ],
+              ),
+            ),
+          if (selected.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  FilledButton.icon(
+                    onPressed: busy ? null : _print,
+                    icon: const Icon(Icons.print_outlined, size: 18),
+                    label: const Text('طباعة'),
+                  ),
+                  if (widget.policy.canChangeStatus)
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : _changeStatus,
+                      icon: const Icon(Icons.sync_alt, size: 18),
+                      label: const Text('تغيير الحالة'),
+                    ),
+                  if (widget.policy.can('sendToDelivery'))
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : _assign,
+                      icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                      label: const Text('إسناد شركة'),
+                    ),
+                  if (widget.policy.can('sendToDelivery'))
+                    OutlinedButton.icon(
+                      onPressed: busy ? null : _dispatch,
+                      icon: const Icon(Icons.send_outlined, size: 18),
+                      label: const Text('إرسال'),
+                    ),
+                  if (busy)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           const SizedBox(height: 12),
           if (found.isEmpty)
             const VFeedbackPanel(
@@ -319,22 +544,41 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
                   horizontal: 14,
                   vertical: 10,
                 ),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${o['customer'] ?? ''}'),
-                  subtitle: Text(
-                    'طلب #${o['orderNumber'] ?? o['id']} • ${statusLabels[o['status']?.toString() ?? 'created'] ?? o['status']}',
-                  ),
-                  trailing: const Icon(Icons.chevron_left),
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => LiveOrderDetail(
-                        id: o['id'].toString(),
-                        policy: widget.policy,
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: selected.contains(o['id'].toString()),
+                      onChanged: (_) => _toggle(o['id'].toString()),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('${o['customer'] ?? ''}'),
+                          Text(
+                            'طلب #${o['orderNumber'] ?? o['id']} • ${statusLabels[o['status']?.toString() ?? 'created'] ?? o['status']}',
+                            style: const TextStyle(
+                              color: VColors.muted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                    IconButton(
+                      tooltip: 'فتح التفاصيل',
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => LiveOrderDetail(
+                            id: o['id'].toString(),
+                            policy: widget.policy,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                  ],
                 ),
               ),
             ),

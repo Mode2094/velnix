@@ -1,5 +1,5 @@
 'use strict';
-const {documentId,canSeeOrder,STATUSES,ORDER_TYPES}=require('./policy');
+const {documentId,canSeeOrder,can,STATUSES,ORDER_TYPES}=require('./policy');
 const {foldDigits}=require('./search');
 
 // Bounded bulk operations. Each order is validated independently against the
@@ -16,7 +16,7 @@ const MAX_BULK = 50;
 //  - "<docId>"           : raw Firestore document id
 // It never derives one kind from another beyond the explicit VNX- prefixes that
 // the project itself uses. Returns {id} or throws not-found.
-module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,applyStatusChange,applyCompanyAssignment,runDispatch,orderForUser}) => {
+module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch,orderForUser}) => {
   function idList(raw){
     if(!Array.isArray(raw)||raw.length===0)fail('invalid-argument','حدّد طلباً واحداً على الأقل');
     if(raw.length>MAX_BULK)fail('invalid-argument',`الحد الأقصى ${MAX_BULK} طلباً في العملية الواحدة`);
@@ -114,8 +114,13 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,applyS
 
   async function bulkAssignCompany(req){
     const user=await requireAuth(req);
+    // Fail the whole call before touching any order when the caller cannot
+    // assign companies. The shared applyCompanyAssignment enforces this again.
+    requiredPerm(user,'sendToDelivery');
     const ids=idList(req.data?.ids);
     const companyId=req.data?.companyId==null?null:documentId(req.data.companyId);
+    // Validate the company up-front so a bad id is rejected once, not per order.
+    if(companyId){const c=await db.doc('companies/'+companyId).get();if(!c.exists||c.data().archived||!c.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
     const results=[];
     for(const id of ids){
       try{
@@ -129,31 +134,62 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,applyS
     return {results,succeeded,failed:results.length-succeeded};
   }
 
-  // Safe bulk dispatch: delegates each order to the SAME proven single-order
-  // flow (dispatch lock, idempotency, Click needs_review protection, no
-  // auto-resend). Processing is sequential and bounded; one failure never
-  // aborts the batch and never re-sends an order.
+  // Maximum orders dispatched to the vendor in a single call. Cloud Functions
+  // have a 60s budget; each dispatch can take up to ~15s plus a read. Keeping
+  // the batch small means the function finishes well within its timeout and the
+  // durable record is written before the client is told anything.
+  const MAX_DISPATCH = 10;
+
+  // Runs a bounded slice of a durable bulk dispatch. Each order's outcome is
+  // written to `bulkOperations/{opId}` BEFORE the client is told anything, so a
+  // timeout or lost connection never loses the record and never triggers a
+  // resend. A caller paginates through the ids; `hasMore` tells the client to
+  // call again with the next chunk. No order is ever dispatched twice because
+  // the single-order flow's lock/needs_review protection is unchanged.
   async function bulkDispatch(req){
     const user=await requireAuth(req);
+    requiredPerm(user,'sendToDelivery');
     const ids=idList(req.data?.ids);
+    if(ids.length>MAX_DISPATCH)fail('invalid-argument',`الحد الأقصى ${MAX_DISPATCH} طلباً في دفعة الإرسال الواحدة؛ أرسل الدفعة على stages`);
+    const opId=typeof req.data?.operationId==='string'&&/^[a-zA-Z0-9_-]{8,80}$/.test(req.data.operationId)?req.data.operationId:null;
+    const opRef=opId?db.doc('bulkOperations/'+opId):db.collection('bulkOperations').doc();
+    await opRef.set({actorId:user.id,actorName:user.name||'',kind:'dispatch',startedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()},{merge:true});
     const results=[];
     for(const id of ids){
+      let entry;
       try{
         const ref=await loadVisible(user,id);
-        if(!ref){results.push({id,ok:false,code:'permission-denied'});continue;}
-        const out=await runDispatch(ref,user);
-        results.push({id,ok:true,trackingNumber:out?.trackingNumber||null});
+        if(!ref){entry={id,ok:false,code:'permission-denied',at:new Date().toISOString()};}
+        else{
+          const out=await runDispatch(ref,user);
+          entry={id,ok:true,trackingNumber:out?.trackingNumber||null,at:new Date().toISOString()};
+        }
       }catch(e){
         const code=e?.code||'failed-precondition';
-        // Distinguish a definite pre-send failure from an uncertain outcome.
-        const uncertain=code==='unavailable';
-        results.push({id,ok:false,code,uncertain,message:typeof e?.message==='string'?e.message.slice(0,200):''});
+        entry={id,ok:false,code,uncertain:code==='unavailable',message:typeof e?.message==='string'?e.message.slice(0,200):'',at:new Date().toISOString()};
       }
+      results.push(entry);
+      // Persist each result immediately so a later timeout cannot lose it.
+      try{await opRef.set({results:FieldValue.arrayUnion(entry),updatedAt:FieldValue.serverTimestamp()},{merge:true});}catch(e){logger.warn&&logger.warn('bulk op persist failed',{id:opRef.id});}
     }
     const succeeded=results.filter(r=>r.ok).length;
     const uncertain=results.filter(r=>r.uncertain).length;
-    return {results,succeeded,failed:results.length-succeeded,uncertain};
+    await opRef.set({finishedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),succeeded,failed:results.length-succeeded,uncertain},{merge:true});
+    return {operationId:opRef.id,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length};
   }
 
-  return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,MAX_BULK};
+  // Reads a durable bulk operation so the client can recover results after a
+  // timeout, a network drop or an app restart — without re-dispatching anything.
+  async function getBulkOperation(req){
+    const user=await requireAuth(req);
+    const opId=documentId(req.data?.operationId);
+    const snap=await db.doc('bulkOperations/'+opId).get();
+    if(!snap.exists)fail('not-found','لم يتم العثور على العملية');
+    const d=snap.data();
+    // Only the operator who started it (or a manager) may read the record.
+    if(d.actorId!==user.id&&!can(user,'sendToDelivery'))fail('permission-denied','لا يمكنك الوصول لهذه العملية');
+    return {operationId:opId,kind:d.kind,results:d.results||[],succeeded:d.succeeded||0,failed:d.failed||0,uncertain:d.uncertain||0,finished:!!d.finishedAt};
+  }
+
+  return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,getBulkOperation,MAX_BULK,MAX_DISPATCH};
 };

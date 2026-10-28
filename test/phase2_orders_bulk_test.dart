@@ -104,6 +104,10 @@ void main() {
         case 'listAllowedPages':
         case 'listOrderCreators':
           return {'items': <dynamic>[]};
+        case 'getOrdersByIds':
+          return {
+            'items': [order('1'), order('2')],
+          };
         case 'getSettings':
           return {'organizationName': 'Velnix', 'receiptFooter': ''};
       }
