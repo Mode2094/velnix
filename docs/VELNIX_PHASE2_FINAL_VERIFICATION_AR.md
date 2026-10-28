@@ -67,3 +67,39 @@
 ## 4. قيود لم تُختبر
 - **Android على جهاز حقيقي: BLOCKED** — كاميرا/مسح الباركود لم تُختبر فعليًا.
 - **إرسال Click جماعي حقيقي**: Mock/Emulator فقط؛ لم تُرسَل شحنات حقيقية.
+
+---
+
+## ملحق — إغلاق خللَي «حالة claimed» و«رفض Cursor» (Commit `40135dc`)
+
+### Root Cause
+1. **حالة `claimed`:** كانت تُحتسب كنتيجة نهائية في `succeeded/failed`، ولم تكن هناك آلية للحجز المتروك، وكانت العملية قد تُعلن `finished` أثناء وجود حجز حيّ.
+2. **Cursor:** المؤشر غير المتوافق كان يُتجاهل بصمت ويبدأ البحث من الصفحة الأولى.
+
+### الإصلاح
+- `bulkOperations/{opId}/results/{orderId}` يحمل `state:'claimed'` صراحةً ولا يُحتسب نجاحاً/فشلاً.
+- **حجز متروك آمن:** إن كان `vendorStarted=false` (لم تبدأ المكالمة) → يُعاد الحجز والإرسال **مرة واحدة**؛ وإن كان `vendorStarted=true` (قد تكون وصلت Click) → **لا يُعاد `setorder` أبداً** ويُصبح `uncertain`. يُحفظ `vendorStarted` **قبل** المكالمة الخارجية.
+- **تزامن حيّ:** استدعاء ثانٍ يرى حجزاً حياً → `pending`، والعملية تبقى `running`.
+- **إجماليات من الحالة الدائمة** فقط؛ لا استبدال نجاح مؤكد بفشل عابر.
+- **مهلة** `DISPATCH_DEADLINE_MS` قابلة للاختبار عبر `VELNIX_DISPATCH_DEADLINE_MS`.
+- **Cursor غير متوافق** (query/filters/sort/pageSize/direction) → `invalid-argument`.
+
+### الاختبارات الجديدة (بالأسماء)
+- `two concurrent dispatches of the same order send exactly once; the loser reports pending, not a fake result` — PASS
+- `a stale claim that never started the vendor is safely re-claimed and sent once` — PASS
+- `a stale claim that may have started the vendor is NEVER re-sent and becomes uncertain` — PASS
+- `a live concurrent claim keeps the operation running and is not counted as success/failure` — PASS
+- `getBulkOperation separates claimed (in progress) from final results` — PASS
+- `an expired deadline stops starting sends, marks partial and never fakes completion` — PASS
+- `search cursor from different conditions is rejected with invalid-argument` — PASS
+- `300 orders sharing the exact same createdAt are all returned once (desc & asc)` — PASS
+
+### الأدلة
+- **Commit**: `40135dc` · **CI**: `40664756987` (4/4)
+- **الاختبارات**: 463 Flutter + 194 functions unit + **220 emulator** (منها اختبارات claimed/deadline/cursor) + 21 Playwright
+- **النشر**: Functions منشورة؛ Hosting منشور؛ APK موقّع (SHA-256 `db8b2a33…`)
+- **إثبات عدم إعادة setorder**: اختبار «stale-started → no resend» يثبت أن `sendClickOrder` لم يُستدعَ (0) ويصبح الطلب `uncertain`.
+
+### قيود
+- **Android على جهاز حقيقي: BLOCKED** (كاميرا/مسح).
+- **إرسال Click حقيقي**: Mock/Emulator فقط.
