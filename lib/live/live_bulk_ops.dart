@@ -185,7 +185,7 @@ class _BulkOperationsScreenState extends State<BulkOperationsScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'نجح ${op['succeeded'] ?? 0} • فشل ${op['failed'] ?? 0} • غير مؤكد ${op['uncertain'] ?? 0}'
+                          'نجح ${op['succeeded'] ?? 0} • متعذر ${op['failed'] ?? 0} • غير مؤكد ${op['uncertain'] ?? 0}'
                           '${(op['remaining'] ?? 0) > 0 ? ' • متبقٍ ${op['remaining']}' : ''}',
                           style: const TextStyle(
                             color: VColors.muted,

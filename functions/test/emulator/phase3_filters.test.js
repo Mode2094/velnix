@@ -42,6 +42,18 @@ test('dispatch date filters only orders that were actually sent',async()=>{
   assert.deepEqual(ids(await invoke('listOrders','gm',{sentFrom:'2026-10-21T00:00:00Z'})),[]);
 });
 
+test('phone filter matches primary and extra independently (no tail+head false match)',async()=>{
+  await put('phone_edge',{phone:'07911155512',phoneDigits:'07911155512',extraPhone:'3456667777',customer:'حافة'});
+  // '12345' is primary-tail ('55512' ends with 512, not 2345) + extra-head ('345...')
+  assert.deepEqual(ids(await invoke('listOrders','gm',{phone:'12345'})),[]);
+  assert.deepEqual(ids(await invoke('listOrders','gm',{phone:'55512'})),['phone_edge']);
+  assert.deepEqual(ids(await invoke('listOrders','gm',{phone:'34566'})),['phone_edge']);
+  // Search candidate sources support the full number and its suffixes; a bare
+  // middle fragment is not promised by the indexed source contract.
+  assert.equal((await invoke('searchOrders','gm',{query:'55512'})).items.some(o=>o.id==='phone_edge'),true);
+  assert.equal((await invoke('searchOrders','gm',{query:'11155'})).items.some(o=>o.id==='phone_edge'),false);
+});
+
 test('invalid text filters are rejected instead of scanning unbounded input',async()=>{
   await assert.rejects(invoke('listOrders','gm',{phone:'07'}),{code:'invalid-argument'});
   await assert.rejects(invoke('listOrders','gm',{product:'x'.repeat(121)}),{code:'invalid-argument'});

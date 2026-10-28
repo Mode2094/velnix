@@ -87,6 +87,9 @@ test('a stale claim that may have started the vendor is NEVER re-sent and become
   const r=await dispatch([id],opId);
   assert.equal(sendCalls,0,'no setorder after an uncertain attempt');
   assert.equal(r.uncertain,1,'reported as uncertain');
+  assert.equal(r.failed,0,'uncertain is not counted as a definite failure');
+  const snapshot=await getOp(opId);
+  assert.equal(snapshot.uncertain,1);assert.equal(snapshot.failed,0);assert.equal(snapshot.remaining,0);
   const d=(await db.doc('bulkOperations/'+opId+'/results/'+id).get()).data();
   assert.equal(d.ok,false);assert.equal(d.uncertain,true);
 });

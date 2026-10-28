@@ -193,6 +193,23 @@ void main() {
     );
   });
 
+  testWidgets('final-audit visual: barcode scanner collection', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(app(BarcodeScannerScreen(policy: gm())));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 120));
+    }
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/final_audit/barcode_scanner_900.png'),
+    );
+  });
+
   testWidgets('final-audit visual: barcode scan results and bulk actions', (
     tester,
   ) async {

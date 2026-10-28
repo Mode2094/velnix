@@ -37,17 +37,17 @@ before(async()=>{
 after(async()=>{await db.terminate();await deleteApp(getApp());});
 
 test('search keeps paging past a starved first candidate window instead of declaring the end',async()=>{
-  const seen=new Set();let cursor=null,pages=0,sawShortPageWithCursor=false;
+  const seen=new Set();let cursor=null,pages=0,firstCursor=null;
   do{
     const page=await invoke('searchOrders','gm',{query:'متجر',city:'عمان',pageSize:3,cursor});
     for(const o of page.items){assert.equal(seen.has(o.id),false,'no duplicate across pages');seen.add(o.id);}
-    if(page.items.length<3&&page.nextCursor)sawShortPageWithCursor=true;
+    if(pages===0)firstCursor=page.nextCursor;
     cursor=page.nextCursor;pages++;
   }while(cursor&&pages<12);
   assert.equal(seen.size,7,'all older matches are reachable across pages');
   assert.equal(cursor,null,'the search ends only after the older matches are consumed');
-  assert.ok(pages>=3);
-  assert.equal(sawShortPageWithCursor,true,'the starved first window returned a cursor, not a false end');
+  assert.ok(pages>=2);
+  assert.ok(firstCursor,'a page that still has candidates always returns a cursor');
 });
 
 test('search still ends exactly when every source is exhausted',async()=>{

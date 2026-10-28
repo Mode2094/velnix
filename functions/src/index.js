@@ -92,6 +92,68 @@ async function oneOrder(user,id) {
   if(!canSeeOrder(user,{...snap.data(),id:snap.id}))fail('permission-denied','لا يمكن الوصول للطلب');
   return {ref,snap};
 }
+
+// ---- Merge pagination (multi-source, per-source progress) -----------------
+// A single global cursor advanced to the oldest doc examined across several
+// sources can skip unread candidates from a source whose window was full.
+// Every source therefore keeps its own last-consumed (createdAt,id) position,
+// and results are produced by a k-way merge in the global (createdAt,id) order.
+function docPosition(doc) {
+  return {c:doc.data().createdAt?.toMillis?.()||0,i:doc.id};
+}
+function afterPosition(doc,pos,sort) {
+  if(!pos)return true;
+  const c=doc.data().createdAt?.toMillis?.()||0;
+  if(sort==='desc')return c<pos.c||(c===pos.c&&doc.id<pos.i);
+  return c>pos.c||(c===pos.c&&doc.id>pos.i);
+}
+function newerThan(a,b,sort) {
+  const ac=a.data().createdAt?.toMillis?.()||0,bc=b.data().createdAt?.toMillis?.()||0;
+  if(ac!==bc)return sort==='desc'?ac>bc:ac<bc;
+  if(a.id===b.id)return false;
+  return sort==='desc'?a.id>b.id:a.id<b.id;
+}
+async function mergeSourcePage({sources,positions,boundary,sort,pageSize,scanLimit,fetchLimit,accept,seen}) {
+  const byKey=new Map(sources.map(s=>[s.key,s]));
+  const buffers=new Map(),exhausted=new Set(),fullChunk=new Map(),pos={...positions};
+  const fill=async key=>{
+    if(exhausted.has(key))return;
+    const snap=await byKey.get(key).fetch(pos[key]||null,fetchLimit);
+    buffers.set(key,snap.docs);
+    fullChunk.set(key,snap.size>=fetchLimit);
+    if(snap.size<fetchLimit)exhausted.add(key);
+  };
+  await Promise.all(sources.map(s=>fill(s.key)));
+  const out=[],seenIds=seen||new Set();
+  let scanned=0;
+  while(out.length<pageSize&&scanned<scanLimit){
+    let best=null;
+    for(const source of sources){
+      const buffer=buffers.get(source.key);
+      if(!buffer||buffer.length===0)continue;
+      const doc=buffer[0];
+      if(!best||newerThan(doc,best.doc,sort))best={key:source.key,doc};
+    }
+    if(!best)break;
+    const {key,doc}=best;
+    buffers.get(key).shift();
+    scanned++;
+    pos[key]=docPosition(doc);
+    if(buffers.get(key).length===0&&!exhausted.has(key)&&fullChunk.get(key))await fill(key);
+    if(seenIds.has(doc.id))continue;
+    seenIds.add(doc.id);
+    if(boundary&&!afterPosition(doc,boundary,sort))continue;
+    if(accept(doc,key))out.push(doc);
+  }
+  const pending=sources.some(s=>!exhausted.has(s.key)||(buffers.get(s.key)?.length||0)>0);
+  return {
+    docs:out,
+    positions:pos,
+    more:out.length>=pageSize||scanned>=scanLimit||pending,
+    limited:scanned>=scanLimit,
+  };
+}
+
 // Single-order, permission-checked status change. Shared by changeOrderStatus
 // and the bulk status operation so both honor the exact same policy.
 async function applyStatusChange(ref,user,target){
@@ -158,43 +220,49 @@ exports.listOrders=callable(async req=>{
   const canViewAmounts=user.role==='generalManager'||can(user,'viewAmounts');
   if(!canViewAmounts){filters.amountMin=null;filters.amountMax=null;}
   const sort=req.data?.sort||'desc';if(!['asc','desc'].includes(sort))fail('invalid-argument','ترتيب غير صالح');
-  // In-memory filters (city/area/dispatch/amount) may exclude many scanned docs,
-  // so keep scanning in bounded chunks until the page is full or the data ends.
-  // `afterId` is the last RAW document consumed (matched or not) so pagination
-  // never skips or repeats: the client resumes exactly where scanning stopped.
-  let previous=null;if(req.data?.afterId)previous=(await oneOrder(user,req.data.afterId)).snap;
   const CHUNK=Math.max(size,100);
-  const MAX_SCAN=2000; // safety cap per call; continuation is still possible
+  const MAX_SCAN=2000; // safety cap per call; continuation remains possible
   const queries=scopeQueries(user,filters);
-  const collected=[];
-  let scanned=0, exhausted=false, lastRaw=null;
-  while(collected.length<size&&!exhausted&&scanned<MAX_SCAN){
-    const results=await Promise.all(queries.map(base=>{
-      let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(CHUNK);
-      if(previous)query=query.startAfter(previous);
-      return query.get();
-    }));
-    const batch=results.flatMap(r=>r.docs);
-    if(!batch.length){exhausted=true;break;}
-    batch.sort((a,b)=>{const t=(a.data().createdAt?.toMillis?.()||0)-(b.data().createdAt?.toMillis?.()||0);const c=t||(a.id===b.id?0:a.id>b.id?1:-1);return c*(sort==='desc'?-1:1);});
-    let broke=false;
-    for(const d of batch){
-      lastRaw=d;scanned++;
-      if(canSeeOrder(user,d.data())&&matchingFilters(d.data(),filters))collected.push(d);
-      previous=d;
-      if(collected.length>=size){broke=true;break;}
+  const cursorKey=fingerprintList(filters,sort,size);
+  // New cursors carry an independent position per source. Legacy cursors are a
+  // single document id and seed every source from it (safe: never skips).
+  let cursor=null,legacyBoundary=null;
+  const rawCursor=req.data?.cursor??req.data?.afterId;
+  if(rawCursor!=null){
+    cursor=decodeListCursor(rawCursor);
+    if(cursor){
+      if(cursor.key!==cursorKey||cursor.sort!==sort||cursor.pageSize!==size)
+        fail('invalid-argument','مؤشر القائمة لا يطابق الفلاتر الحالية؛ أعد تحميل القائمة');
+      legacyBoundary=cursor.g;
+    }else{
+      const prev=(await oneOrder(user,rawCursor)).snap;
+      legacyBoundary=docPosition(prev);
     }
-    // Only claim the data is exhausted when every scope returned a short chunk
-    // AND we consumed the whole merged batch (not stopped early on a full page).
-    if(!broke&&results.every(r=>r.size<CHUNK))exhausted=true;
   }
-  const page=collected.slice(0,size);
-  // `more` is true when a full page was returned, when the scan cap was reached
-  // (there may still be unread data), or when the data is not exhausted. Never
-  // report the end of the list while a cursor can continue.
-  const capReached=scanned>=MAX_SCAN;
-  const more=collected.length>size||capReached||(!exhausted&&lastRaw!=null);
-  return {items:page.map(d=>orderForUser(user,d)),nextAfterId:more&&lastRaw?lastRaw.id:null,limited:capReached};
+  const positions={};
+  const boundary=cursor?.g||legacyBoundary||null;
+  for(let i=0;i<queries.length;i++)positions['s'+i]=cursor?.subs?.['s'+i]||legacyBoundary||null;
+  const sources=queries.map((base,index)=>({
+    key:'s'+index,
+    fetch:(position,limit)=>{
+      let query=base.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(limit);
+      if(position)query=query.startAfter(Timestamp.fromMillis(position.c),position.i);
+      return query.get();
+    },
+  }));
+  const merged=await mergeSourcePage({
+    sources,positions,boundary,sort,pageSize:size,scanLimit:MAX_SCAN,fetchLimit:CHUNK,
+    accept:doc=>canSeeOrder(user,doc.data())&&matchingFilters(doc.data(),filters),
+  });
+  const page=merged.docs;
+  const last=page.at(-1);
+  const more=merged.more;
+  const nextAfterId=more?encodeListCursor({
+    key:cursorKey,sort,pageSize:size,
+    g:last?docPosition(last):(cursor?.g||legacyBoundary||null),
+    subs:merged.positions,
+  }):null;
+  return {items:page.map(d=>orderForUser(user,d)),nextAfterId,limited:merged.limited};
 });
 // Authenticated server-side search; never scan only the client's loaded page.
 // Indexed exact phone / Arabic-normalized name prefix / exact document ID.
@@ -255,89 +323,67 @@ exports.searchOrders=callable(async req=>{
     for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4))addSub('tk'+si+':'+token,()=>base.where('searchTokens','array-contains',token));
   }
   const cursor=cursorFromRequest(req.data?.cursor,cursorKey,pageSize,sort,req.data?.direction);
-  const PER=Math.max(pageSize,30);
-  const STEP=Math.max(pageSize*4,120); // per-sub-query batch per page
-  const matches=new Map();
-  const accept=(doc,{strict=true}={})=>{
-    if(!doc.exists)return;
-    const d=doc.data();
-    if(!canSeeOrder(user,{...d,id:doc.id})||!matchingFilters(d,filters))return;
-    if(strict&&!matchesQuery(d))return;
-    matches.set(doc.id,doc);
-  };
-  // Direct document-id hit (cheap, always included).
-  const documentId=query.startsWith('VNX-')?query.slice(4):query;
-  if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get(),{strict:false});
-  // Each sub-query is ordered by (createdAt, documentId) and paged with a TRUE
-  // Firestore compound cursor (startAfter(timestamp, docId)). This preserves ties
-  // that share the same createdAt instead of dropping them.
-  // Every sub-query shares the SAME (createdAt, documentId) order, so a single
-  // global compound cursor (startAfter(timestamp, docId)) pages them all with no
-  // loss — including ties with the same createdAt. `limit(STEP)` fetches enough
-  // candidates past the boundary; the boundary filter removes anything already
-  // returned (dedup across sub-queries).
-  const g0=cursor.g;
-  let anySubHasMore=false;
-  // The last candidate actually examined in this window (matching or not). It is
-  // the only safe anchor when a page is short/empty but another sub-query still
-  // has candidates: otherwise the cursor would stay at the same boundary and the
-  // search would loop forever or end prematurely.
-  let lastExamined=null;
-  const after=(a,b)=>{
-    const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
-    if(at!==bt)return sort==='asc'?at>bt:at<bt;
-    return (a.id>b.id?1:-1)*(sort==='asc'?1:-1)>0;
-  };
-  for(const sub of subs){
-    let q=sub.builder().orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort);
-    if(g0)q=q.startAfter(Timestamp.fromMillis(g0.c),g0.i);
-    q=q.limit(STEP);
-    const snap=await q.get();
-    for(const doc of snap.docs){
-      accept(doc,{strict:!sub.exact});
-      if(!lastExamined||after(doc,lastExamined))lastExamined=doc;
+  const STEP=Math.max(pageSize*4,120); // per-source fetch chunk
+  const SCAN_LIMIT=4000; // runaway guard; cursor still continues
+  const exactByKey=new Map(subs.map(sub=>[sub.key,sub.exact===true]));
+  const positions={};
+  for(const sub of subs)positions[sub.key]=cursor.subs?.[sub.key]||cursor.g||null;
+  const boundary=cursor.g;
+  // A direct document-id hit is included in the page (counted in pageSize) and
+  // seeded into the dedup set; sources resume independently afterwards.
+  let direct=null;
+  const seen=new Set();
+  const directId=query.startsWith('VNX-')?query.slice(4):query;
+  if(/^[a-zA-Z0-9_-]{8,140}$/.test(directId)){
+    const snap=await db.doc(`orders/${directId}`).get();
+    if(snap.exists){
+      const d=snap.data();
+      if(canSeeOrder(user,{...d,id:snap.id})&&matchingFilters(d,filters)&&(!boundary||afterPosition(snap,boundary,sort))){
+        direct=snap;seen.add(snap.id);
+      }
     }
-    if(snap.size>=STEP)anySubHasMore=true;
   }
-  const all=[...matches.values()];
+  const capacity=Math.max(0,pageSize-(direct?1:0));
+  const sources=subs.map(sub=>({
+    key:sub.key,
+    fetch:(position,limit)=>{
+      let q=sub.builder().orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(limit);
+      if(position)q=q.startAfter(Timestamp.fromMillis(position.c),position.i);
+      return q.get();
+    },
+  }));
+  const merged=capacity>0
+    ? await mergeSourcePage({
+        sources,positions,boundary,sort,pageSize:capacity,scanLimit:SCAN_LIMIT,fetchLimit:STEP,seen,
+        accept:(doc,key)=>{
+          const d=doc.data();
+          if(!canSeeOrder(user,{...d,id:doc.id})||!matchingFilters(d,filters))return false;
+          return exactByKey.get(key)===true||matchesQuery(d);
+        },
+      })
+    : {docs:[],positions,more:sources.length>0,limited:false};
+  const all=[...(direct?[direct]:[]),...merged.docs];
   all.sort((a,b)=>{
     const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
     if(at!==bt)return sort==='asc'?(at-bt):(bt-at);
     if(a.id===b.id)return 0;
     return (a.id>b.id?1:-1)*(sort==='asc'?1:-1);
   });
-  // Global (createdAt,id) boundary from the previous page removes any duplicate
-  // that two sub-queries might both surface — without dropping same-timestamp
-  // records (the boundary is inclusive of the id tie-break).
-  const g=cursor.g;
-  const afterBoundary=(d)=>{
-    if(!g)return true;
-    const c=d.data().createdAt?.toMillis?.()||0;
-    if(sort==='desc')return c<g.c||(c===g.c&&d.id<g.i);
-    return c>g.c||(c===g.c&&d.id>g.i);
-  };
-  const filtered=all.filter(afterBoundary);
-  const page=filtered.slice(0,pageSize);
+  const page=all.slice(0,pageSize);
   const last=page.at(-1);
-  // Accurate end detection: a short page is NOT the end while any sub-query
-  // still has candidates past this window (common terms combined with an
-  // in-memory filter such as city/amount/area can starve the first window).
-  // Continue whenever a sub-query has more, or this window held extra matches.
-  const hasMore=anySubHasMore||filtered.length>pageSize;
-  // A full page resumes after the last returned match; a short/empty page has
-  // already examined the whole window, so it resumes after the last candidate.
-  const anchor=page.length>=pageSize?last:(anySubHasMore?lastExamined:last);
-  const nextCursor=hasMore&&anchor?encodeCursor({
+  const hasMore=all.length>pageSize||merged.more;
+  const nextCursor=hasMore?encodeCursor({
     key:cursorKey,
     sort,
     pageSize,
     direction:req.data?.direction??null,
-    g:{c:anchor.data().createdAt?.toMillis?.()||0,i:anchor.id},
+    g:last?docPosition(last):(cursor.g||null),
+    subs:merged.positions,
   }):null;
   return {
     items:page.map(d=>orderForUser(user,d)),
     nextCursor,
-    limited:anySubHasMore,
+    limited:merged.limited,
   };
 });
 // Binds a pagination cursor to the exact search conditions.
@@ -366,6 +412,27 @@ function cursorFromRequest(raw,key,pageSize,sort,direction){
   return {key,sort,pageSize,g,subs};
 }
 function encodeCursor({key,sort,pageSize,direction,g,subs}){return Buffer.from(JSON.stringify({key,sort,pageSize,direction,g,subs}),'utf8').toString('base64url');}
+function fingerprintList(filters,sort,pageSize){
+  const norm=JSON.stringify({f:{...filters,from:filters.from?filters.from.toISOString():null,to:filters.to?filters.to.toISOString():null,
+    sentFrom:filters.sentFrom?filters.sentFrom.toISOString():null,sentTo:filters.sentTo?filters.sentTo.toISOString():null},sort,pageSize});
+  return crypto.createHash('sha256').update(norm).digest('hex').slice(0,32);
+}
+function encodeListCursor({key,sort,pageSize,g,subs}){
+  return 'v2.'+Buffer.from(JSON.stringify({key,sort,pageSize,g,subs}),'utf8').toString('base64url');
+}
+function decodeListCursor(raw){
+  if(typeof raw!=='string'||!raw.startsWith('v2.'))return null;
+  let d=null;
+  try{d=JSON.parse(Buffer.from(raw.slice(3),'base64url').toString('utf8'));}catch(e){return null;}
+  if(!d||typeof d!=='object'||Array.isArray(d)||typeof d.key!=='string'||!['asc','desc'].includes(d.sort)||!Number.isSafeInteger(d.pageSize))return null;
+  const subs={};
+  for(const [k,v] of Object.entries(d.subs||{})){
+    if(/^s\d{1,3}$/.test(k)&&v&&Number.isFinite(v.c)&&typeof v.i==='string'&&v.i.length<=140)subs[k]={c:v.c,i:v.i};
+  }
+  const g=(d.g&&Number.isFinite(d.g.c)&&typeof d.g.i==='string'&&d.g.i.length<=140)?{c:d.g.c,i:d.g.i}:null;
+  return {key:d.key,sort:d.sort,pageSize:d.pageSize,g,subs};
+}
+
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.
 async function sumOrders(query,showAmount){
@@ -607,6 +674,9 @@ exports.correctOrderStatus=callable(async req=>{
   const target=str(req.data?.status,30);
   const reason=str(req.data?.reason,300).trim();
   if(reason.length<3)fail('invalid-argument','أدخل سبب التصحيح (3 أحرف على الأقل)');
+  // Revision is mandatory: an administrative correction must be based on the
+  // exact state the manager reviewed, never a blind overwrite.
+  if(!Number.isSafeInteger(req.data?.revision))fail('invalid-argument','أعد تحميل الطلب ثم أعد المحاولة (revision مطلوب)');
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     if(user.role!=='generalManager')fail('permission-denied','التصحيح الإداري متاح للمدير العام فقط');
@@ -616,8 +686,12 @@ exports.correctOrderStatus=callable(async req=>{
     if(!canCorrectInternalStatus(o))fail('failed-precondition','لا يمكن تصحيح طلب مرتبط بشحنة أو إرسال شركة توصيل');
     const allowed=correctionTargets(o);
     if(!allowed.includes(target))fail('failed-precondition','الحالة الهدف غير مسموحة لهذا الطلب');
-    if(Number.isSafeInteger(req.data?.revision)&&req.data.revision!==(o.revision||0))fail('aborted','تم تعديل الطلب بواسطة مستخدم آخر؛ أعد تحميله');
-    const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
+    if(req.data.revision!==(o.revision||0))fail('aborted','تم تعديل الطلب بواسطة مستخدم آخر؛ أعد تحميله');
+    // Completing writes internal provenance; reopening removes the CURRENT
+    // completion fields (events/audit rows are historical and never deleted).
+    const completion=target==='delivered'
+      ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
+      : {completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()};
     tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     const detail={from:o.status,to:target,reason};
     await addEvent(ref.id,'status_corrected',user,detail,tx);

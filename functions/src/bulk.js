@@ -251,10 +251,12 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     for(const d of all.docs){
       const v=d.data();
       if(v.state==='claimed'){claimed++;continue;}
-      if(v.ok===true)succeeded++;else{failed++;if(v.uncertain===true)uncertain++;}
+      if(v.ok===true)succeeded++;
+      else if(v.uncertain===true)uncertain++;
+      else failed++; // definite, non-retryable-by-UI failure only
     }
     const total=ids.length;
-    const finalized=succeeded+failed;
+    const finalized=succeeded+failed+uncertain;
     remaining=Math.max(0,total-finalized);
     // Only "finished" when every order has a final result AND no live claim bars.
     const finished=pending===0&&claimed===0&&remaining===0;
@@ -298,9 +300,11 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     for(const x of resultsSnap.docs){const v=x.data();if(v.state==='claimed')claimed.push({id:v.id,vendorStarted:v.vendorStarted===true});else results.push(v);}
     const succeeded=results.filter(r=>r.ok===true).length;
     const uncertain=results.filter(r=>r.uncertain===true).length;
-    const failed=results.length-succeeded;
+    // Uncertain is a final-but-not-retryable outcome; it must never be counted
+    // as a definite failure that a UI could offer to re-send.
+    const failed=results.filter(r=>r.ok!==true&&r.uncertain!==true).length;
     const total=(d.ids||[]).length;
-    const remaining=Math.max(0,total-(succeeded+failed));
+    const remaining=Math.max(0,total-(succeeded+failed+uncertain));
     const finished=claimed.length===0&&remaining===0&&d.status==='finished';
     return {operationId:opId,kind:d.kind,status:d.status||'running',ids:d.ids||[],results,claimed,
       succeeded,failed,uncertain,remaining,finished};

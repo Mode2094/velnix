@@ -26,7 +26,7 @@ before(async()=>{
 after(async()=>{await db.terminate();await deleteApp(getApp());});
 
 test('general manager corrects an internal status with a reason and full audit',async()=>{
-  await invoke('correctOrderStatus','gm',{id:'correct_1',status:'preparing',reason:'تصحيح إدخال خاطئ'});
+  await invoke('correctOrderStatus','gm',{id:'correct_1',status:'preparing',reason:'تصحيح إدخال خاطئ',revision:0});
   const snap=await db.doc('orders/correct_1').get();
   assert.equal(snap.data().status,'preparing');
   assert.equal(snap.data().hasDelivery,false);
@@ -41,27 +41,47 @@ test('general manager corrects an internal status with a reason and full audit',
 });
 
 test('correction is general-manager only and requires a real reason',async()=>{
-  await assert.rejects(invoke('correctOrderStatus','mgr',{id:'correct_1',status:'ready',reason:'محاولة مدير'}),{code:'permission-denied'});
-  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'ready',reason:'  '}),{code:'invalid-argument'});
-  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'dispatched',reason:'حالة شركة'}),{code:'failed-precondition'});
+  await assert.rejects(invoke('correctOrderStatus','mgr',{id:'correct_1',status:'ready',reason:'محاولة مدير',revision:1}),{code:'permission-denied'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'ready',reason:'  ',revision:1}),{code:'invalid-argument'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'dispatched',reason:'حالة شركة',revision:1}),{code:'failed-precondition'});
+  // Mandatory revision: missing or stale is rejected before any write.
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'ready',reason:'بدون نسخة'}),{code:'invalid-argument'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'ready',reason:'نسخة قديمة',revision:0}),{code:'aborted'});
+  assert.equal((await db.doc('orders/correct_1').get()).data().status,'preparing');
 });
 
 test('correction refuses carrier/Click orders and only allows internal completion from ready',async()=>{
-  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_click',status:'cancelled',reason:'محاولة إلغاء'}),{code:'failed-precondition'});
-  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_sent',status:'delivered',reason:'محاولة تزوير'}),{code:'failed-precondition'});
-  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'delivered',reason:'ليست جاهزة'}),{code:'failed-precondition'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_click',status:'cancelled',reason:'محاولة إلغاء',revision:0}),{code:'failed-precondition'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_sent',status:'delivered',reason:'محاولة تزوير',revision:0}),{code:'failed-precondition'});
+  await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'delivered',reason:'ليست جاهزة',revision:1}),{code:'failed-precondition'});
   assert.deepEqual(correctionTargets({status:'created',hasDelivery:false,dispatchState:'idle'}),['review','preparing','ready','cancelled']);
   assert.deepEqual(correctionTargets({status:'ready',hasDelivery:false,companyId:null,dispatchState:'idle'}),['created','review','preparing','cancelled','delivered']);
   assert.deepEqual(correctionTargets({status:'ready',companyId:'c',hasDelivery:false,dispatchState:'idle'}),['created','review','preparing','cancelled']);
   assert.deepEqual(correctionTargets({status:'ready',dispatchState:'sent'}),[]);
-  await invoke('correctOrderStatus','gm',{id:'correct_ready',status:'delivered',reason:'إكمال داخلي مصحح'});
+  await invoke('correctOrderStatus','gm',{id:'correct_ready',status:'delivered',reason:'إكمال داخلي مصحح',revision:0});
   const done=await db.doc('orders/correct_ready').get();
   assert.equal(done.data().status,'delivered');
   assert.equal(done.data().completionSource,'internal');
   assert.equal(done.data().hasDelivery,false);
+  assert.ok(done.data().completedBy);
+  assert.ok(done.data().completedAt);
 });
 
-test('a corrected delivered order can be reopened because it has no carrier contract',async()=>{
-  await invoke('correctOrderStatus','gm',{id:'correct_ready',status:'created',reason:'إعادة فتح بعد خطأ'});
-  assert.equal((await db.doc('orders/correct_ready').get()).data().status,'created');
+test('reopening a delivered internal order clears current completion fields but keeps history',async()=>{
+  const before=(await db.doc('orders/correct_ready').get()).data();
+  await invoke('correctOrderStatus','gm',{id:'correct_ready',status:'created',reason:'إعادة فتح بعد خطأ',revision:before.revision});
+  const reopened=(await db.doc('orders/correct_ready').get()).data();
+  const dto=(await invoke('getOrder','gm',{id:'correct_ready'})).order;
+  assert.equal(dto.completionSource,null);
+  assert.equal(reopened.status,'created');
+  assert.equal(reopened.completionSource,undefined);
+  assert.equal(reopened.completedBy,undefined);
+  assert.equal(reopened.completedAt,undefined);
+  assert.equal(reopened.hasDelivery,false);
+  // Historical events are append-only: the earlier completion remains visible.
+  const events=await db.collection('orders/correct_ready/events').get();
+  const actions=events.docs.map(d=>d.data().action);
+  assert.ok(actions.filter(a=>a==='status_corrected').length>=2);
+  assert.ok(events.docs.some(d=>d.data().details?.to==='delivered'));
+  assert.ok(events.docs.some(d=>d.data().details?.to==='created'&&d.data().details?.reason==='إعادة فتح بعد خطأ'));
 });

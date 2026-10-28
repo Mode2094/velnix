@@ -86,8 +86,12 @@ function matchingFilters(order,filters) {
   if(filters.amountMax!=null&&(Number(order.amountMinor)||0)>filters.amountMax)return false;
   // Independent free-text conditions (phone digits / barcode / product / note).
   if(filters.phone){
-    const digits=String(order.phone||'').replace(/\D/g,'')+String(order.extraPhone||'').replace(/\D/g,'');
-    if(!digits.includes(filters.phone))return false;
+    // Each phone is matched independently. Concatenating primary+extra would
+    // let a query made of the primary's tail and the extra's head match a
+    // number that exists in neither field.
+    const primary=String(order.phone||'').replace(/\D/g,'');
+    const extra=String(order.extraPhone||'').replace(/\D/g,'');
+    if(!primary.includes(filters.phone)&&!extra.includes(filters.phone))return false;
   }
   if(filters.barcode){
     const refs=(String(order.barcodeValue||'')+' '+String(order.orderNumber||'')).toUpperCase();
