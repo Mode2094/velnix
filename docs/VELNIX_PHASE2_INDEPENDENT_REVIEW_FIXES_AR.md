@@ -1,119 +1,109 @@
-# VELNIX — إغلاق المراجعة المستقلة للمرحلة الثانية
-
-**الأمن + اكتمال البحث + Pagination + العمليات الجماعية + نتائج الباركود**
+# VELNIX — إغلاق المراجعة النهائية للمرحلة الثانية
 
 - الفرع: `main`
-- Commit المراجَع: `647983a`
-- Commit الإغلاق: `b48da9f`
-- CI: `40623994117` — **4/4 خضراء**
-- المشروع: `velnix-6c1a2` · الويب: https://velnix-6c1a2.web.app
+- Commit المراجَع: `9596bce`
+- Commit الإغلاق: `146c1a2`
+- CI: `40629519011` — **4/4 خضراء**
+- المشروع: `velnix-6c1a2` · https://velnix-6c1a2.web.app
+
+> لم يُعد بناء مساري `sendToDelivery` في `dispatchOrder`/`applyCompanyAssignment` — تم التأكد من إغلاقهما فقط.
 
 ---
 
-## 1. السبب الجذري لكل خلل والإصلاح
+## 1. جدول إغلاق الملاحظات
 
-| # | الخلل | السبب الجذري | الإصلاح |
-|---|---|---|---|
-| 1أ | `bulkDispatch` بلا فحص `sendToDelivery` | `dispatchOrder` كانت **تفترض** أن المستدعي فحصها؛ `bulk.js` اكتفى بـ`requireAuth` | `dispatchOrder` تفرض `requiredPerm(user,'sendToDelivery')` بنفسها؛ و`bulkDispatch` تفشل فورًا قبل أي إرسال |
-| 1ب | `bulkAssignCompany` بلا تحقق | `applyCompanyAssignment` لم تفرض الصلاحية ولا تُتحقق الشركة مسبقًا | `applyCompanyAssignment` تفرض `sendToDelivery` + تحقق الشركة قبل/داخل المعاملة؛ `bulkAssignCompany` تتحقق مسبقًا |
-| 2 | مهلة الإرسال الجماعي | 50 طلبًا تتابعيًا ضمن مهلة 60ث | حد `MAX_DISPATCH=10` لكل نداء + سجل دائم `bulkOperations/{opId}` لكل نتيجة + `getBulkOperation` للاسترجاع |
-| 3 | لا Pagination في البحث | حد 50 نتيجة بلا Cursor | `nextCursor` مشفّر مبني على `(createdAt,id)`، ترتيب ثابت، بلا تكرار |
-| 4 | `listOrders` تُسقط نتائج خارج النافذة | over-fetch 200 ثم فلترة | مسح متدرّج حتى امتلاء الصفحة أو نهاية البيانات، مع `nextAfterId` = آخر سجل **مقروء** |
-| 5 | بحث جزئي داخل النص/الهاتف | `searchText` يطابق البداية فقط؛ `searchTokens` كلمات كاملة | `searchPrefixes` (بادئات كل كلمة) و`searchPhoneSuffixes` (لواحق الهاتف) مع `array-contains` |
-| 6 | Backfill إنتاجي غير مُنفّذ | الاختبار داخل emulator فقط | تدقيق إنتاجي + نسخة احتياطية + تشغيل فعلي + إثبات Idempotency |
-| 7 | تضارب 50/500 | البحث 50، Callable 50، الطباعة من `rows`، تحديد 500 | تجزئة موحّدة: تحديد حتى 200، عمليات عادية 50/دفعة، إرسال 10/دفعة، طباعة بجلب خادمي |
-| 8 | الطباعة الجماعية من `rows` فقط | `_selectedOrders` من الصفحة المحمّلة | `getOrdersByIds` خادمي (تحقق صلاحية + إخفاء مبالغ) لجميع المعرّفات المختارة |
-| 9 | شاشة نتائج الباركود بلا إجراءات | عرض فقط | تحديد + تحديد الكل + طباعة/حالة/إسناد/إرسال عبر نفس Callables |
-
----
-
-## 2. الأدلة (الأمن أولًا)
-
-### 2.1 ثغرة `bulkDispatch`
-- **قبل:** مستخدم `dataEntry`/`sales` بلا `sendToDelivery` يستطيع استدعاء `bulkDispatch` مباشرة.
-- **بعد:** `dispatchOrder` تفرض الصلاحية داخليًا (دفاع بعمق لأي مستدعٍ مستقبلي)، و`bulkDispatch` تفشل **قبل** الحلقة.
-- **اختبار:** `bulkDispatch and bulkAssignCompany reject callers without sendToDelivery before any send` — يرفض `entry`/`noSend` ويؤكد أن `dispatchState:'idle'` و`trackingNumber:null` (لا إرسال خارجي).
-
-### 2.2 ثغرة `bulkAssignCompany`
-- **اختبار:** `a dataEntry cannot assign a company it is not allowed to send for, even via bulk` — رفض خادمي. و`sender` المخوّل ينجح لكن الحالات غير المسموحة (طلب مُرسل) تُرفض.
-
-### 2.3 المهلات
-- `bulkDispatch` ترفض >10 معرّفات (`invalid-argument`) وتكتب `bulkOperations/{opId}`.
-- **اختبار:** `bulkDispatch writes a durable operation record…` + `getBulkOperation` يقرأ النتيجة لاحقًا.
-
----
-
-## 3. جدول الإغلاق
-
-| المطلب | النتيجة | الدليل |
+| المطلب | النتيجة | دليل التنفيذ |
 |---|---|---|
-| ثغرة `bulkDispatch` | PASS | `requiredPerm` في `dispatchOrder` + اختبار رفض قبل الإرسال |
-| ثغرة `bulkAssignCompany` | PASS | `requiredPerm` في `applyCompanyAssignment` + اختبار رفض |
-| مهلات الإرسال الجماعي | PASS | `MAX_DISPATCH=10` + `bulkOperations` + `getBulkOperation` + اختبارات |
-| Pagination في البحث | PASS | `nextCursor` + اختبار «>50 بلا تكرار» |
-| Pagination مع الفلاتر | PASS | `listOrders` مسح متدرّج + اختبار «مطابق بعد 220 غير مطابق» |
-| البحث الجزئي داخل النص | PASS | `searchPrefixes` + اختبار «الرحمن/المومني/شرعي/الاتصال» |
-| البحث الجزئي داخل الهاتف | PASS | `searchPhoneSuffixes` + اختبار «239876» |
-| Backfill الإنتاجي | PASS | 8/8 طلب مُعبّأ؛ إعادة التشغيل 0؛ لا تغيير على الحقول المحمية |
-| تحديد جميع النتائج | PASS | تحديد عبر الصفحات حتى 200 + عدّ دقيق |
-| التعامل مع الحد 50/500 | PASS | تجزئة 50 لعمليات، 10 للإرسال، توضيح الدفعات |
-| الطباعة الجماعية من عدة صفحات | PASS | `getOrdersByIds` + اختبار «getOrdersByIds يحترم الصلاحيات ويخفي المبالغ» |
-| إجراءات نتائج الباركود | PASS | تحديد + طباعة/حالة/إسناد/إرسال عبر نفس الخدمات |
-| الاختبارات الأمنية | PASS | 5 اختبارات رفض قبل أي اتصال خارجي |
-| منع إرسال Click المكرر | PASS | عدم تغيير `dispatchOrder`/القفل؛ 203 اختبار emulator |
-| الأداء | PASS | مسح محدود (SCAN=200/استعلام، سقف 2000/نداء)، لا Full Scan |
-| النشر | PASS | Functions (56) + Indexes (124) + Hosting + APK |
-| Android الحقيقي | BLOCKED | لا جهاز؛ الكاميرا/المسح لم تُختبر فعليًا |
+| معرف العملية يُنشأ قبل الإرسال ويُمرر للخادم | PASS | `bulkDispatch` يتحقق من `operationId` (16–80 حرفاً)؛ العميل يولّده في `_bulkDispatch`/`_dispatch` |
+| حفظ هوية المنشئ + قائمة الطلبات + البصمة + الحالة | PASS | `bulkOperations/{opId}: {actorId, ids, fingerprint, status, ...}` داخل معاملة |
+| منع استيلاء مستخدم آخر على المعرف | PASS | `actorId!==user.id` → رفض؛ اختبار «another user cannot take over» |
+| تكرار نفس العملية ونفس البيانات لا يبدأ إرسالًا | PASS | تخطي أي `orderId` له نتيجة دائمة؛ اختبار «reusing … never re-dispatches» |
+| نفس المعرف ببيانات مختلفة مرفوض | PASS | مطابقة `fingerprint` → `already-exists`؛ اختبار مخصّص |
+| نتيجة كل طلب ثابتة ومميزة حسب `orderId` | PASS | مجموعة فرعية `results/{orderId}` (لا تكرار)؛ اختبار «exactly one durable result» |
+| عرض معرف العملية وحالتها بعد إعادة الفتح | PASS | `getBulkOperation` يعيد `operationId/status/results`؛ العميل يعرض المعرّفات |
+| الاستعلام قبل الاكتمال وبعده | PASS | `getBulkOperation` يقرأ `results/{orderId}` أثناء/بعد التنفيذ |
+| لا إعادة `setorder` لطلب وصل/ربما وصل | PASS | لم يُمس `dispatchOrder`؛ الاسترجاع قراءة فقط؛ اختبارات Click سليمة |
+| المهلة أثناء شحنة غير محسومة → `needs_review` | PASS | سلوك `dispatchOrder` كما هو؛ لاافتراض فشل |
+| منع نجاح وهمي عند فشل حفظ النتائج | PASS | حفظ `results/{orderId}` إلزامي قبل الملخّص (بلا try/catch كاتم) |
+| حدّ زمني/تنفيذي واقعي | PASS | `MAX_DISPATCH=10` لكل نداء + تجزئة العميل |
+| Pagination حقيقية للبحث | PASS | Cursor لكل استعلام فرعي + حدّ عام `(createdAt,id)` مدفوع داخل الاستعلام |
+| دمج عدة استعلامات بلا تكرار | PASS | حدّ عام يمنع تكرار المستند بين الصفحات |
+| عدم إعادة فحص أول 200 عنصر | PASS | `where('createdAt','<',g)` لكل استعلام فرعي |
+| ربط المؤشر بالبحث والفلاتر | PASS | المؤشر يُبنى داخل `searchOrders` من نفس الاستعلام؛ لا يعاد استخدامه مع شروط مختلفة |
+| عدم إعلان انتهاء قبل نهاية المصادر | PASS | `hasMore` = صفحة كاملة؛ آخر نداء يعيد `nextCursor:null` |
+| 300 نتيجة عبر صفحات بلا فقد/تكرار | PASS | اختبار «search returns all 300 matches» |
+| حد `listOrders` 2000 لا يتحول لنهاية وهمية | PASS | `capReached` يبقي `nextAfterId`؛ اختبار «2001 + مطابق» |
+| توحيد حدود التحديد/الطباعة (200 لا 500) | PASS | النص والحد 200؛ الطباعة تُجزّأ بحد 100 لكل ملف |
+| طباعة 150/200 بلا إسقاط صامت | PASS | تأكيد صريح + ملفات متعددة مسمّاة |
+| منع تسرّب المبالغ المحجوبة | PASS | `getOrdersByIds` يستخدم `orderForUser` (يخفي المبالغ) |
+| صلاحيات `getBulkOperation` | PASS | المنشئ فقط؛ `sendToDelivery` ليست إذناً عاماً |
+| منع إرسال Click مكرر | PASS | القفل و`needs_review` دون تغيير؛ 209 اختبار emulator |
+| الاختبارات الأمنية الجديدة | PASS | 6 اختبارات مخصّصة |
+| عدم التراجع (المرحلتان 1 و2) | PASS | 462 Flutter + 203→209 emulator + 21 Playwright |
 
 ---
 
-## 4. نتائج الاختبارات الجديدة
+## 2. Root Cause والإصلاح (الملفات والأسطر)
 
-- `bulkDispatch`/`bulkAssignCompany` رفض غير المخوّلين (dataEntry/sales) قبل الإرسال. ✅
-- `bulkChangeStatus` لا يتجاوز `needs_review` (نجاح جزئي). ✅
-- حد دفعة الإرسال (11 ⇒ رفض). ✅
-- البحث > 50 نتيجة عبر عدة صفحات بلا تكرار. ✅
-- `listOrders` فلاتر داخل الذاكرة تجد مطابقًا بعد 220 غير مطابق. ✅
-- بحث وسط النص ووسط الهاتف. ✅
-- Backfill آمن و Idempotent (داخل emulator). ✅
-- `getOrdersByIds` صلاحيات + إخفاء مبالغ. ✅
-- سجل `bulkOperations` + `getBulkOperation`. ✅
+### 1. موثوقية الإرسال الجماعي — `functions/src/bulk.js`
+- **السبب الجذري:** `operationId` كان اختيارياً؛ الخادم يولّده بعد الرد؛ إعادة الاستخدام تدمج النتائج؛ فشل حفظ النتيجة كان مكتوماً.
+- **الإصلاح:**
+  - `operationId` مطلوب ومُتحقَّق (سطر التحقق من النمط).
+  - معاملة `create-or-validate`: `{actorId, ids, fingerprint, status}` + رفض الاستيلاء/التعارض.
+  - نتائج كل طلب في `bulkOperations/{opId}/results/{orderId}` (كتابة دائمة إلزامية).
+  - تخطي الطلبات ذات النتيجة مسبقاً (استئناف آمن).
+  - `getBulkOperation`: المنشئ فقط + قراءة النتائج.
+
+### 2. Pagination البحث — `functions/src/index.js` (`searchOrders`)
+- **السبب الجذري:** `limit(200)` + ترتيب في الذاكرة + مؤشر على المجموعة المحمّلة فقط.
+- **الإصلاح:** كل استعلام فرعي يُرتّب `(createdAt, id)` مع حدّ عام `where('createdAt','<',g)` مدفوع للاستعلام؛ المؤشر `{__g}` يضمن لا فقد ولا تكرار. (14 فهرس جديد.)
+
+### 3. حد `listOrders` 2000 — `functions/src/index.js`
+- **السبب الجذري:** عند بلوغ `MAX_SCAN` كان `nextAfterId` يصبح `null`.
+- **الإصلاح:** `capReached` يبقي المؤشر؛ الحالة تُعلَن عبر `limited`.
+
+### 4. حدود التحديد/الطباعة — `lib/live/live_orders.dart`, `lib/printing/bulk_printing.dart`
+- **السبب الجذري:** نص «حتى 500» مع حد فعلي 200؛ الطباعة من الصفحة المحمّلة فقط؛ بلا تأكيد للتجزئة.
+- **الإصلاح:** توحيد 200 + تأكيد + تجزئة 100 ملف مع `getOrdersByIds`.
+
+---
+
+## 3. الاختبارات الجديدة
+
+| الاختبار | الملف |
+|---|---|
+| `operationId` مطلوب | `phase2_search_bulk.test.js` |
+| إعادة الاستخدام بنفس الطلبات لا تعيد الإرسال | ✔ |
+| إعادة الاستخدام بطلبات مختلفة مرفوضة | ✔ |
+| لا يمكن لمستخدم آخر الاستيلاء أو القراءة | ✔ |
+| `getBulkOperation` يعيد النتائج للمنشئ | ✔ |
+| 300 نتيجة عبر صفحات بلا فقد/تكرار | ✔ |
+| `listOrders` يستكمل بعد 2001 غير مطابق | ✔ |
+| تمرير `operationId` من الواجهة | `test/phase2_orders_bulk_test.dart` |
 
 ### الحزم
 | الحزمة | النتيجة |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` (Linux) | **461** |
+| `flutter test` (Linux) | **462** |
 | functions unit | **194** |
-| functions emulator + rules | **203** |
+| functions emulator + rules | **209** |
 | Playwright E2E | **21/21** |
-| CI `40623994117` | 4/4 |
+| CI `40629519011` | 4/4 |
 
 ---
 
-## 5. Firestore Indexes وBackfill
+## 4. النشر وإثبات عدم تراجع Click
 
-- **Indexes**: 124 (أُضيفت `searchPrefixes` و`searchPhoneSuffixes` + `createdAt` و`createdBy` variants) — منشورة.
-- **Backfill إنتاجي**:
-  1. تدقيق قبل: `total=8, missingText=8, missingTokens=8, missingPrefixes=8, missingPhoneSuffixes=8`.
-  2. نسخة احتياطية: `/tmp/velnix-backup/orders.json` (8 سجلات).
-  3. Dry-run: `changed=8, written=0`.
-  4. Apply: `written=8, failed=0`.
-  5. إعادة تشغيل: `changed=0` (Idempotent).
-  6. تدقيق بعد: **كل الحقول 0 مفقودة**.
-  7. الحقول المحمية (customer/amount/status/orderNumber/createdBy/phone/barcodeValue/pageId/companyId/revision): **0 تغيير**.
-
----
-
-## 6. النشر
-
-- **Functions**: منشورة (56؛ منها `getOrdersByIds`, `getBulkOperation`, إصلاح `bulkDispatch`/`bulkAssignCompany`).
-- **Indexes**: 124 منشورة.
+- **Functions**: منشورة (56؛ `bulkDispatch` المحدّث، `getBulkOperation`، `getOrdersByIds`).
+- **Indexes**: 138 منشورة.
 - **Hosting**: منشور (bundle نظيف).
-- **APK**: `delivery/apk/Velnix-release.apk` موقّع `CN=Velnix` (SHA-256 `01c0298c…`)، App Check = Play Integrity.
-- **Commit**: `b48da9f` · **CI**: `40623994117`.
+- **APK**: `delivery/apk/Velnix-release.apk` موقّع `CN=Velnix` (SHA-256 `4f62319a…`).
+- **Click**: لم يُعد بناء `dispatchOrder`/`applyCompanyAssignment`/القفل/`recoverStuckDispatch`؛ 209 اختبار emulator تشمل القفل و`needs_review` ومنع التكرار — كلها خضراء.
 
-## 7. قيود غير مثبتة
+## 5. Backfill الإنتاجي (مُراجَع مسبقاً)
+8/8 طلب مُعبّأ؛ إعادة التشغيل 0؛ 0 تغيير على الحقول المحمية (customer/amount/status/owner/number). لا تُشارك بيانات عملاء.
 
-- **Android على جهاز حقيقي: BLOCKED** — تجربة كاميرا/مسح الباركود تحتاج جهازًا فعليًا (لم تُعلن PASS).
-- **الإرسال الجماعي لـ Click**: اختُبر بـ Mock/Emulator؛ لم تُرسَل شحنات حقيقية.
+## 6. قيود غير مثبتة
+- **Android على جهاز حقيقي: BLOCKED** — كاميرا/مسح الباركود لم تُختبر فعلياً.
+- **إرسال Click جماعي حقيقي**: Mock/Emulator فقط.
