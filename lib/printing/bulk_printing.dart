@@ -25,6 +25,7 @@ class BulkPrintScreen extends StatefulWidget {
 
 class _BulkPrintScreenState extends State<BulkPrintScreen> {
   OrderPaper paper = OrderPaper.a4;
+  OrderTemplate template = OrderTemplate.professional;
   bool busy = false;
 
   PdfPageFormat get format => paper.format();
@@ -95,6 +96,18 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                 ],
                 onChanged: (v) => setState(() => paper = v ?? OrderPaper.a4),
               ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<OrderTemplate>(
+                initialValue: template,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'نوع البوليصة'),
+                items: [
+                  for (final t in OrderTemplate.values)
+                    DropdownMenuItem(value: t, child: Text(t.label)),
+                ],
+                onChanged: (v) =>
+                    setState(() => template = v ?? OrderTemplate.professional),
+              ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: busy
@@ -105,6 +118,7 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                           onLayout: (_) => OrderInvoicePdf.generateMany(
                             orders: orders,
                             format: format,
+                            template: template,
                           ),
                         );
                       }),
@@ -119,6 +133,7 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                         final bytes = await OrderInvoicePdf.generateMany(
                           orders: orders,
                           format: format,
+                          template: template,
                         );
                         await Printing.sharePdf(bytes: bytes, filename: name);
                       }),
@@ -131,12 +146,15 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
       ],
     );
     final preview = PdfPreview(
-      key: ValueKey('bulk-${paper.name}-${orders.length}'),
+      key: ValueKey('bulk-${paper.name}-${template.name}-${orders.length}'),
       initialPageFormat: format,
       canChangePageFormat: false,
       canChangeOrientation: false,
-      build: (_) =>
-          OrderInvoicePdf.generateMany(orders: orders, format: format),
+      build: (_) => OrderInvoicePdf.generateMany(
+        orders: orders,
+        format: format,
+        template: template,
+      ),
       pdfFileName: name,
       onError: (context, error) => Center(
         child: Padding(

@@ -1646,7 +1646,11 @@ class _LiveMemberFormState extends State<LiveMemberForm> {
                 if (!creating &&
                     !widget.joinRequest &&
                     widget.initial != null &&
-                    widget.policy.role == 'generalManager') ...[
+                    (widget.policy.role == 'generalManager' ||
+                        (widget.policy.can('manageEmployees') &&
+                            widget.policy.canGrantRole(
+                              widget.initial!['role']?.toString() ?? '',
+                            )))) ...[
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
                     onPressed: busy ? null : _resetPassword,

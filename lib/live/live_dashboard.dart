@@ -236,8 +236,8 @@ class _LiveDashboardState extends State<LiveDashboard> {
       bucket: 'delivery',
     );
     final internalCard = _scopeCard(
-      title: 'الطلبات غير المسندة لشركة',
-      icon: Icons.inventory_2_outlined,
+      title: 'جميع طلبات المتجر',
+      icon: Icons.storefront_outlined,
       data: internal,
       bucket: 'internal',
     );

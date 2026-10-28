@@ -197,9 +197,15 @@ test('workflow blocks forged carrier states and revisions prevent lost updates',
   const resolved=(await ref.get()).data();assert.equal(resolved.status,'dispatched');assert.equal(resolved.trackingNumber,'TRACK-1');assert.equal(resolved.dispatchLockId,undefined);
 });
 test('Arabic phone search and exact aggregates exceed 10000 records',async()=>{
-  const batch=db.bulkWriter();
-  for(let i=0;i<10005;i++)batch.set(db.doc('orders/load_'+i),{...payload,amountMinor:12345,phone:'0791234567',phoneDigits:'0791234567',customerKey:'عميل عربي',createdBy:'bulk',visibleTo:['bulk'],status:'created',hasDelivery:false,companyId:null,createdAt:Timestamp.now()});
-  await batch.close();
+  // Chunked WriteBatches keep the seed deterministic inside containerised
+  // emulators, where BulkWriter's wall-clock rate limiter can observe a clock
+  // step and abort the whole seed.
+  let batch=db.batch(),pending=0;
+  for(let i=0;i<10005;i++){
+    batch.set(db.doc('orders/load_'+i),{...payload,amountMinor:12345,phone:'0791234567',phoneDigits:'0791234567',customerKey:'عميل عربي',createdBy:'bulk',visibleTo:['bulk'],status:'created',hasDelivery:false,companyId:null,createdAt:Timestamp.now()});
+    if(++pending===400){await batch.commit();batch=db.batch();pending=0;}
+  }
+  if(pending)await batch.commit();
   const search=await invoke('searchOrders','entry',{query:'٠٧٩١٢٣٤٥٦٧'});assert.ok(search.items.some(o=>o.id===orderId));
   const stats=await invoke('dashboardStats','gm');const count=stats.counters.all.created.count;
   assert.ok(count>=10005);assert.equal(stats.partial,false);

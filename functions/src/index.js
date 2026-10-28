@@ -1256,16 +1256,26 @@ exports.createEmployee=callable(async req=>{
 });
 exports.resetEmployeePassword=callable(async req=>{
   const user=await requireAuth(req);
-  if(user.role!=='generalManager')fail('permission-denied','إعادة تعيين كلمة المرور متاحة للمدير العام فقط');
+  requiredPerm(user,'manageEmployees');
   const id=idValue(req.data?.id);
+  if(id===user.id)fail('permission-denied','استخدم "تغيير كلمة المرور" لتغيير كلمة مرورك');
   const password=employeePassword(req.data?.password);
   const member=await db.doc('members/'+id).get();
   if(!member.exists)fail('not-found','الموظف غير موجود');
+  const target=member.data();
+  // Mirror saveMember's privilege ceiling: only a general manager may reset a
+  // general manager or a manager; a delegated manager may reset roles that rank
+  // below them and may not touch an equal/higher or a general manager.
+  if(user.role!=='generalManager'){
+    if(['generalManager','manager'].includes(target.role)||target.role===user.role)fail('permission-denied','لا يمكنك إعادة تعيين كلمة مرور هذا الحساب');
+    if(target.role==='warehouse'&&!can(user,'updateOrderStatus')&&user.role!=='warehouse')fail('permission-denied','لا يمكنك إعادة تعيين كلمة مرور هذا الحساب');
+  }
   const record=await getAuth().getUser(id).catch(e=>{if(e.code==='auth/user-not-found')fail('not-found','حساب الدخول غير موجود');throw e;});
   if(!record.providerData.some(p=>p.providerId==='password'))fail('failed-precondition','هذا الحساب لا يستخدم الدخول بالبريد وكلمة المرور');
   await getAuth().updateUser(id,{password});
   await getAuth().revokeRefreshTokens(id);
-  await audit('member.password_reset',user,id,{},null);
+  // Audit records the event and actor only; the password value is never stored.
+  await audit('member.password_reset',user,id,{targetRole:target.role},null);
   return {ok:true};
 });
 

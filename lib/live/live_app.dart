@@ -34,6 +34,7 @@ part 'live_admin.dart';
 part 'live_pages.dart';
 part 'live_barcode.dart';
 part 'live_bulk_ops.dart';
+part 'live_account.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
 
@@ -89,6 +90,40 @@ String syncSourceLabel(dynamic source) => switch (source) {
   'poll' => 'مزامنة آلية',
   _ => 'تحديث حالة الشحنة',
 };
+
+/// Arabic label for a known event-detail key, falling back to the raw key.
+String eventDetailLabel(dynamic key) => switch (key?.toString()) {
+  'status' => 'الحالة الجديدة',
+  'companyId' => 'شركة التوصيل',
+  'tracking' || 'trackingNumber' => 'رقم التتبع',
+  'outcome' => 'النتيجة',
+  'reason' => 'السبب',
+  'rawStatus' => 'حالة الشركة',
+  'statusDate' => 'تاريخ الحالة',
+  'shippingStatus' => 'حالة الشحن',
+  'source' => 'المصدر',
+  'clickOrderId' => 'رقم شحنة Click',
+  'clickOrderRef' => 'مرجع الشحنة',
+  'completionSource' => 'مصدر الإكمال',
+  _ => key?.toString() ?? '',
+};
+
+/// Renders a detail value in a user-friendly way (status names, sources).
+String eventDetailValue(dynamic key, dynamic value) {
+  final k = key?.toString();
+  final v = value?.toString() ?? '';
+  if (k == 'status' || k == 'shippingStatus' || k == 'rawStatus') {
+    return statusLabels[v] ?? v;
+  }
+  if (k == 'source') return syncSourceLabel(v);
+  if (k == 'outcome') {
+    return v == 'shipment_exists'
+        ? 'الشحنة موجودة'
+        : (v == 'not_created' ? 'لم تُنشأ' : v);
+  }
+  return v;
+}
+
 String auditActionLabel(dynamic action, [dynamic extra]) {
   final value = action?.toString() ?? '';
   if (value.startsWith('order.')) {
@@ -103,6 +138,7 @@ String auditActionLabel(dynamic action, [dynamic extra]) {
         'join.approved': 'الموافقة على الانضمام',
         'join.rejected': 'رفض طلب الانضمام',
         'member.updated': 'تحديث بيانات الموظف وصلاحياته',
+        'member.password_reset': 'إعادة تعيين كلمة مرور الموظف',
         'settings.updated': 'تحديث إعدادات المؤسسة',
       }[value] ??
       'عملية مسجلة';
@@ -115,6 +151,94 @@ bool isPhoneShellWidth(double width) => width < 768;
 final liveNavigatorKey = GlobalKey<NavigatorState>();
 String displayAmount(dynamic amount) =>
     amount is num ? '${amount.toStringAsFixed(3)} د.أ' : '—';
+
+/// Enriches an order map for printing with organization settings and the logo
+/// of the ORDER'S OWN page only. It never borrows another page's logo: the page
+/// is looked up by the order's immutable `pageId`. When the page is archived or
+/// the logo is absent the print falls back to the page NAME (never a broken
+/// image). This must not be cached across accounts.
+Future<Map<String, dynamic>> withPageBranding(
+  Map<String, dynamic> order,
+) async {
+  final merged = Map<String, dynamic>.from(order);
+  try {
+    final settings = await VelnixGateway.instance.call('getSettings');
+    for (final key in ['organizationName', 'receiptFooter']) {
+      if (!merged.containsKey(key) && settings[key] != null) {
+        merged[key] = settings[key];
+      }
+    }
+  } catch (_) {}
+  final pageId = merged['pageId']?.toString();
+  if (pageId != null && pageId.isNotEmpty) {
+    try {
+      final pages = await VelnixGateway.instance.allowedPages();
+      final items = (pages['items'] as List? ?? []).map(
+        (e) => Map<String, dynamic>.from(e as Map),
+      );
+      for (final p in items) {
+        if (p['id']?.toString() == pageId) {
+          if (p['logoDataUri'] != null) {
+            merged['logoDataUri'] = p['logoDataUri'];
+          }
+          if (p['name'] != null &&
+              (merged['pageName'] ?? '').toString().isEmpty) {
+            merged['pageName'] = p['name'];
+          }
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+  return merged;
+}
+
+/// Batch variant for bulk printing: fetches organization settings and the
+/// caller's allowed pages ONCE, then decorates each order with its OWN page's
+/// logo (never another page's). Orders whose page is not in the allowed set
+/// keep their stored page name and simply print without a logo.
+Future<List<Map<String, dynamic>>> decorateOrdersForPrint(
+  List<Map<String, dynamic>> orders,
+) async {
+  Map<String, dynamic> settings = const {};
+  try {
+    settings = await VelnixGateway.instance.call('getSettings');
+  } catch (_) {}
+  final logoByPage = <String, String>{};
+  final nameByPage = <String, String>{};
+  try {
+    final pages = await VelnixGateway.instance.allowedPages();
+    for (final p in (pages['items'] as List? ?? []).map(
+      (e) => Map<String, dynamic>.from(e as Map),
+    )) {
+      final id = p['id']?.toString();
+      if (id == null) continue;
+      if (p['logoDataUri'] != null) {
+        logoByPage[id] = p['logoDataUri'].toString();
+      }
+      if (p['name'] != null) {
+        nameByPage[id] = p['name'].toString();
+      }
+    }
+  } catch (_) {}
+  return [
+    for (final o in orders)
+      {
+        ...o,
+        if (!o.containsKey('organizationName') &&
+            settings['organizationName'] != null)
+          'organizationName': settings['organizationName'],
+        if (!o.containsKey('receiptFooter') &&
+            settings['receiptFooter'] != null)
+          'receiptFooter': settings['receiptFooter'],
+        if (logoByPage[o['pageId']?.toString()] != null)
+          'logoDataUri': logoByPage[o['pageId']?.toString()],
+        if ((o['pageName'] ?? '').toString().isEmpty &&
+            nameByPage[o['pageId']?.toString()] != null)
+          'pageName': nameByPage[o['pageId']?.toString()],
+      },
+  ];
+}
 
 class VelnixLiveApp extends StatelessWidget {
   const VelnixLiveApp({super.key});
@@ -1055,6 +1179,24 @@ class _LiveShellState extends State<LiveShell> {
             ],
           ),
           const SizedBox(height: 4),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.password_outlined, size: 20),
+            title: const Text(
+              'تغيير كلمة المرور',
+              style: TextStyle(fontSize: 12.5),
+            ),
+            onTap: () {
+              if (drawer) Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => const ChangePasswordScreen(),
+                ),
+              );
+            },
+          ),
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,

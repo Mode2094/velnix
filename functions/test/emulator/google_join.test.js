@@ -84,7 +84,8 @@ test('general manager creates an email/password employee, resets the password an
   assert.equal(member.role,'sales');assert.deepEqual(member.permissions,['viewReports']);assert.equal(member.approvalStatus,'approved');assert.equal(member.password,undefined);
   await assert.rejects(invoke('createEmployee',gm,{name:'Duplicate',email,password,role:'sales',permissions:[],active:true}),{code:'already-exists'});
   await assert.rejects(invoke('createEmployee',manager,{name:'Forbidden',email:'forbidden@velnix.test',password,role:'sales',permissions:[],active:true}),{code:'permission-denied'});
-  await assert.rejects(invoke('resetEmployeePassword',manager,{id:created.id,password:'NewPass123!'}),{code:'permission-denied'});
+  // A delegated manager may administer employees but never a higher/equal rank.
+  await assert.rejects(invoke('resetEmployeePassword',manager,{id:gm.uid,password:'NewPass123!'}),{code:'permission-denied'});
   await assert.rejects(invoke('resetEmployeePassword',gm,{id:newcomer.uid,password:'NewPass123!'}),{code:'failed-precondition'});
   await invoke('resetEmployeePassword',gm,{id:created.id,password:'NewPass123!'});
   const signIn=async pass=>{

@@ -337,20 +337,7 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
           ),
         );
       }
-      var merged = orders;
-      try {
-        final s = await VelnixGateway.instance.settings(fresh: true);
-        merged = [
-          for (final o in orders)
-            {
-              ...o,
-              if (!o.containsKey('organizationName'))
-                'organizationName': s['organizationName'],
-              if (!o.containsKey('receiptFooter'))
-                'receiptFooter': s['receiptFooter'],
-            },
-        ];
-      } catch (_) {}
+      final merged = await decorateOrdersForPrint(orders);
       if (!mounted) return;
       await Navigator.push(
         context,

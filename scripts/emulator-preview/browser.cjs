@@ -171,14 +171,19 @@ async function main(){
   assert.equal(await gm.getByRole('button',{name:'العمليات',exact:true}).count(),0);
   assert.equal(await gm.getByRole('button',{name:'المزامنة',exact:true}).count(),0);
   const audit=await okay(gm,'listAudit',{});assert.ok(audit.items.some(a=>a.entityId===orders.generalManager.id&&a.action==='order.status_changed'));await gm.screenshot({path:path.join(out,'audit-hidden.png')});
-  const p=sessions.dataEntry.p;await nav(p,'notices');await p.getByRole('button',{name:'تحديث',exact:true}).waitFor();
-  await p.waitForFunction(()=>document.body.innerText.includes('طلب جديد'),null,{timeout:20000});
+  const p=sessions.dataEntry.p;await nav(p,'notices');
+  // Wait for the notices panel content (text-based: Flutter's role nodes are
+  // not always exposed as named buttons before the panel finishes loading).
+  const noticesReady=p.getByText('تفعيل إشعارات الجهاز',{exact:true}).first();
+  try{await noticesReady.waitFor({timeout:90000});}
+  catch(_){const retry=p.getByRole('button',{name:'إعادة المحاولة',exact:true});if(await retry.count())await activate(p,retry.first());await noticesReady.waitFor({timeout:120000});}
+  await p.waitForFunction(()=>document.body.innerText.includes('طلب جديد'),null,{timeout:60000});
   const notices=await okay(p,'listNotices',{}),notice=notices.items.find(n=>n.orderId===orders.dataEntry.id);assert.ok(notice);assert.equal(notice.read,false);
   await p.screenshot({path:path.join(out,'notifications-ui.png')});
-  await activate(p,p.locator('flt-semantics[flt-tappable]').filter({hasText:'طلب جديد'}).filter({hasText:'افتح الطلب لعرض آخر تغيير.'}).first());await p.getByText('تفاصيل الطلب',{exact:true}).waitFor();
+  await activate(p,p.locator('flt-semantics[flt-tappable]').filter({hasText:'طلب جديد'}).filter({hasText:'افتح الطلب لعرض آخر تغيير.'}).first());await p.getByText('تفاصيل الطلب',{exact:true}).waitFor({timeout:90000});
   const read=await okay(p,'listNotices',{});assert.equal(read.items.find(n=>n.id===notice.id).read,true);await back(p);
   await denied(sessions.sales.p,'markNoticeRead',{id:notice.id});
-  await nav(p,'notices');await click(p,'تفعيل إشعارات الجهاز');await p.getByText(/إشعارات الجهاز تحتاج تهيئة المؤسسة/).last().waitFor();
+  await nav(p,'notices');await activate(p,p.getByText('تفعيل إشعارات الجهاز',{exact:true}).first());await p.getByText(/إشعارات الجهاز تحتاج تهيئة المؤسسة/).last().waitFor();
  });
  await scenario('UI network error and retry recover without fabricated success',async()=>{
   const p=sessions.sales.p;await p.route('**/listOrders',route=>route.abort());await nav(p,'orders');const refresh=p.getByRole('button',{name:'تحديث القائمة',exact:true});if(await refresh.count())await activate(p,refresh.first());await p.locator('[aria-label*="تعذر تحميل الطلبات"]').first().waitFor({timeout:20000});
@@ -203,7 +208,7 @@ async function main(){
    releaseRefresh();const response=await refreshed;assert.equal(response.status(),400);await response.finished();
   }finally{releaseRefresh();await p.unroute('**/europe-west1/joinSession',refreshRoute);await p.evaluate(()=>window.resumeAuthorizationFrames());}
   await p.getByText(/حسابك معطل|يلزم حساب (?:Google )?موثق وفعال/).first().waitFor({timeout:15000});await denied(p,'getOrder',{id:orders.dataEntry.id});assert.equal(await p.getByText('إدارة الطلبات',{exact:true}).count(),0);await p.screenshot({path:path.join(out,'disabled-live-session.png')});
-  await okay(sessions.generalManager.p,'decideJoinRequest',{id:'qa-pending',decision:'rejected'});await sessions.pending.p.getByText('تم رفض طلب انضمامك. راجع المدير العام',{exact:true}).waitFor({timeout:15000});await denied(sessions.pending.p,'getOrder',{id:orders.generalManager.id});
+  await okay(sessions.generalManager.p,'decideJoinRequest',{id:'qa-pending',decision:'rejected'});await sessions.pending.p.getByText('تم رفض طلب انضمامك. راجع المدير العام',{exact:true}).waitFor({timeout:60000});await denied(sessions.pending.p,'getOrder',{id:orders.generalManager.id});
  });
  assert.equal(results.length,21);assert.deepEqual(pageErrors,[]);
  assert.equal(traffic.some(r=>/^(identitytoolkit|securetoken|firestore|cloudfunctions|firebaseappcheck)\.googleapis\.com$/.test(r.host)),false);

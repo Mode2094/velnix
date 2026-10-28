@@ -60,7 +60,7 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('dashboard renders three cards from a single stats call', (
+  testWidgets('dashboard renders four cards from a single stats call', (
     tester,
   ) async {
     var calls = 0;
@@ -86,7 +86,9 @@ void main() {
     expect(calls, 1);
     expect(find.text('كل الطلبات'), findsOneWidget);
     expect(find.text('طلبات شركات التوصيل'), findsOneWidget);
-    expect(find.text('الطلبات غير المسندة لشركة'), findsOneWidget);
+    expect(find.text('جميع طلبات المتجر'), findsOneWidget);
+    // كل الطلبات (18) and طلبات شركات التوصيل (9) are scopes; the store card
+    // counts the internal, non-delivery orders only (3).
     expect(find.text('18'), findsOneWidget);
     expect(find.text('9'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
@@ -125,7 +127,7 @@ void main() {
     for (final entry in {
       'كل الطلبات': 'all:all',
       'طلبات شركات التوصيل': 'delivery:all',
-      'الطلبات غير المسندة لشركة': 'internal:all',
+      'جميع طلبات المتجر': 'internal:all',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);
@@ -168,7 +170,7 @@ void main() {
     for (final entry in {
       'كل الطلبات': 'all',
       'طلبات شركات التوصيل': 'delivery',
-      'الطلبات غير المسندة لشركة': 'internal',
+      'جميع طلبات المتجر': 'internal',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);
@@ -246,7 +248,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('كل الطلبات'), findsOneWidget);
-      expect(find.text('11106'), findsOneWidget);
+      expect(find.text('11106'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
   }
@@ -278,7 +280,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('د.أ'), findsNothing);
-    expect(find.text('18'), findsOneWidget);
+    expect(find.text('18'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

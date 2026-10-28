@@ -512,20 +512,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         }
         missing += chunk.length - orders.length;
         if (orders.isEmpty) continue;
-        var merged = orders;
-        try {
-          final settings = await gateway.settings(fresh: true);
-          merged = [
-            for (final o in orders)
-              {
-                ...o,
-                if (!o.containsKey('organizationName'))
-                  'organizationName': settings['organizationName'],
-                if (!o.containsKey('receiptFooter'))
-                  'receiptFooter': settings['receiptFooter'],
-              },
-          ];
-        } catch (_) {}
+        final merged = await decorateOrdersForPrint(orders);
         if (!mounted) return;
         await Navigator.push(
           context,
@@ -1943,13 +1930,15 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                       ),
                       children: [
                         for (final entry in details.entries)
-                          Align(
-                            alignment: AlignmentDirectional.centerStart,
-                            child: Text(
-                              '${entry.key}: ${entry.value}',
-                              style: const TextStyle(fontSize: 11.5),
+                          if (entry.value != null &&
+                              entry.value.toString().isNotEmpty)
+                            Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(
+                                '${eventDetailLabel(entry.key)}: ${eventDetailValue(entry.key, entry.value)}',
+                                style: const TextStyle(fontSize: 11.5),
+                              ),
                             ),
-                          ),
                       ],
                     ),
                   ),
@@ -2235,17 +2224,15 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             onPressed: () async {
               try {
                 final latest = await VelnixGateway.instance.order(widget.id);
-                final branding = await VelnixGateway.instance.call(
-                  'getSettings',
+                if (!context.mounted) return;
+                final order = await withPageBranding(
+                  Map<String, dynamic>.from(latest['order'] as Map),
                 );
                 if (!context.mounted) return;
                 Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => OrderPrintScreen(
-                      order: Map<String, dynamic>.from(latest['order'] as Map)
-                        ..addAll(branding),
-                    ),
+                    builder: (_) => OrderPrintScreen(order: order),
                   ),
                 );
               } catch (e) {
