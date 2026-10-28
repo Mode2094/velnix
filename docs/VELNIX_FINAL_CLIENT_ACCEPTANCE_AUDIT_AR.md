@@ -140,7 +140,7 @@
 - القالب الحراري يبقى للبكرات 58/80مم.
 - **ملاحظة:** الشعارات تبقى ملوّنة في القالب الأبيض (لم تُحوّل إلى رمادي). إن طلب العميل أبيض/أسود بالكامل للشعارات فهذا تعديل بصري إضافي.
 
-**الأدلة:** `print/a4_colored_contact.png`، `print/a4_white_contact.png`، `print/thermal80.png`، واختبارات `order_printing_phase3_test.dart`.
+**الأدلة:** `print/a4_colored_contact.png`، `print/a4_white_contact.png`، `print/thermal80.png`، واختبارات `order_printing_phase3_test.dart`. ملفات PDF النموذجية (بيانات اصطناعية) في `pdf/a4_colored_contact.pdf`، `pdf/a4_white_contact.pdf`، `pdf/thermal80.pdf`، `pdf/a6_long.pdf`.
 
 ### 11) التحديد المتعدد والماسح ونتائج الباركود — ✅ PASS (فروق قبول محددة)
 
