@@ -1,8 +1,8 @@
 # VELNIX — تدقيق القبول النهائي للعميل (بوابة الإغلاق)
 
 **المشروع:** `velnix-6c1a2` · https://velnix-6c1a2.web.app
-**الفرع:** `main` · **Commit الكود المدقق:** `ff8268e`
-**CI:** https://github.com/Mode2094/velnix/actions/runs/40758795161 — ✅ نجح (flutter / firebase / android / emulator-ui)
+**الفرع:** `main` · **Commit الكود المدقق:** `fcd727c`
+**CI:** https://github.com/Mode2094/velnix/actions/runs/40770291098 — ✅ نجح (flutter / firebase / android / emulator-ui)
 **تاريخ التنفيذ:** 28 أكتوبر 2026
 **بيانات الاختبار:** اصطناعية بالكامل — لا بيانات عملاء ولا شحنات Click حقيقية.
 
@@ -20,7 +20,7 @@
 | Demo browser smoke | ✅ 30 شاشة، 0 أخطاء صفحة |
 | Code128 + QR | ✅ **51/51** على 203/300/600 DPI |
 | النشر | ✅ Functions + Hosting، وبصمة الويب مطابقة للبناء |
-| APK | ✅ `delivery/apk/Velnix-release.apk` — SHA-256 `f9a02768073cde07…f2e25a` |
+| APK | ✅ `delivery/apk/Velnix-release.apk` — SHA-256 `8fcbcaf02fb60f37…1092ddfb` |
 
 الأدلة المنظمة في `docs/evidence/final-audit/`، وهذا الملف يربط كل بند بدليله.
 
@@ -68,6 +68,7 @@
 **إصلاح إضافي للمسار المباشر `directId` (مراجعة مستقلة):** كان يُحقن بعد الدمج كعنصر خارج الترتيب، فيُصبح حد الصفحة أقدم طلب (المباشر) وتُتخطى النتائج الأحدث غير المستهلكة. الآن يُعامل كـ**مصدر خامس** داخل `mergeSourcePage` بموضع مستقل، فيُدمج بترتيبه الزمني الصحيح ويحتفظ المؤشر بموضعه.
 **إعادة إنتاج:** طلب قديم `ABCDEFGH` + ستة طلبات أحدث تحتوي `ABCDEFGH`، `pageSize=3` تنازليًا → قبل الإصلاح **3 فقط** ثم نهاية كاذبة؛ بعد الإصلاح **7/7** بلا تكرار.
 **اختبار:** `functions/test/emulator/phase5_direct_id.test.js` (3): تنازلي، توقيت متساوٍ، وتصاعدي.
+**دليل قبل/بعد:** `docs/evidence/final-audit/direct-id-before-fix.log` (3 نتائج فقط ثم نهاية كاذبة) و`direct-id-after-fix.log` (3/3). أُعيد تشغيل اختبار ما قبل الإصلاح على worktree عند `9fe620a`.
 
 **الاختبارات الجديدة — `functions/test/emulator/phase4_merge_pagination.test.js` (4):**
 1. بحث 5 أرقام: 130 هاتفاً أحدث + `clickOrderRef` قديم واحد → 131 نتيجة بلا فقد/تكرار ونهاية حقيقية.
@@ -259,9 +260,9 @@
 | البند | الدليل |
 |---|---|
 | Functions | 56 دالة محدثة على `europe-west1` — `docs/evidence/final-audit/deploy-functions.log` |
-| Hosting | HTTP 200، وبصمة `main.dart.js` المنشورة = البناء المحلي (`4bccea8baf529d2cf757…`) — `deploy-hosting.log`, `deployment.json` |
+| Hosting | HTTP 200، وبصمة `main.dart.js` المنشورة = البناء المحلي (`833bad9b88781742f23c…`) — `deploy-hosting.log`, `deployment.json` |
 | حارس الدالة الجديدة | `correctOrderStatus` بلا مصادقة يعيد `UNAUTHENTICATED` |
-| APK | `delivery/apk/Velnix-release.apk` — 81,131,692 بايت — SHA-256 `f9a02768073cde078c384fd5bd80dce440d151ae97cbdb6a741fe75f74f2e25a` — `apk-sha256.txt` |
+| APK | `delivery/apk/Velnix-release.apk` — 81,131,692 بايت — SHA-256 `8fcbcaf02fb60f37f8c4fd2d815268b887b49c0f994a0f2df56861601092ddfb` — `apk-sha256.txt` |
 | قواعد/فهارس Firestore | بلا تغيير في هذه الجولة — لم تُنشر |
 
 ---
@@ -273,7 +274,7 @@
 | Flutter | **493** | `flutter test` (Linux container) |
 | Functions unit | **195** | `docs/evidence/final-audit/functions-unit.log` |
 | Functions emulator + rules | **241** | `docs/evidence/final-audit/functions-emulator.log` |
-| Playwright 5 أدوار | **21/21** | CI run `40758795161` (job `emulator-ui`) |
+| Playwright 5 أدوار | **21/21** | CI run `40770291098` (job `emulator-ui`) |
 | Demo smoke | 30 شاشة / 0 أخطاء | `docs/evidence/final-audit/demo-browser-results.json` |
 | Barcode/QR | **51/51** | `barcode-decode.log`, `barcode-decode-results.json` |
 

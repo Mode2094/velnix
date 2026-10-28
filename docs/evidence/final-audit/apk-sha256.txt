@@ -1,1 +1,1 @@
-f9a02768073cde078c384fd5bd80dce440d151ae97cbdb6a741fe75f74f2e25a  delivery/apk/Velnix-release.apk
+8fcbcaf02fb60f37f8c4fd2d815268b887b49c0f994a0f2df56861601092ddfb  delivery/apk/Velnix-release.apk

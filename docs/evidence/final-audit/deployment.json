@@ -1,15 +1,11 @@
 {
-  "codeCommit": "ff8268e4a93241c9c51308f2959661e964cf4e39",
+  "codeCommit": "fcd727c4e35a96d4fa62e2f06db77db1a8492042",
   "ci": {
-    "url": "https://github.com/Mode2094/velnix/actions/runs/40758795161",
+    "url": "https://github.com/Mode2094/velnix/actions/runs/40770291098",
+    "headSha": "fcd727c4e35a96d4fa62e2f06db77db1a8492042",
     "status": "completed",
     "conclusion": "success",
-    "headSha": "ff8268e4a93241c9c51308f2959661e964cf4e39",
     "jobs": [
-      {
-        "name": "android",
-        "conclusion": "success"
-      },
       {
         "name": "emulator-ui",
         "conclusion": "success"
@@ -21,23 +17,27 @@
       {
         "name": "firebase",
         "conclusion": "success"
+      },
+      {
+        "name": "android",
+        "conclusion": "success"
       }
     ]
   },
   "hosting": {
     "url": "https://velnix-6c1a2.web.app",
     "status": 200,
-    "mainDartJsSha256Prefix": "4bccea8baf529d2cf757"
+    "mainDartJsSha256Prefix": "833bad9b88781742f23c"
   },
   "apk": {
     "path": "delivery/apk/Velnix-release.apk",
     "bytes": 81131692,
-    "sha256": "f9a02768073cde078c384fd5bd80dce440d151ae97cbdb6a741fe75f74f2e25a"
+    "sha256": "8fcbcaf02fb60f37f8c4fd2d815268b887b49c0f994a0f2df56861601092ddfb"
   },
   "functions": {
     "project": "velnix-6c1a2",
     "region": "europe-west1",
-    "updated": 55
+    "updated": 56
   },
-  "deployedAt": "2026-10-28T20:10:04Z"
+  "deployedAt": "2026-10-28T21:33:10Z"
 }
