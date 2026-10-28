@@ -34,7 +34,7 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const pageNames=pagesReturned[1].split(',').map(n=>n.trim());
  if(pageNames.length!==6||new Set(pageNames).size!==pageNames.length||pageNames.some(n=>!['listPages','listAllowedPages','savePage','archivePage','restorePage','pageStats'].includes(n)))throw Error('source_manifest_requires_review');
  const bulkNames=bulkReturned[1].split(',').map(n=>n.trim()).filter(n=>!['MAX_BULK','MAX_DISPATCH'].includes(n));
- if(bulkNames.length!==5||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch','getBulkOperation'].includes(n)))throw Error('source_manifest_requires_review');
+ if(bulkNames.length!==6||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch','getBulkOperation','listBulkOperations'].includes(n)))throw Error('source_manifest_requires_review');
  functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...pageNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...bulkNames.map(name=>({name,kind:'callable',region:'europe-west1'})));

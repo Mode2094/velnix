@@ -33,6 +33,7 @@ part 'live_bucket_status.dart';
 part 'live_admin.dart';
 part 'live_pages.dart';
 part 'live_barcode.dart';
+part 'live_bulk_ops.dart';
 part 'live_notices.dart';
 part 'live_operations.dart';
 

@@ -163,6 +163,15 @@ class VelnixGateway {
   Future<Map<String, dynamic>> bulkOperation(String operationId) =>
       call('getBulkOperation', {'operationId': operationId});
 
+  /// The caller's own bulk dispatch operations, newest first, so the app can
+  /// recover operation ids and statuses after a restart.
+  Future<List<Map<String, dynamic>>> bulkOperations() async {
+    final result = await call('listBulkOperations', {'pageSize': 20});
+    return (result['items'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
   Future<Map<String, dynamic>> bulkChangeStatus(
     List<String> ids,
     String status,

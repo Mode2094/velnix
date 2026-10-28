@@ -248,4 +248,55 @@ void main() {
     expect(opIds.first.length, greaterThanOrEqualTo(16));
     expect(opIds.first, isNot(contains('null')));
   });
+
+  testWidgets('the bulk operations screen recovers operation status', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listBulkOperations':
+          return {
+            'items': [
+              {
+                'operationId': 'op_restart_0001',
+                'kind': 'dispatch',
+                'status': 'partial',
+                'ids': ['o1'],
+                'succeeded': 1,
+                'failed': 0,
+                'uncertain': 0,
+                'remaining': 2,
+              },
+            ],
+          };
+        case 'getBulkOperation':
+          return {
+            'operationId': 'op_restart_0001',
+            'status': 'partial',
+            'results': [
+              {'id': 'o1', 'ok': true, 'trackingNumber': 'TRK-1'},
+              {'id': 'o2', 'ok': false, 'uncertain': true},
+            ],
+          };
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(BulkOperationsScreen(policy: gm())));
+    await tester.pumpAndSettle();
+    expect(find.text('سجل عمليات الإرسال'), findsOneWidget);
+    expect(find.text('op_restart_0001'), findsOneWidget);
+    expect(find.textContaining('جزئية'), findsOneWidget);
+    expect(find.textContaining('متبقٍ 2'), findsOneWidget);
+
+    await tester.tap(find.text('عرض نتائج الطلبات'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('نتيجة غير مؤكدة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

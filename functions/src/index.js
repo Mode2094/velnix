@@ -210,6 +210,9 @@ exports.searchOrders=callable(async req=>{
   if((filters.amountMin!=null||filters.amountMax!=null)&&!(user.role==='generalManager'||can(user,'viewAmounts')))fail('permission-denied','لا يمكنك التصفية حسب المبلغ');
   const {normalizeSearch,tokenize}=require('./search');
   const sort=req.data?.sort==='asc'?'asc':'desc';
+  // A cursor is bound to the exact search conditions. Reusing it with a different
+  // query/filters/sort is rejected so a stale cursor can never mix result sets.
+  const cursorKey=fingerprintSearch(query,filters,sort,req.data?.companyId||null,req.data?.bucket||'all',req.data?.status||null);
   const searchPrefix=normalizeSearch(query);
   const tokens=tokenize(query);
   const pageSize=Math.max(1,Math.min(50,Math.floor(Number(req.data?.pageSize)||30)));
@@ -251,8 +254,9 @@ exports.searchOrders=callable(async req=>{
     }
     for(const token of tokens.filter(t=>t.length>=4&&t!=='vnx').slice(0,4))addSub('tk'+si+':'+token,()=>base.where('searchTokens','array-contains',token));
   }
-  const cursorMap=parseCursorMap(req.data?.cursor);
+  const cursor=cursorFromRequest(req.data?.cursor,cursorKey,pageSize,sort,req.data?.direction);
   const PER=Math.max(pageSize,30);
+  const STEP=Math.max(pageSize*4,120); // per-sub-query batch per page
   const matches=new Map();
   const accept=(doc,{strict=true}={})=>{
     if(!doc.exists)return;
@@ -264,17 +268,23 @@ exports.searchOrders=callable(async req=>{
   // Direct document-id hit (cheap, always included).
   const documentId=query.startsWith('VNX-')?query.slice(4):query;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(documentId))accept(await db.doc(`orders/${documentId}`).get(),{strict:false});
-  const nextCursorMap={};
-  let exhaustedSubs=0;
+  // Each sub-query is ordered by (createdAt, documentId) and paged with a TRUE
+  // Firestore compound cursor (startAfter(timestamp, docId)). This preserves ties
+  // that share the same createdAt instead of dropping them.
+  // Every sub-query shares the SAME (createdAt, documentId) order, so a single
+  // global compound cursor (startAfter(timestamp, docId)) pages them all with no
+  // loss — including ties with the same createdAt. `limit(STEP)` fetches enough
+  // candidates past the boundary; the boundary filter removes anything already
+  // returned (dedup across sub-queries).
+  const g0=cursor.g;
+  let anySubHasMore=false;
   for(const sub of subs){
-    let q=sub.builder();
-    // Push the global boundary into the query so we never re-read already-returned
-    // pages. `createdAt < g.c` is valid with an equality/array-contains predicate.
-    if(cursorMap.__g)q=q.where('createdAt','<',Timestamp.fromMillis(cursorMap.__g.c));
-    q=q.orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort).limit(PER*8);
+    let q=sub.builder().orderBy('createdAt',sort).orderBy(FieldPath.documentId(),sort);
+    if(g0)q=q.startAfter(Timestamp.fromMillis(g0.c),g0.i);
+    q=q.limit(STEP);
     const snap=await q.get();
     for(const doc of snap.docs)accept(doc,{strict:!sub.exact});
-    if(snap.size<PER*8)exhaustedSubs++;
+    if(snap.size>=STEP)anySubHasMore=true;
   }
   const all=[...matches.values()];
   all.sort((a,b)=>{
@@ -283,10 +293,10 @@ exports.searchOrders=callable(async req=>{
     if(a.id===b.id)return 0;
     return (a.id>b.id?1:-1)*(sort==='asc'?1:-1);
   });
-  // Global boundary guarantee: exclude anything at or before the previous page's
-  // last (createdAt,id). This removes duplicates even when different sub-queries
-  // surface the same document on later pages.
-  const g=cursorMap.__g;
+  // Global (createdAt,id) boundary from the previous page removes any duplicate
+  // that two sub-queries might both surface — without dropping same-timestamp
+  // records (the boundary is inclusive of the id tie-break).
+  const g=cursor.g;
   const afterBoundary=(d)=>{
     if(!g)return true;
     const c=d.data().createdAt?.toMillis?.()||0;
@@ -296,32 +306,42 @@ exports.searchOrders=callable(async req=>{
   const filtered=all.filter(afterBoundary);
   const page=filtered.slice(0,pageSize);
   const last=page.at(-1);
-  // A full page means there may be more; the final call returns an empty page
-  // with nextCursor=null. `limited` also flags that a sub-query still had data.
-  const hasMore=page.length===pageSize;
-  if(last)nextCursorMap.__g={c:last.data().createdAt?.toMillis?.()||0,i:last.id};
+  // Accurate end detection: there is more only if a full page was returned AND
+  // (a sub-query still has data OR the current window had extra matches).
+  const hasMore=page.length===pageSize&&(anySubHasMore||filtered.length>pageSize);
+  const nextCursor=hasMore?encodeCursor({
+    key:cursorKey,
+    sort,
+    pageSize,
+    direction:req.data?.direction??null,
+    g:last?{c:last.data().createdAt?.toMillis?.()||0,i:last.id}:null,
+  }):null;
   return {
     items:page.map(d=>orderForUser(user,d)),
-    nextCursor:hasMore?encodeCursorMap(nextCursorMap):null,
-    limited:hasMore&&exhaustedSubs<subs.length,
+    nextCursor,
+    limited:anySubHasMore,
   };
 });
-// Opaque, validated cursor map pagination for searchOrders.
-function encodeCursorMap(map){return Buffer.from(JSON.stringify(map),'utf8').toString('base64url');}
-function parseCursorMap(raw){
-  if(typeof raw!=='string'||raw.length===0||raw.length>8000)return {};
-  try{
-    const d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));
-    if(!d||typeof d!=='object'||Array.isArray(d))return {};
-    const out={};
-    for(const [k,v] of Object.entries(d)){
-      if(typeof k!=='string'||k.length>80)continue;
-      if(!v||!Number.isFinite(v.c)||typeof v.i!=='string'||v.i.length>140)continue;
-      out[k]={c:v.c,i:v.i};
-    }
-    return out;
-  }catch(e){return {};}
+// Binds a pagination cursor to the exact search conditions.
+function fingerprintSearch(query,filters,sort,companyId,bucket,status){
+  const norm=JSON.stringify({q:query,f:{...filters,from:filters.from?filters.from.toISOString():null,to:filters.to?filters.to.toISOString():null},sort,companyId,bucket,status});
+  return crypto.createHash('sha256').update(norm).digest('hex').slice(0,32);
 }
+// Reads + validates a cursor; rejects reuse with different search conditions.
+function cursorFromRequest(raw,key,pageSize,sort,direction){
+  const empty={key,sort,pageSize,g:null,subs:{}};
+  if(typeof raw!=='string'||raw.length===0)return empty;
+  let d;try{d=JSON.parse(Buffer.from(raw,'base64url').toString('utf8'));}catch(e){return empty;}
+  if(!d||typeof d!=='object'||d.key!==key||d.sort!==sort||d.pageSize!==pageSize)return empty;
+  if(direction!==undefined&&d.direction!==direction)return empty;
+  const subs={};
+  for(const [k,v] of Object.entries(d.subs||{})){
+    if(typeof k==='string'&&k.length<=80&&v&&Number.isFinite(v.c)&&typeof v.i==='string'&&v.i.length<=140)subs[k]={c:v.c,i:v.i};
+  }
+  const g=(d.g&&Number.isFinite(d.g.c)&&typeof d.g.i==='string'&&d.g.i.length<=140)?{c:d.g.c,i:d.g.i}:null;
+  return {key,sort,pageSize,g,subs};
+}
+function encodeCursor({key,sort,pageSize,direction,g,subs}){return Buffer.from(JSON.stringify({key,sort,pageSize,direction,g,subs}),'utf8').toString('base64url');}
 // Exact index-backed counts: no silent 1,000-order truncation.
 // Firestore aggregation pricing depends on scanned index entries.
 async function sumOrders(query,showAmount){

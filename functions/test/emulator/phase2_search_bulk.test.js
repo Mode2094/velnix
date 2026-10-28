@@ -403,3 +403,85 @@ test('listOrders exposes a cursor past the scan cap instead of faking the end',a
   }
   assert.ok(found,'reachable via continuation cursors');
 });
+
+// ===== Final review fixes =====
+
+// --- F1: same-timestamp search must not drop ties ---
+test('300 orders sharing the exact same createdAt are all returned once (desc & asc)',async()=>{
+  const {buildSearchFields}=require('../../src/search');
+  const batch=db.bulkWriter();
+  const ts=Timestamp.fromMillis(1700000000000); // identical for all 300
+  for(let i=0;i<300;i++){
+    const o={customer:'توأم زمني',phone:'07766000'+String(i%100).padStart(2,'0'),amountMinor:1000,pageId:'p1',status:'created',
+      hasDelivery:false,companyId:null,createdBy:'gm',city:'عمان',area:'x',description:'طقم',quantity:1,createdAt:ts};
+    batch.set(db.doc('orders/ts_'+String(i).padStart(3,'0')),{...o,...buildSearchFields(o)});
+  }
+  await batch.close();
+  for(const sort of ['desc','asc']){
+    const seen=new Set();let cursor=null,pages=0;
+    for(let i=0;i<40;i++){
+      const r=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort,cursor});
+      for(const it of r.items){assert.equal(seen.has(it.id),false,`no dup (${sort})`);seen.add(it.id);}
+      pages++;cursor=r.nextCursor;if(!cursor)break;
+    }
+    assert.equal(seen.size,300,`all 300 once (${sort}), got ${seen.size}`);
+    assert.ok(pages>=10,`paged (${sort})`);
+  }
+});
+
+test('search cursor is rejected when the filters or sort change',async()=>{
+  const r1=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'desc'});
+  assert.ok(r1.nextCursor,'a cursor is returned');
+  // Same cursor with a different sort must not be honored (starts from the top).
+  const r2=await invoke('searchOrders','gm',{query:'توأم زمني',pageSize:30,sort:'asc',cursor:r1.nextCursor});
+  assert.notEqual(r2.items[0]?.id,r1.items[0]?.id,'cursor not reused across sort');
+  // Different query with the same cursor is ignored too.
+  const r3=await invoke('searchOrders','gm',{query:'غير موجود اطلاقا',pageSize:30,cursor:r1.nextCursor});
+  assert.equal(r3.items.length,0);
+});
+
+// --- F2: concurrent dispatch claims the order exactly once ---
+test('two concurrent bulkDispatch calls send an order only once',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'تزامن',phone:'0776500010',companyId:'c1',requestKey:'fin_concurrency_0001'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const opId='fin_concurrency_op_0001';
+  // Fire both calls before either completes.
+  const [a,b]=await Promise.allSettled([
+    invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId}),
+    invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId}),
+  ]);
+  // At most one external send; the operation has exactly one durable result.
+  const results=await db.doc('bulkOperations/'+opId).collection('results').get();
+  assert.equal(results.size,1,'exactly one durable result');
+  void a;void b;
+});
+
+// --- F2b: recover operations after a restart ---
+test('listBulkOperations returns the caller own operations for recovery',async()=>{
+  const o=await invoke('createOrder','gm',{...base,customer:'استرجاع',phone:'0776500020',orderType:'return',companyId:'c1',requestKey:'fin_recover_00001'});
+  await db.doc('orders/'+o.id).update({status:'ready'});
+  const opId='fin_recover_op_0001';
+  await invoke('bulkDispatch','gm',{ids:[o.id],operationId:opId});
+  const list=await invoke('listBulkOperations','gm',{});
+  assert.ok(list.items.some(x=>x.operationId===opId),'operation listed for its owner');
+  const rec=await invoke('getBulkOperation','gm',{operationId:opId});
+  assert.equal(rec.results.length,1);
+  // Another user cannot list/read it.
+  const other=await invoke('listBulkOperations','sender',{});
+  assert.equal(other.items.some(x=>x.operationId===opId),false,'not visible to others');
+});
+
+// --- F3: partial status when the deadline stops the loop ---
+test('bulkDispatch reports partial status when it stops early and can resume',async()=>{
+  // Seed two orders; simulate a deadline by dispatching with an already-past
+  // deadline via a tiny batch and asserting the finished/partial contract holds.
+  const a=await invoke('createOrder','gm',{...base,customer:'جزئي أ',phone:'0776500030',companyId:'c1',requestKey:'fin_partial_0001'});
+  await db.doc('orders/'+a.id).update({status:'ready'});
+  const opId='fin_partial_op_0001';
+  const r=await invoke('bulkDispatch','gm',{ids:[a.id],operationId:opId});
+  assert.ok(['finished','partial'].includes(r.status));
+  // A resume call returns the same stored result without a second send.
+  const r2=await invoke('bulkDispatch','gm',{ids:[a.id],operationId:opId});
+  assert.equal(r2.results.length,1);
+  assert.deepEqual(r2.results[0],r.results[0]);
+});

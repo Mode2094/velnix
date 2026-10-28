@@ -135,11 +135,13 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     return {results,succeeded,failed:results.length-succeeded};
   }
 
-  // Maximum orders dispatched to the vendor in a single call. Cloud Functions
-  // have a 60s budget; each dispatch can take up to ~15s plus a read. Keeping
-  // the batch small means the function finishes well within its timeout and the
-  // durable record is written before the client is told anything.
+  // Per-call dispatch budget. Each dispatch can take up to ~15s plus a read and
+  // the callable's total budget is 60s, so we ALSO enforce a wall-clock deadline
+  // below: the loop stops starting new sends before the deadline and reports the
+  // operation as `partial` so the client can resume the remaining orders. A hard
+  // batch cap (10) plus the deadline guarantees the function returns in time.
   const MAX_DISPATCH = 10;
+  const DISPATCH_DEADLINE_MS = 45000; // leave headroom inside the 60s timeout
 
   // Fingerprints an operation's order-id set so the same operationId can only be
   // used with the same content. Order-independent and stable.
@@ -149,13 +151,11 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
   }
 
   // Runs (or resumes) a durable bulk dispatch. The CLIENT creates the
-  // operationId and passes it in, so it knows the id before the call returns and
-  // can recover after a dropped connection. The record stores the actor, the
-  // frozen ordered id set, a content fingerprint and a durable per-order result
-  // subcollection. Re-invoking the SAME operation with the SAME ids never
-  // re-dispatches an order that already has a result, and never lets a different
-  // user take over the operation. `setorder` is only ever called through the
-  // single-order flow, whose lock/needs_review protection is unchanged.
+  // operationId and passes it in. Each order is CLAIMED atomically before any
+  // external call, so two concurrent calls with the same operation/order can
+  // never both send; the loser sees the winner's claim and skips. A transient
+  // failure result never overwrites a confirmed success. `dispatchOrder` (the
+  // single-order flow) still owns the Click lock and needs_review protection.
   async function bulkDispatch(req){
     const user=await requireAuth(req);
     requiredPerm(user,'sendToDelivery');
@@ -165,8 +165,6 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     if(!opId)fail('invalid-argument','معرّف العملية مطلوب (16 حرفاً على الأقل)');
     const fp=fingerprint(ids);
     const opRef=db.doc('bulkOperations/'+opId);
-    // Create-or-validate the operation atomically: never steal another user's id
-    // and never accept the same id with different content.
     await db.runTransaction(async tx=>{
       const snap=await tx.get(opRef);
       if(snap.exists){
@@ -180,10 +178,24 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     });
     const resultsRef=opRef.collection('results');
     const results=[];
+    const deadline=Date.now()+DISPATCH_DEADLINE_MS;
+    let stoppedEarly=false;
     for(const id of ids){
-      // Skip orders that already have a durable result (idempotent resume).
+      // Resume: a durable result already exists.
       const existing=await resultsRef.doc(id).get();
       if(existing.exists){results.push(existing.data());continue;}
+      // Deadline: stop starting new sends; leave the order for a resumed call.
+      if(Date.now()>=deadline){stoppedEarly=true;break;}
+      // Atomically CLAIM this order inside the operation before any send. If a
+      // concurrent call wins the claim, skip it (its result will be read next).
+      const claim=await db.runTransaction(async tx=>{
+        const ref=resultsRef.doc(id);
+        const cur=await tx.get(ref);
+        if(cur.exists)return cur.data();
+        tx.create(ref,{id,state:'claimed',claimedBy:user.id,claimedAt:new Date().toISOString()});
+        return null;
+      });
+      if(claim){results.push(claim.id?claim:{id});continue;}
       let entry;
       try{
         const ref=await loadVisible(user,id);
@@ -197,14 +209,39 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
         entry={id,ok:false,code,uncertain:code==='unavailable',message:typeof e?.message==='string'?e.message.slice(0,200):'',at:new Date().toISOString()};
       }
       results.push(entry);
-      // Durable, per-order, written BEFORE the summary. A failure to persist must
-      // fail the call so the client never sees a fabricated success.
-      await resultsRef.doc(id).set(entry);
+      // Monotonic result write inside a transaction: never overwrite a confirmed
+      // success with a transient failure.
+      await db.runTransaction(async tx=>{
+        const ref=resultsRef.doc(id);
+        const cur=await tx.get(ref);
+        const prev=cur.data();
+        if(prev&&prev.ok===true&&entry.ok!==true)return; // keep the success
+        tx.set(ref,entry);
+      });
     }
     const succeeded=results.filter(r=>r.ok).length;
     const uncertain=results.filter(r=>r.uncertain).length;
-    await opRef.set({status:'finished',finishedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),succeeded,failed:results.length-succeeded,uncertain},{merge:true});
-    return {operationId:opId,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length};
+    const status=stoppedEarly?'partial':'finished';
+    await opRef.set({status,finishedAt:stoppedEarly?null:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
+      succeeded,failed:results.length-succeeded,uncertain,remaining:stoppedEarly?ids.length-results.length:0},{merge:true});
+    return {operationId:opId,status,results,succeeded,failed:results.length-succeeded,uncertain,dispatched:results.length,hasMore:stoppedEarly};
+  }
+
+  // Lists the caller's own bulk operations (newest first) so the app can recover
+  // operation ids and statuses after a restart or a dropped connection. Scoped
+  // strictly to the caller: sendToDelivery is not a licence to read others'.
+  async function listBulkOperations(req){
+    const user=await requireAuth(req);
+    const size=Math.max(1,Math.min(20,Math.floor(Number(req.data?.pageSize)||10)));
+    const snap=await db.collection('bulkOperations').where('actorId','==',user.id).orderBy('startedAt','desc').limit(size).get();
+    const items=[];
+    for(const d of snap.docs){
+      const v=d.data();
+      items.push({operationId:d.id,kind:v.kind,status:v.status||'running',ids:v.ids||[],
+        succeeded:v.succeeded||0,failed:v.failed||0,uncertain:v.uncertain||0,remaining:v.remaining||0,
+        startedAt:v.startedAt?.toDate?.()?.toISOString?.()||null});
+    }
+    return {items};
   }
 
   // Reads a durable bulk operation so the client can recover results after a
@@ -224,5 +261,5 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
       succeeded:d.succeeded||0,failed:d.failed||0,uncertain:d.uncertain||0,finished:d.status==='finished'};
   }
 
-  return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,getBulkOperation,MAX_BULK,MAX_DISPATCH};
+  return {resolveBarcodes,bulkChangeStatus,bulkAssignCompany,bulkDispatch,getBulkOperation,listBulkOperations,MAX_BULK,MAX_DISPATCH};
 };

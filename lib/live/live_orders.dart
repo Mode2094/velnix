@@ -1006,6 +1006,20 @@ class _LiveOrdersState extends State<LiveOrders> {
                   icon: const Icon(Icons.send_outlined, size: 18),
                   label: const Text('إرسال'),
                 ),
+              if (widget.policy.can('sendToDelivery'))
+                OutlinedButton.icon(
+                  onPressed: bulkBusy
+                      ? null
+                      : () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                BulkOperationsScreen(policy: widget.policy),
+                          ),
+                        ),
+                  icon: const Icon(Icons.history, size: 18),
+                  label: const Text('سجل عمليات الإرسال'),
+                ),
               if (bulkBusy)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
