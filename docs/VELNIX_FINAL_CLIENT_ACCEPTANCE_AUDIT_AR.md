@@ -13,12 +13,12 @@
 | المحور | النتيجة |
 |---|---|
 | إصلاحات البوابة (13 بنداً) | ✅ منفذة ومختبرة، ما عدا بنود العتاد/Click الخارجية |
-| Flutter (Linux) | ✅ **488/488** |
+| Flutter (Linux) | ✅ **493/493** |
 | Functions unit | ✅ **195/195** |
-| Functions emulator + rules | ✅ **246/246** |
+| Functions emulator + rules | ✅ **249/249** |
 | Emulator UI (Playwright، 5 أدوار) | ✅ **21/21** في CI |
 | Demo browser smoke | ✅ 30 شاشة، 0 أخطاء صفحة |
-| Code128 + QR | ✅ **45/45** على 203/300/600 DPI |
+| Code128 + QR | ✅ **51/51** على 203/300/600 DPI |
 | النشر | ✅ Functions + Hosting، وبصمة الويب مطابقة للبناء |
 | APK | ✅ `delivery/apk/Velnix-release.apk` — SHA-256 `f9a02768073cde07…f2e25a` |
 
@@ -64,6 +64,10 @@
 - مؤشر الصفحة يحمل مواضع كل المصادر + حداً عالمياً `g` لمنع التكرار بين الصفحات.
 - `listOrders` يستخدم الآن مؤشراً معماً `v2.` (ربط بالفلاتر/الترتيب/الحجم)؛ المؤشرات القديمة (معرّف طلب) تُقبل وتُهيّأ بأمان. رفض إعادة استخدام المؤشر مع فلاتر مختلفة.
 - عند الوصول لحد الحماية (`scanLimit`) يُعاد مؤشر صالح بدل إعلان النهاية.
+
+**إصلاح إضافي للمسار المباشر `directId` (مراجعة مستقلة):** كان يُحقن بعد الدمج كعنصر خارج الترتيب، فيُصبح حد الصفحة أقدم طلب (المباشر) وتُتخطى النتائج الأحدث غير المستهلكة. الآن يُعامل كـ**مصدر خامس** داخل `mergeSourcePage` بموضع مستقل، فيُدمج بترتيبه الزمني الصحيح ويحتفظ المؤشر بموضعه.
+**إعادة إنتاج:** طلب قديم `ABCDEFGH` + ستة طلبات أحدث تحتوي `ABCDEFGH`، `pageSize=3` تنازليًا → قبل الإصلاح **3 فقط** ثم نهاية كاذبة؛ بعد الإصلاح **7/7** بلا تكرار.
+**اختبار:** `functions/test/emulator/phase5_direct_id.test.js` (3): تنازلي، توقيت متساوٍ، وتصاعدي.
 
 **الاختبارات الجديدة — `functions/test/emulator/phase4_merge_pagination.test.js` (4):**
 1. بحث 5 أرقام: 130 هاتفاً أحدث + `clickOrderRef` قديم واحد → 131 نتيجة بلا فقد/تكرار ونهاية حقيقية.
@@ -128,7 +132,8 @@
 - حدود طول ورفض المدخلات غير الصالحة؛ لا استعلامات غير محدودة.
 - **شريحة لكل شرط** مع زر حذف مستقل، و«مسح الكل» منفصل. الفلاتر المتقدمة قابلة للطي كي لا تدفن قائمة الطلبات.
 
-**الاختبارات:** `functions/test/emulator/phase3_filters.test.js` (3)، `test/order_filters_phase3_test.dart` (إزالة شريحة واحدة تحفظ الباقي)، ولقطة `screenshots/filter_chips_760.png`.
+**الاختبارات:** `functions/test/emulator/phase3_filters.test.js` (4)، و`test/order_filters_phase3_test.dart` (إزالة شريحة واحدة تحفظ الباقي عند **390/760/1440**).
+**وضوح الشرائح:** كانت شرائح `InputChip` تفقد لون النص من `ChipTheme` وتظهر كأقراص فارغة. حُدّد لون النص (`VColors.ink`) وخلفية `softBlue` وحدود، وأُعيدت اللقطات عند العروض الثلاثة: `screenshots/filter_chips_390.png`, `filter_chips_760.png`, `filter_chips_1440.png`; الاختبارات تؤكد بقاء الشرائح الأخرى بعد حذف واحدة.
 
 ### 7.1) دقة فلتر الهاتف ونطاق البحث الرقمي — ✅ PASS
 
@@ -220,12 +225,12 @@
 
 | # | الصورة الأصلية | ما تم التحقق منه | الدليل الفعلي | الحالة |
 |---|---|---|---|---|
-| 1 | الفلترة والبحث وتجميع الباركود | شروط بحث/فلترة مستقلة + شرائح إزالة + ماسح 30 كوداً + نتائج مجمعة | `screenshots/filter_chips_760.png`, `barcode_scanner_900.png`, `barcode_results_900.png` | PASS (شكل الكاميرا يعتمد الجهاز) |
+| 1 | الفلترة والبحث وتجميع الباركود | شروط مستقلة + شرائح مقروءة قابلة للحذف عند 390/760/1440 + ماسح 30 كوداً + نتائج مجمعة | `screenshots/filter_chips_390.png`, `filter_chips_760.png`, `filter_chips_1440.png`, `barcode_scanner_900.png`, `barcode_results_900.png` | PASS (شكل الكاميرا يعتمد الجهاز) |
 | 2 | قائمة الطلبات والبحث على الويب | قائمة ويب + بحث + فلاتر + ترقيم بلا فقد/تكرار | `screenshots/orders_1440.png`, `orders_390.png` | PASS |
 | 3 | التعديلات الرئيسية الثلاثة عشر | كل بند في §1 مع اختباره وملفه | جداول §1 + سجلات `functions-unit.log` / `functions-emulator.log` / CI | PASS (ما عدا الخارجي) |
 | 4 | التحديد المتعدد والإجراءات | شريط تحديد + تحديد الظاهر/العكس/الإلغاء + إجراءات جماعية | `screenshots/orders_multi_select_900.png` | PASS |
-| 5 | البوليصة البيضاء | قالب `plain`، ترتيب البيانات/الشعارات/الهوامش + فك الرموز | `print/a4_white_contact.png`, `pdf/a4_white_contact.pdf` | PASS |
-| 6 | البوليصة الملونة | قالب `professional` بشريط علامة + نفس ترتيب البيانات | `print/a4_colored_contact.png`, `pdf/a4_colored_contact.pdf` | PASS |
+| 5 | البوليصة البيضاء | قالب `plain` + اسم صفحة demo «متجر النور التجريبي» وشعار مستقل عن Velnix + فك الرموز | `print/a4_white_page.png`, `pdf/a4_white_page.pdf` | PASS (بيانات صفحة مثبتة؛ المطابقة البصرية الكاملة غير مُدّعاة) |
+| 6 | البوليصة الملونة | قالب `professional` + اسم صفحة demo وشعار مستقل + فك الرموز | `print/a4_colored_page.png`, `pdf/a4_colored_page.pdf` | PASS (بيانات صفحة مثبتة؛ المطلوب قبول بصري للقالب) |
 | 7 | نموذج إنشاء الطلب | الحقول، الصفحة الإلكترونية الإلزامية، غياب الكمية، شركة اختيارية | `screenshots/create_order_900.png` | PASS |
 
 **ملاحظة منهجية:** الصور 1–7 أعلاه هي لقطات **حالة اختبار** (widgets حقيقية ببيانات اصطناعية) وليست صوراً من جهاز العميل. لا تُعد موافقة بصرية من العميل.
@@ -240,7 +245,7 @@
 ## 3. الأدلة الأمنية وسلامة البيانات
 
 - **مصفوفة الصلاحيات:** `functions/test/emulator/phase3_password.test.js` + `functions/test/policy.test.js` (5×5) — **لا تصعيد من dataEntry/sales/warehouse**.
-- **عدم تكرار Click:** لم تُمس مسارات القفل/`needs_review`/`clickOrderRef`؛ الاختبارات القائمة (`click_reconcile`, `dispatch_contract`, `phase2_*`) نجحت ضمن **246/246**. أُضيف فقط `sentAt` عند الإرسال الناجح/الربط، ولا يُكتب عند الفشل.
+- **عدم تكرار Click:** لم تُمس مسارات القفل/`needs_review`/`clickOrderRef`؛ الاختبارات القائمة (`click_reconcile`, `dispatch_contract`, `phase2_*`) نجحت ضمن **249/249**. أُضيف فقط `sentAt` عند الإرسال الناجح/الربط، ولا يُكتب عند الفشل.
 - **التصحيح الإداري:** يرفض أي أثر Click/شحنة؛ لا يستطيع تزوير `dispatched/inTransit/returned`.
 - **المبالغ:** لا مبالغ لغريب؛ الاستثناء الوحيد هو منشئ الطلب، موثق أعلاه.
 - **البحث:** لا يتخطى نهاية المصادر ولا يكرر النتائج؛ مؤشرات مربوطة بمعايير البحث.
@@ -265,12 +270,12 @@
 
 | الحزمة | النتيجة | الملف |
 |---|---|---|
-| Flutter | **488** | `flutter test` (Linux container) |
+| Flutter | **493** | `flutter test` (Linux container) |
 | Functions unit | **195** | `docs/evidence/final-audit/functions-unit.log` |
 | Functions emulator + rules | **241** | `docs/evidence/final-audit/functions-emulator.log` |
 | Playwright 5 أدوار | **21/21** | CI run `40758795161` (job `emulator-ui`) |
 | Demo smoke | 30 شاشة / 0 أخطاء | `docs/evidence/final-audit/demo-browser-results.json` |
-| Barcode/QR | **45/45** | `barcode-decode.log`, `barcode-decode-results.json` |
+| Barcode/QR | **51/51** | `barcode-decode.log`, `barcode-decode-results.json` |
 
 اختبارات مخصصة جديدة للفروق: `phase3_password`, `phase3_search_window`, `phase3_amounts`, `phase3_correction`, `phase3_filters`, `phase3_quantity`, `phase3_barcode_limit` (كلها emulator)، و`order_filters_phase3_test`, `final_audit_visuals_test`, وتوسعات `order_printing_phase3_test` / `phase3_polish_test`.
 

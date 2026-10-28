@@ -329,21 +329,16 @@ exports.searchOrders=callable(async req=>{
   const positions={};
   for(const sub of subs)positions[sub.key]=cursor.subs?.[sub.key]||cursor.g||null;
   const boundary=cursor.g;
-  // A direct document-id hit is included in the page (counted in pageSize) and
-  // seeded into the dedup set; sources resume independently afterwards.
-  let direct=null;
-  const seen=new Set();
+  // A direct document-id hit is a SOURCE in the same merge, never an
+  // out-of-order insertion: including it after the merge made the global
+  // boundary jump to an older document and silently skip newer matches that
+  // had not been consumed yet.
   const directId=query.startsWith('VNX-')?query.slice(4):query;
+  let directSnap=null;
   if(/^[a-zA-Z0-9_-]{8,140}$/.test(directId)){
     const snap=await db.doc(`orders/${directId}`).get();
-    if(snap.exists){
-      const d=snap.data();
-      if(canSeeOrder(user,{...d,id:snap.id})&&matchingFilters(d,filters)&&(!boundary||afterPosition(snap,boundary,sort))){
-        direct=snap;seen.add(snap.id);
-      }
-    }
+    if(snap.exists)directSnap=snap;
   }
-  const capacity=Math.max(0,pageSize-(direct?1:0));
   const sources=subs.map(sub=>({
     key:sub.key,
     fetch:(position,limit)=>{
@@ -352,17 +347,21 @@ exports.searchOrders=callable(async req=>{
       return q.get();
     },
   }));
-  const merged=capacity>0
-    ? await mergeSourcePage({
-        sources,positions,boundary,sort,pageSize:capacity,scanLimit:SCAN_LIMIT,fetchLimit:STEP,seen,
-        accept:(doc,key)=>{
-          const d=doc.data();
-          if(!canSeeOrder(user,{...d,id:doc.id})||!matchingFilters(d,filters))return false;
-          return exactByKey.get(key)===true||matchesQuery(d);
-        },
-      })
-    : {docs:[],positions,more:sources.length>0,limited:false};
-  const all=[...(direct?[direct]:[]),...merged.docs];
+  if(directSnap){
+    sources.push({
+      key:'direct',
+      fetch:position=>Promise.resolve(position?{docs:[],size:0}:{docs:[directSnap],size:1}),
+    });
+  }
+  const merged=await mergeSourcePage({
+    sources,positions,boundary,sort,pageSize,scanLimit:SCAN_LIMIT,fetchLimit:STEP,
+    accept:(doc,key)=>{
+      const d=doc.data();
+      if(!canSeeOrder(user,{...d,id:doc.id})||!matchingFilters(d,filters))return false;
+      return key==='direct'||exactByKey.get(key)===true||matchesQuery(d);
+    },
+  });
+  const all=merged.docs;
   all.sort((a,b)=>{
     const at=a.data().createdAt?.toMillis?.()||0,bt=b.data().createdAt?.toMillis?.()||0;
     if(at!==bt)return sort==='asc'?(at-bt):(bt-at);
@@ -371,7 +370,7 @@ exports.searchOrders=callable(async req=>{
   });
   const page=all.slice(0,pageSize);
   const last=page.at(-1);
-  const hasMore=all.length>pageSize||merged.more;
+  const hasMore=merged.more;
   const nextCursor=hasMore?encodeCursor({
     key:cursorKey,
     sort,

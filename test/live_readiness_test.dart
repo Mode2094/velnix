@@ -197,6 +197,30 @@ void main() {
           template: OrderTemplate.plain,
         ),
       );
+      // Page branding fixture: an unmistakable demo page name and a logo that
+      // is NOT the Velnix wordmark, so the screenshot proves page data is used.
+      final pageOrder = {
+        ...contactOrder,
+        'pageName': 'متجر النور التجريبي',
+        'logoDataUri':
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADW0lEQVR4nO2dQU4UURCG6zETjTtugOgxTIwQPYcbD4ELAyQmcgc33mNUuIjCEdyaTCgXJuyY6e5X9f6q9/5vBQkJXf/X/3s9Pc1QVFUIjgPg7yYUgIcNAEMBYCgADAWAoQAwa8lDufg4/Yf14otkoER+IVbmJJ7URzgBxS70FDKiCCj+ucc0gRdQENHH0QATAM89iAmAgIDRAzW0fh0QPH1pfoTtGhA/ekgVWghIF31LDe5LUOr0xf/4fQVkT7/BFF5LUB/RN1iOXBrQZfriM5e9gF7Td5rOWEDf6XvMaClghPTNJzUTME76tvPaCBgtfcOpDQSMmb7V7LUCRk7fJIEqAUy/Pgc+lgJmuQCe/iZpLBTA9K0yWSKA6RsmE+jJOH131fLXlc2ZBGB2A3j62+bDqyAw8wTw9DdPaYYApu+RFZcgMFMF8PSfy8TE2AAwFJBBANefZUzJjQ0As18AT/8a9qbHBoAJdDNOXrX9U5FNiDdT9zSA6089uzPkEgSGAsBQQGAB3ACs2JEkGwCGAsBQABgKiCqAO7Atj+WZrwHPPn86+fb14dvDq0vJTD4BT9fr7f39zd1v6YJ8AkTk8uTt+fV36YKUAk6PX4rI9W0PJUgpQP6X4GYj+ckq4M3zF6ty8PP2lyQnqwDpZSdILOD10fGT1ervdiuZifSW5DT+nJ0/fP3j/QdJTuIG9AEFgKEAMBQAhgKiCojwwdY98ViebAAYCgBDAWAoILAA7sNW7EiSDQBDAWAoILYAbgP17M6QDQBDAeEFcBWqYW96bACYSQJYgmVMyY0NAEMBSQRwFZrLxMTYADAzBLAEHlnNawAdmKfEJQjMbAEsgW0+gR7OLUP+N5QlSxBLYJjMwj2ADqwyWb4J04FJGrwKAlMlgCWoz6G2AXSgdU8xGyxBIzvQ6tlt9oAxHajF1Gab8GgO1Ghey6ugcRyo3aTGl6EjOFDTGe1fB/TtQK2nc3kh1qsDdZirqDp+Znk3NzjV7ZTyvRXRRxXUcwr3e0HZHajz8fsuQamXI21y6rQTkEiDNmxt69vR8VckbXuErRsQuQqKODlgAuKYUGgp8QKAGiKsh1EEtDQRIfe4ApxkhAo9jYAaH2ETTyygS/hYChgKAEMBYCgADAWAoQDB8g/J0Cs8NEEa0AAAAABJRU5ErkJggg==',
+        'pagePhone': '0793333333',
+        'pageWhatsapp': '0794444444',
+      };
+      await File('${directory.path}/a4_colored_page.pdf').writeAsBytes(
+        await OrderInvoicePdf.generate(
+          order: pageOrder,
+          format: PdfPageFormat.a4,
+          template: OrderTemplate.professional,
+        ),
+      );
+      await File('${directory.path}/a4_white_page.pdf').writeAsBytes(
+        await OrderInvoicePdf.generate(
+          order: pageOrder,
+          format: PdfPageFormat.a4,
+          template: OrderTemplate.plain,
+        ),
+      );
       final veryLong = {
         ...contactOrder,
         'description': List.filled(80, 'منتج طويل جداً للاختبار').join(' '),

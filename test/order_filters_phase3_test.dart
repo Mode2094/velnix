@@ -21,6 +21,50 @@ void main() {
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
 
+  for (final width in [390, 760, 1440]) {
+    testWidgets(
+      'chip labels are readable and clear independently at ${width}px',
+      (tester) async {
+        VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+          switch (name) {
+            case 'listCompanies':
+            case 'listOrderCreators':
+            case 'listAllowedPages':
+              return {'items': <dynamic>[]};
+          }
+          throw StateError(name);
+        });
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width.toDouble(), 2400);
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        await tester.pumpWidget(
+          app(
+            OrderFilters(
+              onChanged: (_) {},
+              initialFilters: const {'phone': '0791234567', 'product': 'قميص'},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('الهاتف: 0791234567'), findsOneWidget);
+        expect(find.text('المنتج: قميص'), findsOneWidget);
+        final chip = find.widgetWithText(InputChip, 'الهاتف: 0791234567');
+        await tester.ensureVisible(chip);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: chip, matching: find.byType(Icon)).first,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('الهاتف: 0791234567'), findsNothing);
+        expect(find.text('المنتج: قميص'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('new independent filters emit and each chip clears only its own '
       'condition', (tester) async {
     VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {

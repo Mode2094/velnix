@@ -129,69 +129,71 @@ void main() {
     );
   });
 
-  testWidgets('final-audit visual: active filter chips clear individually', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(760, 1400);
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
-    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
-      switch (name) {
-        case 'listCompanies':
-          return {
-            'items': [
-              {'id': 'c1', 'name': 'شركة التوصيل'},
-            ],
-          };
-        case 'listOrderCreators':
-          return {
-            'items': [
-              {'id': 'u1', 'name': 'موظف الإدخال'},
-            ],
-          };
-        case 'listAllowedPages':
-          return {
-            'items': [
-              {'id': 'p1', 'name': 'صفحة الاختبار'},
-            ],
-          };
-      }
-      throw StateError(name);
-    });
-    await tester.pumpWidget(
-      app(
-        Scaffold(
-          body: SingleChildScrollView(
-            child: OrderFilters(
-              showAmounts: true,
-              initialFilters: const {
-                'companyId': 'c1',
-                'createdBy': 'u1',
-                'pageId': 'p1',
-                'city': 'عمان',
-                'area': 'خلدا',
-                'phone': '0791234567',
-                'barcode': 'VNX-000123',
-                'product': 'قميص',
-                'note': 'عاجل',
-                'amountMin': '10',
-                'amountMax': '50',
-              },
-              onChanged: (_) {},
+  for (final width in [390, 760, 1440]) {
+    testWidgets('final-audit visual: filter chips readable at ${width}px', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width.toDouble(), 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        switch (name) {
+          case 'listCompanies':
+            return {
+              'items': [
+                {'id': 'c1', 'name': 'شركة التوصيل'},
+              ],
+            };
+          case 'listOrderCreators':
+            return {
+              'items': [
+                {'id': 'u1', 'name': 'موظف الإدخال'},
+              ],
+            };
+          case 'listAllowedPages':
+            return {
+              'items': [
+                {'id': 'p1', 'name': 'صفحة الاختبار'},
+              ],
+            };
+        }
+        throw StateError(name);
+      });
+      await tester.pumpWidget(
+        app(
+          Scaffold(
+            body: SingleChildScrollView(
+              child: OrderFilters(
+                showAmounts: true,
+                initialFilters: const {
+                  'companyId': 'c1',
+                  'createdBy': 'u1',
+                  'pageId': 'p1',
+                  'city': 'عمان',
+                  'area': 'خلدا',
+                  'phone': '0791234567',
+                  'barcode': 'VNX-000123',
+                  'product': 'قميص',
+                  'note': 'عاجل',
+                  'amountMin': '10',
+                  'amountMax': '50',
+                },
+                onChanged: (_) {},
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/final_audit/filter_chips_760.png'),
-    );
-  });
+      );
+      await tester.pumpAndSettle();
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/final_audit/filter_chips_$width.png'),
+      );
+    });
+  }
 
   testWidgets('final-audit visual: barcode scanner collection', (tester) async {
     tester.view.devicePixelRatio = 1;

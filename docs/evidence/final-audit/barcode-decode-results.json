@@ -126,6 +126,48 @@
     "passed": true
   },
   {
+    "paper": "a4_colored_page",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4_colored_page",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4_colored_page",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
     "paper": "a4_white_contact",
     "dpi": 203,
     "pages": 1,
@@ -155,6 +197,48 @@
   },
   {
     "paper": "a4_white_contact",
+    "dpi": 600,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4_white_page",
+    "dpi": 203,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4_white_page",
+    "dpi": 300,
+    "pages": 1,
+    "expected": "VNX-Order_1234567890",
+    "decoded": [
+      "VNX-Order_1234567890"
+    ],
+    "decodedQr": [
+      "VNX-Order_1234567890"
+    ],
+    "preprocessing": [],
+    "passed": true
+  },
+  {
+    "paper": "a4_white_page",
     "dpi": 600,
     "pages": 1,
     "expected": "VNX-Order_1234567890",

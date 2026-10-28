@@ -3,6 +3,7 @@ import 'gateway.dart';
 import 'date_range_field.dart';
 import 'jordan_locations.dart';
 import '../models/entities.dart';
+import '../core/theme.dart';
 
 class OrderFilters extends StatefulWidget {
   const OrderFilters({
@@ -257,7 +258,20 @@ class _OrderFiltersState extends State<OrderFilters> {
     final chips = <Widget>[];
     void add(String label, VoidCallback clear) => chips.add(
       InputChip(
-        label: Text(label),
+        // Explicit high-contrast label: the theme's chip labelStyle has no
+        // color and rendered as blank pills in the captured screenshots.
+        label: Text(
+          label,
+          style: const TextStyle(
+            color: VColors.ink,
+            fontFamily: 'Cairo',
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: VColors.softBlue,
+        side: const BorderSide(color: VColors.line),
+        deleteIconColor: VColors.muted,
         onDeleted: () {
           setState(clear);
           emit();
