@@ -93,11 +93,11 @@
 | Functions (europe-west1 + `orderEventNotice` us-central1) | ✅ تحديث جميع الدوال |
 | Hosting | ✅ إصدار جديد — https://velnix-6c1a2.web.app (HTTP 200) |
 | Firestore rules/indexes | بلا تغيير — لم تُنشر |
-| APK | `delivery/apk/Velnix-release.apk` — 81,049,728 بايت، SHA-256 `fb24889c531b3a3a5b8169b73067ae90611bbfb17838827b81f0e1820e3cd638` |
+| APK | `delivery/apk/Velnix-release.apk` — 81,049,728 بايت، SHA-256 `22afc465dfa35cf7d643866453e358962a63f19053575b9bfb10a4f51c03ff1f` |
 | Web build | `flutter build web --release --dart-define-from-file=config/firebase.stage3.production.public.json` |
 | APK build | `flutter build apk --release --dart-define VELNIX_MODE=live --dart-define-from-file=config/firebase.android.production.public.json` |
 
-فحص ما بعد النشر: `resetEmployeePassword` بلا مصادقة يعيد `UNAUTHENTICATED` (أي أن النسخة الجديدة منشورة فعلاً)، والموقع يعيد 200 ويحمّل `main.dart.js`/`flutter_bootstrap.js`.
+فحص ما بعد النشر: `resetEmployeePassword` بلا مصادقة يعيد `UNAUTHENTICATED` (أي أن النسخة الجديدة منشورة فعلاً)، والموقع يعيد 200 ويحمّل `main.dart.js`/`flutter_bootstrap.js`. بصمة الملف المنشور تطابق البناء المحلي: `main.dart.js` SHA-256 يبدأ بـ `9e841aed…`، والـ APK أُعيد بناؤه بعد تصحيح بطاقة اللوحة.
 
 ---
 

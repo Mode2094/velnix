@@ -72,7 +72,7 @@
 | D2 | نشر Hosting | ✅ HTTP 200 على النطاق |
 | D3 | استدعاء `resetEmployeePassword` بلا مصادقة | ✅ `UNAUTHENTICATED` (النسخة الجديدة) |
 | D4 | Firestore rules/indexes | لم تتغير / لم تُنشر |
-| D5 | APK | 81,049,728 بايت — SHA-256 `fb24889c…3cd638` |
+| D5 | APK | 81,049,728 بايت — SHA-256 `22afc465…3ff1f` |
 
 ## 4. بنود خارجية (BLOCKED — تتطلب المالك)
 
