@@ -62,6 +62,38 @@ void main() {
   final original = VelnixGateway.instance;
   tearDown(() => VelnixGateway.instance = original);
 
+  testWidgets('final-audit visual: new order form', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(900, 1500);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      switch (name) {
+        case 'listAllowedPages':
+          return {
+            'items': [
+              {'id': 'p1', 'name': 'صفحة الاختبار'},
+            ],
+          };
+        case 'listCompanies':
+          return {
+            'items': [
+              {'id': 'c1', 'name': 'شركة التوصيل', 'enabled': true},
+            ],
+          };
+      }
+      throw StateError(name);
+    });
+    await tester.pumpWidget(app(LiveOrderForm(policy: gm(), onSaved: (_) {})));
+    await tester.pumpAndSettle();
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/final_audit/create_order_900.png'),
+    );
+  });
+
   testWidgets('final-audit visual: orders multi-select toolbar', (
     tester,
   ) async {

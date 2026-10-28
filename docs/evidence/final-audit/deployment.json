@@ -1,0 +1,43 @@
+{
+  "codeCommit": "61c3967934d8ec72a28d7621743c86526f3076c2",
+  "ci": {
+    "url": "https://github.com/Mode2094/velnix/actions/runs/40734399317",
+    "status": "completed",
+    "conclusion": "success",
+    "headSha": "61c3967934d8ec72a28d7621743c86526f3076c2",
+    "jobs": [
+      {
+        "name": "emulator-ui",
+        "conclusion": "success"
+      },
+      {
+        "name": "flutter",
+        "conclusion": "success"
+      },
+      {
+        "name": "android",
+        "conclusion": "success"
+      },
+      {
+        "name": "firebase",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "hosting": {
+    "url": "https://velnix-6c1a2.web.app",
+    "status": 200,
+    "mainDartJsSha256Prefix": "c1d7830ba5aa949988af"
+  },
+  "apk": {
+    "path": "delivery/apk/Velnix-release.apk",
+    "bytes": 81131692,
+    "sha256": "307879499fc91ffbf211bbad5ec01ec772731e681747ad9b8246f4c1aa388be8"
+  },
+  "functions": {
+    "project": "velnix-6c1a2",
+    "region": "europe-west1",
+    "updated": 55
+  },
+  "deployedAt": "2026-10-28T17:32:36Z"
+}
