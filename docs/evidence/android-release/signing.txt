@@ -1,0 +1,13 @@
+APK: delivery/android/Velnix-release.apk
+Signer #1 certificate DN: CN=Velnix, OU=Delivery, O=Velnix, L=Amman, C=JO
+Signer #1 certificate SHA-256 digest: 6e57f935d4c7417029452b2d48b2d07520e8945d2ec51c54b77bb03dfde21601
+Signer #1 certificate SHA-1 digest: c98947e8d6025e78d402c4370fa117a014101c71
+Signer #1 certificate MD5 digest: dcb8c14ab84e45db57eb1349013489b4
+
+AAB certificate:
+Signer #١:
+
+Certificate #١:
+Owner: CN=Velnix, OU=Delivery, O=Velnix, L=Amman, C=JO
+Issuer: CN=Velnix, OU=Delivery, O=Velnix, L=Amman, C=JO
+Serial number: 7177fd1360dd8442

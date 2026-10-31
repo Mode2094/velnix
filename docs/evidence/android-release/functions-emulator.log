@@ -1,0 +1,1760 @@
+i  emulators: Starting emulators: auth, firestore
+i  emulators: Detected demo project ID "demo-velnix", emulated services will use a demo configuration and attempts to access non-emulated services for this project will fail.
+i  firestore: downloading cloud-firestore-emulator-v1.22.0.jar...
+
+i  firestore: Firestore Emulator logging to firestore-debug.log
+✔  firestore: Firestore Emulator was started in standard edition.
+✔  firestore: Firestore Emulator UI websocket is running on 9150.
+i  Running script: node --test --test-concurrency=1 test/emulator/*.test.js
+TAP version 13
+# Subtest: REST bootstrap commits all records atomically, verifies server timestamps and refuses repetition
+ok 1 - REST bootstrap commits all records atomically, verifies server timestamps and refuses repetition
+  ---
+  duration_ms: 1823.638362
+  type: 'test'
+  ...
+# Subtest: concurrent REST bootstrap attempts can never produce two administrators
+ok 2 - concurrent REST bootstrap attempts can never produce two administrators
+  ---
+  duration_ms: 2243.737398
+  type: 'test'
+  ...
+# Subtest: an existing non-administrator membership blocks bootstrap without a new lock or audit
+ok 3 - an existing non-administrator membership blocks bootstrap without a new lock or audit
+  ---
+  duration_ms: 110.838098
+  type: 'test'
+  ...
+# Subtest: a failed commit precondition leaves no partial member, lock or audit
+ok 4 - a failed commit precondition leaves no partial member, lock or audit
+  ---
+  duration_ms: 93.998462
+  type: 'test'
+  ...
+# {"id":"click_ambiguous","code":"click_ambiguous_creation","phase":"vendor","reason":"click_ambiguous_creation","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/click_reconcile.test.js:67:3)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)"}
+# Subtest: an ambiguous Click create keeps needs_review, stores the exact merchant reference and blocks a resend
+ok 5 - an ambiguous Click create keeps needs_review, stores the exact merchant reference and blocks a resend
+  ---
+  duration_ms: 1322.934479
+  type: 'test'
+  ...
+# {"id":"click_pre_send_failure","code":"failed-precondition","phase":"pre_send","reason":"بيانات اعتماد شركة التوصيل غير موجودة","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/click_reconcile.test.js:89:5)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)"}
+# Subtest: a pre-send credential failure never starts the carrier call and stays safe to retry
+ok 6 - a pre-send credential failure never starts the carrier call and stays safe to retry
+  ---
+  duration_ms: 144.155213
+  type: 'test'
+  ...
+# {"id":"click_rejected_ref","code":"click_send_rejected","phase":"vendor","reason":"click_send_rejected","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/click_reconcile.test.js:107:3)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)"}
+# Subtest: a non-ambiguous dispatch failure still persists the deterministic merchant reference
+ok 7 - a non-ambiguous dispatch failure still persists the deterministic merchant reference
+  ---
+  duration_ms: 89.222574
+  type: 'test'
+  ...
+# Subtest: a confirmed read auto-resolves an uncertain dispatch without creating a shipment
+ok 8 - a confirmed read auto-resolves an uncertain dispatch without creating a shipment
+  ---
+  duration_ms: 145.681551
+  type: 'test'
+  ...
+# {"id":"click_review_unresolved","reason":"AbortError","source":"manual","severity":"WARNING","message":"click status sync failed"}
+# Subtest: a failed verification read keeps the uncertain dispatch protected
+ok 9 - a failed verification read keeps the uncertain dispatch protected
+  ---
+  duration_ms: 89.396484
+  type: 'test'
+  ...
+# Subtest: the server-side Click send flag keeps the path blocked before any carrier call
+ok 10 - the server-side Click send flag keeps the path blocked before any carrier call
+  ---
+  duration_ms: 64.231473
+  type: 'test'
+  ...
+# Subtest: reconciling the existing Click shipment keeps the policy number and merchant reference separate
+ok 11 - reconciling the existing Click shipment keeps the policy number and merchant reference separate
+  ---
+  duration_ms: 245.738478
+  type: 'test'
+  ...
+# Subtest: the same Click policy number or merchant reference cannot be linked to two Velnix orders
+ok 12 - the same Click policy number or merchant reference cannot be linked to two Velnix orders
+  ---
+  duration_ms: 241.463017
+  type: 'test'
+  ...
+# Subtest: a manual reconciliation cannot overwrite an API-confirmed Click state
+ok 13 - a manual reconciliation cannot overwrite an API-confirmed Click state
+  ---
+  duration_ms: 131.791886
+  type: 'test'
+  ...
+# Subtest: only a Click-linked order can be reconciled, and only by an authorized user
+ok 14 - only a Click-linked order can be reconciled, and only by an authorized user
+  ---
+  duration_ms: 125.205986
+  type: 'test'
+  ...
+# Subtest: a successful mock create stores the tracking id once and blocks a second dispatch
+ok 15 - a successful mock create stores the tracking id once and blocks a second dispatch
+  ---
+  duration_ms: 109.501148
+  type: 'test'
+  ...
+# Subtest: syncClickOrder applies the real verified Click response and records click_api provenance
+ok 16 - syncClickOrder applies the real verified Click response and records click_api provenance
+  ---
+  duration_ms: 88.848712
+  type: 'test'
+  ...
+# Subtest: a stale Click status cannot replace a newer API-confirmed state
+ok 17 - a stale Click status cannot replace a newer API-confirmed state
+  ---
+  duration_ms: 82.672072
+  type: 'test'
+  ...
+# Subtest: the same Click status date with a different state is a conflict, not an overwrite
+ok 18 - the same Click status date with a different state is a conflict, not an overwrite
+  ---
+  duration_ms: 81.920179
+  type: 'test'
+  ...
+# Subtest: a missing status date cannot overwrite an API-confirmed state
+ok 19 - a missing status date cannot overwrite an API-confirmed state
+  ---
+  duration_ms: 69.879191
+  type: 'test'
+  ...
+# {"id":"click_sync_failure","reason":"AbortError","source":"manual","severity":"WARNING","message":"click status sync failed"}
+# Subtest: a failed or timed-out Click read leaves the local state untouched and clears the lock
+ok 20 - a failed or timed-out Click read leaves the local state untouched and clears the lock
+  ---
+  duration_ms: 73.13216
+  type: 'test'
+  ...
+# Subtest: a live sync lock blocks a second sync before any Click read
+ok 21 - a live sync lock blocks a second sync before any Click read
+  ---
+  duration_ms: 41.129287
+  type: 'test'
+  ...
+# Subtest: sync requires a linked reference, a Click company and sendToDelivery permission
+ok 22 - sync requires a linked reference, a Click company and sendToDelivery permission
+  ---
+  duration_ms: 96.455896
+  type: 'test'
+  ...
+# {"companyId":"click_fixture","code":"click_health_http_error","httpStatus":401,"severity":"WARNING","message":"delivery health check failed"}
+# Subtest: the Click connection test reads through getorder and never sends a shipment
+ok 23 - the Click connection test reads through getorder and never sends a shipment
+  ---
+  duration_ms: 121.131875
+  type: 'test'
+  ...
+# {"checked":3,"updated":3,"failed":0,"skipped":0,"recovered":0,"severity":"INFO","message":"click scheduled sync"}
+# Subtest: the scheduled Click sync processes a due order and schedules the next check
+ok 24 - the scheduled Click sync processes a due order and schedules the next check
+  ---
+  duration_ms: 170.282229
+  type: 'test'
+  ...
+# {"checked":0,"updated":0,"failed":0,"skipped":0,"recovered":0,"severity":"INFO","message":"click scheduled sync"}
+# Subtest: an interrupted send with a live lock is left untouched by recovery
+ok 25 - an interrupted send with a live lock is left untouched by recovery
+  ---
+  duration_ms: 22.471053
+  type: 'test'
+  ...
+# {"checked":0,"updated":0,"failed":0,"skipped":0,"recovered":1,"severity":"INFO","message":"click scheduled sync"}
+# {"checked":1,"updated":1,"failed":0,"skipped":0,"recovered":0,"severity":"INFO","message":"click scheduled sync"}
+# Subtest: an interrupted send with an expired lock resolves via a read-only getorder and schedules the next sync
+ok 26 - an interrupted send with an expired lock resolves via a read-only getorder and schedules the next sync
+  ---
+  duration_ms: 120.346304
+  type: 'test'
+  ...
+# {"checked":0,"updated":0,"failed":0,"skipped":0,"recovered":1,"severity":"INFO","message":"click scheduled sync"}
+# Subtest: a confirmed recovery of a non-terminal shipment keeps polling (nextClickSyncAt set)
+ok 27 - a confirmed recovery of a non-terminal shipment keeps polling (nextClickSyncAt set)
+  ---
+  duration_ms: 56.880247
+  type: 'test'
+  ...
+# {"id":"click_sending_expired_bad","reason":"AbortError","severity":"WARNING","message":"stuck dispatch verify read failed"}
+# {"checked":0,"updated":0,"failed":0,"skipped":0,"recovered":1,"severity":"INFO","message":"click scheduled sync"}
+# Subtest: an interrupted send that cannot be verified becomes a clear review, not a resend
+ok 28 - an interrupted send that cannot be verified becomes a clear review, not a resend
+  ---
+  duration_ms: 88.543647
+  type: 'test'
+  ...
+# Subtest: recoverStuckDispatch callable resolves an expired sending order, schedules a sync and never re-sends
+ok 29 - recoverStuckDispatch callable resolves an expired sending order, schedules a sync and never re-sends
+  ---
+  duration_ms: 103.156896
+  type: 'test'
+  ...
+# {"id":"dispatch_kms_failure","code":"unknown","phase":"pre_send","reason":"local_kms_failure","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/dispatch_contract.test.js:36:2)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)"}
+# Subtest: KMS failure before transport never claims an ambiguous shipment and leaves an audit trail
+ok 30 - KMS failure before transport never claims an ambiguous shipment and leaves an audit trail
+  ---
+  duration_ms: 308.069727
+  type: 'test'
+  ...
+# {"id":"dispatch_disconnect","code":"unknown","phase":"vendor","reason":"fetch failed","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/dispatch_contract.test.js:42:2)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)"}
+# Subtest: a disconnect after request keeps needs_review and prevents a duplicate shipment
+ok 31 - a disconnect after request keeps needs_review and prevents a duplicate shipment
+  ---
+  duration_ms: 160.669418
+  type: 'test'
+  ...
+# {"id":"dispatch_missing_tracking","code":"unknown","phase":"vendor","reason":"vendor_missing_tracking","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/dispatch_contract.test.js:42:2)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)"}
+# Subtest: a missing_tracking after request keeps needs_review and prevents a duplicate shipment
+ok 32 - a missing_tracking after request keeps needs_review and prevents a duplicate shipment
+  ---
+  duration_ms: 168.412062
+  type: 'test'
+  ...
+# Subtest: scenarios 1-2: the snapshot is saved, verified and covers relationships and subcollections
+ok 33 - scenarios 1-2: the snapshot is saved, verified and covers relationships and subcollections
+  ---
+  duration_ms: 3986.069759
+  type: 'test'
+  ...
+# Subtest: scenarios 3-6: deletion then restore reproduces the source, relations and subcollections
+ok 34 - scenarios 3-6: deletion then restore reproduces the source, relations and subcollections
+  ---
+  duration_ms: 2341.805077
+  type: 'test'
+  ...
+# Subtest: scenario 11: a repeated restore is idempotent and produces no duplicate side effects
+ok 35 - scenario 11: a repeated restore is idempotent and produces no duplicate side effects
+  ---
+  duration_ms: 1383.45906
+  type: 'test'
+  ...
+# Subtest: scenario 7: an interrupted restore only keeps complete batches and is safely re-runnable
+ok 36 - scenario 7: an interrupted restore only keeps complete batches and is safely re-runnable
+  ---
+  duration_ms: 939.056265
+  type: 'test'
+  ...
+# Subtest: scenario 8: corrupted or truncated files are detected and refused before any write
+ok 37 - scenario 8: corrupted or truncated files are detected and refused before any write
+  ---
+  duration_ms: 1299.651081
+  type: 'test'
+  ...
+# Subtest: scenario 9: restore to the production project is refused with no writes and no secrets in output
+ok 38 - scenario 9: restore to the production project is refused with no writes and no secrets in output
+  ---
+  duration_ms: 51.565846
+  type: 'test'
+  ...
+# Subtest: scenario 10: an older snapshot rolls its documents back and reports newer drift without deleting it
+ok 39 - scenario 10: an older snapshot rolls its documents back and reports newer drift without deleting it
+  ---
+  duration_ms: 2405.067075
+  type: 'test'
+  ...
+# Subtest: verified local Google login creates one pending UID-bound request and no active membership
+ok 40 - verified local Google login creates one pending UID-bound request and no active membership
+  ---
+  duration_ms: 980.080562
+  type: 'test'
+  ...
+# Subtest: pending users cannot access any privileged callable; provider and identity spoofing are refused
+ok 41 - pending users cannot access any privileged callable; provider and identity spoofing are refused
+  ---
+  duration_ms: 204.448232
+  type: 'test'
+  ...
+# Subtest: only a current general manager can list and decide; invalid grants leave request pending
+ok 42 - only a current general manager can list and decide; invalid grants leave request pending
+  ---
+  duration_ms: 99.27163
+  type: 'test'
+  ...
+# Subtest: concurrent approvals create exactly one membership and one audited decision
+ok 43 - concurrent approvals create exactly one membership and one audited decision
+  ---
+  duration_ms: 2930.06228
+  type: 'test'
+  ...
+# Subtest: rejection persists across login and cannot be overridden or self-approved
+ok 44 - rejection persists across login and cannot be overridden or self-approved
+  ---
+  duration_ms: 141.937431
+  type: 'test'
+  ...
+# Subtest: role and disable decisions take effect for the same already issued Google token
+ok 45 - role and disable decisions take effect for the same already issued Google token
+  ---
+  duration_ms: 139.245503
+  type: 'test'
+  ...
+# Subtest: general manager creates an email/password employee, resets the password and disables the account
+ok 46 - general manager creates an email/password employee, resets the password and disables the account
+  ---
+  duration_ms: 170.259827
+  type: 'test'
+  ...
+# Subtest: legacy Google membership keeps its UID and role; a different UID with matching email is never merged
+ok 47 - legacy Google membership keeps its UID and role; a different UID with matching email is never merged
+  ---
+  duration_ms: 55.385573
+  type: 'test'
+  ...
+# Subtest: bootstrap is dry-run by default, validates Google identity and serializes first administrator creation
+ok 48 - bootstrap is dry-run by default, validates Google identity and serializes first administrator creation
+  ---
+  duration_ms: 10139.224
+  type: 'test'
+  ...
+# Subtest: explicit approval supports role generalManager without trusting claimed grants
+ok 49 - explicit approval supports role generalManager without trusting claimed grants
+  ---
+  duration_ms: 65.990208
+  type: 'test'
+  ...
+# Subtest: explicit approval supports role manager without trusting claimed grants
+ok 50 - explicit approval supports role manager without trusting claimed grants
+  ---
+  duration_ms: 64.092954
+  type: 'test'
+  ...
+# Subtest: explicit approval supports role warehouse without trusting claimed grants
+ok 51 - explicit approval supports role warehouse without trusting claimed grants
+  ---
+  duration_ms: 68.32073
+  type: 'test'
+  ...
+# Subtest: explicit approval supports role sales without trusting claimed grants
+ok 52 - explicit approval supports role sales without trusting claimed grants
+  ---
+  duration_ms: 77.394597
+  type: 'test'
+  ...
+# Subtest: explicit approval supports role dataEntry without trusting claimed grants
+ok 53 - explicit approval supports role dataEntry without trusting claimed grants
+  ---
+  duration_ms: 64.471887
+  type: 'test'
+  ...
+# Subtest: approval/rejection race commits only one decision and team linkage is atomic
+ok 54 - approval/rejection race commits only one decision and team linkage is atomic
+  ---
+  duration_ms: 2646.44632
+  type: 'test'
+  ...
+# Subtest: pending directory pagination is stable and contains no approved or rejected users
+ok 55 - pending directory pagination is stable and contains no approved or rejected users
+  ---
+  duration_ms: 175.16526
+  type: 'test'
+  ...
+# Subtest: notices paginate past the old 50 cap and never expose another employee
+ok 56 - notices paginate past the old 50 cap and never expose another employee
+  ---
+  duration_ms: 936.85654
+  type: 'test'
+  ...
+# Subtest: the cursor belongs to the caller and a foreign id is refused
+ok 57 - the cursor belongs to the caller and a foreign id is refused
+  ---
+  duration_ms: 70.634051
+  type: 'test'
+  ...
+# Subtest: page size is bounded and malformed requests are refused
+ok 58 - page size is bounded and malformed requests are refused
+  ---
+  duration_ms: 165.591335
+  type: 'test'
+  ...
+# Subtest: the newest notice is first so the inbox order is stable
+ok 59 - the newest notice is first so the inbox order is stable
+  ---
+  duration_ms: 17.636077
+  type: 'test'
+  ...
+# Subtest: general manager creates, edits, disables, archives and restores a page
+ok 60 - general manager creates, edits, disables, archives and restores a page
+  ---
+  duration_ms: 1013.307433
+  type: 'test'
+  ...
+# Subtest: duplicate page names are refused and page administration needs the permission
+ok 61 - duplicate page names are refused and page administration needs the permission
+  ---
+  duration_ms: 173.369986
+  type: 'test'
+  ...
+# Subtest: page logo uploads are validated (size and type)
+ok 62 - page logo uploads are validated (size and type)
+  ---
+  duration_ms: 54.311375
+  type: 'test'
+  ...
+# Subtest: an employee may only create orders for pages allowed on their membership
+ok 63 - an employee may only create orders for pages allowed on their membership
+  ---
+  duration_ms: 92.008026
+  type: 'test'
+  ...
+# Subtest: an order requires a page; archived/disabled/free-text-page ids are refused
+ok 64 - an order requires a page; archived/disabled/free-text-page ids are refused
+  ---
+  duration_ms: 38.68352
+  type: 'test'
+  ...
+# Subtest: GM sees every page; an employee without allowed pages gets none and cannot create
+ok 65 - GM sees every page; an employee without allowed pages gets none and cannot create
+  ---
+  duration_ms: 52.907588
+  type: 'test'
+  ...
+# Subtest: revoking a page takes effect server-side without cache, and order snapshots survive renames
+ok 66 - revoking a page takes effect server-side without cache, and order snapshots survive renames
+  ---
+  duration_ms: 77.37385
+  type: 'test'
+  ...
+# Subtest: order types are stored and validated; unsupported values are refused
+ok 67 - order types are stored and validated; unsupported values are refused
+  ---
+  duration_ms: 96.365021
+  type: 'test'
+  ...
+# Subtest: optional address and default quantity do not block Click-compatible creation
+ok 68 - optional address and default quantity do not block Click-compatible creation
+  ---
+  duration_ms: 42.508741
+  type: 'test'
+  ...
+# Subtest: a delivery company can be chosen at creation without sending the shipment
+ok 69 - a delivery company can be chosen at creation without sending the shipment
+  ---
+  duration_ms: 56.757312
+  type: 'test'
+  ...
+# Subtest: member updates store allowed pages and validate unknown page ids
+ok 70 - member updates store allowed pages and validate unknown page ids
+  ---
+  duration_ms: 68.095682
+  type: 'test'
+  ...
+# Subtest: pageStats counts orders per page without scanning client lists
+ok 71 - pageStats counts orders per page without scanning client lists
+  ---
+  duration_ms: 61.127723
+  type: 'test'
+  ...
+# Subtest: non-normal order types are stored but blocked from a misleading Click send
+ok 72 - non-normal order types are stored but blocked from a misleading Click send
+  ---
+  duration_ms: 86.462953
+  type: 'test'
+  ...
+# Subtest: a page administrator without the page on their list cannot create an order for it
+ok 73 - a page administrator without the page on their list cannot create an order for it
+  ---
+  duration_ms: 55.779746
+  type: 'test'
+  ...
+# Subtest: page administration reads require managePages, allowed list stays scoped
+ok 74 - page administration reads require managePages, allowed list stays scoped
+  ---
+  duration_ms: 63.786905
+  type: 'test'
+  ...
+# Subtest: default delivery company is validated and surfaced by getSettings
+ok 75 - default delivery company is validated and surfaced by getSettings
+  ---
+  duration_ms: 102.813111
+  type: 'test'
+  ...
+# Subtest: reusing a request key with a different page, company or type is a conflict
+ok 76 - reusing a request key with a different page, company or type is a conflict
+  ---
+  duration_ms: 176.49422
+  type: 'test'
+  ...
+# Subtest: two concurrent dispatches of the same order send exactly once; the loser reports pending, not a fake result
+ok 77 - two concurrent dispatches of the same order send exactly once; the loser reports pending, not a fake result
+  ---
+  duration_ms: 3684.332804
+  type: 'test'
+  ...
+# Subtest: a stale claim that never started the vendor is safely re-claimed and sent once
+ok 78 - a stale claim that never started the vendor is safely re-claimed and sent once
+  ---
+  duration_ms: 118.415647
+  type: 'test'
+  ...
+# Subtest: a stale claim that may have started the vendor is NEVER re-sent and becomes uncertain
+ok 79 - a stale claim that may have started the vendor is NEVER re-sent and becomes uncertain
+  ---
+  duration_ms: 101.387043
+  type: 'test'
+  ...
+# Subtest: a live concurrent claim keeps the operation running and is not counted as success/failure
+ok 80 - a live concurrent claim keeps the operation running and is not counted as success/failure
+  ---
+  duration_ms: 72.505353
+  type: 'test'
+  ...
+# Subtest: getBulkOperation separates claimed (in progress) from final results
+ok 81 - getBulkOperation separates claimed (in progress) from final results
+  ---
+  duration_ms: 40.139943
+  type: 'test'
+  ...
+# Subtest: an expired deadline stops starting sends, marks partial and never fakes completion
+ok 82 - an expired deadline stops starting sends, marks partial and never fakes completion
+  ---
+  duration_ms: 252.865151
+  type: 'test'
+  ...
+# Subtest: search finds orders by every supported field and normalizes Arabic
+ok 83 - search finds orders by every supported field and normalizes Arabic
+  ---
+  duration_ms: 1650.833398
+  type: 'test'
+  ...
+# Subtest: search respects visibility scope and never leaks another user orders
+ok 84 - search respects visibility scope and never leaks another user orders
+  ---
+  duration_ms: 144.759804
+  type: 'test'
+  ...
+# Subtest: advanced filters combine (page + status + city + city type + date)
+ok 85 - advanced filters combine (page + status + city + city type + date)
+  ---
+  duration_ms: 222.936612
+  type: 'test'
+  ...
+# Subtest: amount filters require amounts permission
+ok 86 - amount filters require amounts permission
+  ---
+  duration_ms: 40.716364
+  type: 'test'
+  ...
+# Subtest: listOrders applies pageId and orderType filters and paginates
+ok 87 - listOrders applies pageId and orderType filters and paginates
+  ---
+  duration_ms: 29.341235
+  type: 'test'
+  ...
+# Subtest: bulk status change reports per-order results and honors policy
+ok 88 - bulk status change reports per-order results and honors policy
+  ---
+  duration_ms: 158.998465
+  type: 'test'
+  ...
+# Subtest: bulk operation rejects per-order failures without aborting the batch
+ok 89 - bulk operation rejects per-order failures without aborting the batch
+  ---
+  duration_ms: 124.212336
+  type: 'test'
+  ...
+# Subtest: bulk assign company assigns only appropriate orders and never sends
+ok 90 - bulk assign company assigns only appropriate orders and never sends
+  ---
+  duration_ms: 93.180956
+  type: 'test'
+  ...
+# Subtest: barcode resolution maps codes to orders and hides unauthorized ones
+ok 91 - barcode resolution maps codes to orders and hides unauthorized ones
+  ---
+  duration_ms: 158.020128
+  type: 'test'
+  ...
+# Subtest: resolveBarcodes rejects more than the bounded 30-code cap
+ok 92 - resolveBarcodes rejects more than the bounded 30-code cap
+  ---
+  duration_ms: 4.904388
+  type: 'test'
+  ...
+# Subtest: bulkDispatch refuses a wrong-type order and never creates a shipment
+ok 93 - bulkDispatch refuses a wrong-type order and never creates a shipment
+  ---
+  duration_ms: 155.837864
+  type: 'test'
+  ...
+# Subtest: bulkDispatch and bulkAssignCompany reject callers without sendToDelivery before any send
+ok 94 - bulkDispatch and bulkAssignCompany reject callers without sendToDelivery before any send
+  ---
+  duration_ms: 72.894703
+  type: 'test'
+  ...
+# Subtest: a dataEntry cannot assign a company it is not allowed to send for, even via bulk
+ok 95 - a dataEntry cannot assign a company it is not allowed to send for, even via bulk
+  ---
+  duration_ms: 35.551431
+  type: 'test'
+  ...
+# Subtest: an authorized sender (sendToDelivery) can bulk assign but the shared flow still blocks wrong states
+ok 96 - an authorized sender (sendToDelivery) can bulk assign but the shared flow still blocks wrong states
+  ---
+  duration_ms: 120.043287
+  type: 'test'
+  ...
+# Subtest: bulkChangeStatus cannot bypass needs_review and is skipped per order
+ok 97 - bulkChangeStatus cannot bypass needs_review and is skipped per order
+  ---
+  duration_ms: 146.096551
+  type: 'test'
+  ...
+# Subtest: bulkDispatch bounds a single call to a small batch to fit the function timeout
+ok 98 - bulkDispatch bounds a single call to a small batch to fit the function timeout
+  ---
+  duration_ms: 538.992377
+  type: 'test'
+  ...
+# Subtest: search paginates beyond 50 results without duplicates
+ok 99 - search paginates beyond 50 results without duplicates
+  ---
+  duration_ms: 3189.309542
+  type: 'test'
+  ...
+# Subtest: listOrders with an in-memory filter finds a match beyond the first window
+ok 100 - listOrders with an in-memory filter finds a match beyond the first window
+  ---
+  duration_ms: 542.563692
+  type: 'test'
+  ...
+# Subtest: search matches the middle of a name, product, note and phone
+ok 101 - search matches the middle of a name, product, note and phone
+  ---
+  duration_ms: 865.802298
+  type: 'test'
+  ...
+# Subtest: backfill_search_keys is safe and idempotent on legacy orders
+ok 102 - backfill_search_keys is safe and idempotent on legacy orders
+  ---
+  duration_ms: 12049.094989
+  type: 'test'
+  ...
+# Subtest: getOrdersByIds returns only authorized orders and hides amounts
+ok 103 - getOrdersByIds returns only authorized orders and hides amounts
+  ---
+  duration_ms: 104.889001
+  type: 'test'
+  ...
+# Subtest: bulkDispatch requires a client operation id
+ok 104 - bulkDispatch requires a client operation id
+  ---
+  duration_ms: 64.928702
+  type: 'test'
+  ...
+# Subtest: reusing an operation id with the same orders never re-dispatches
+ok 105 - reusing an operation id with the same orders never re-dispatches
+  ---
+  duration_ms: 204.99929
+  type: 'test'
+  ...
+# Subtest: reusing an operation id with different orders is rejected
+ok 106 - reusing an operation id with different orders is rejected
+  ---
+  duration_ms: 182.746181
+  type: 'test'
+  ...
+# Subtest: another user cannot take over an operation id or read its results
+ok 107 - another user cannot take over an operation id or read its results
+  ---
+  duration_ms: 148.901446
+  type: 'test'
+  ...
+# Subtest: getBulkOperation returns the creator own operation with results
+ok 108 - getBulkOperation returns the creator own operation with results
+  ---
+  duration_ms: 134.552957
+  type: 'test'
+  ...
+# Subtest: search returns all 300 matches across pages without loss or duplication
+ok 109 - search returns all 300 matches across pages without loss or duplication
+  ---
+  duration_ms: 2996.218624
+  type: 'test'
+  ...
+# Subtest: listOrders exposes a cursor past the scan cap instead of faking the end
+ok 110 - listOrders exposes a cursor past the scan cap instead of faking the end
+  ---
+  duration_ms: 1783.791747
+  type: 'test'
+  ...
+# Subtest: 300 orders sharing the exact same createdAt are all returned once (desc & asc)
+ok 111 - 300 orders sharing the exact same createdAt are all returned once (desc & asc)
+  ---
+  duration_ms: 8948.491019
+  type: 'test'
+  ...
+# Subtest: search cursor from different conditions is rejected with invalid-argument
+ok 112 - search cursor from different conditions is rejected with invalid-argument
+  ---
+  duration_ms: 842.489717
+  type: 'test'
+  ...
+# Subtest: two concurrent bulkDispatch calls mark the order claimed exactly once
+ok 113 - two concurrent bulkDispatch calls mark the order claimed exactly once
+  ---
+  duration_ms: 3511.852495
+  type: 'test'
+  ...
+# Subtest: listBulkOperations returns the caller own operations for recovery
+ok 114 - listBulkOperations returns the caller own operations for recovery
+  ---
+  duration_ms: 194.31958
+  type: 'test'
+  ...
+# Subtest: bulkDispatch reports partial status when it stops early and can resume
+ok 115 - bulkDispatch reports partial status when it stops early and can resume
+  ---
+  duration_ms: 245.750734
+  type: 'test'
+  ...
+# Subtest: the creator exception shows only the creator their own amount; lists and printing payloads redact others
+ok 116 - the creator exception shows only the creator their own amount; lists and printing payloads redact others
+  ---
+  duration_ms: 1644.093906
+  type: 'test'
+  ...
+# Subtest: an explicit viewAmounts holder sees every visible order amount
+ok 117 - an explicit viewAmounts holder sees every visible order amount
+  ---
+  duration_ms: 35.018172
+  type: 'test'
+  ...
+# Subtest: aggregates never expose amounts without the permission
+ok 118 - aggregates never expose amounts without the permission
+  ---
+  duration_ms: 208.619456
+  type: 'test'
+  ...
+# Subtest: a batch of at least 20 codes is accepted and bounded at 30
+ok 119 - a batch of at least 20 codes is accepted and bounded at 30
+  ---
+  duration_ms: 2341.470801
+  type: 'test'
+  ...
+# Subtest: general manager corrects an internal status with a reason and full audit
+ok 120 - general manager corrects an internal status with a reason and full audit
+  ---
+  duration_ms: 1505.988861
+  type: 'test'
+  ...
+# Subtest: correction is general-manager only and requires a real reason
+ok 121 - correction is general-manager only and requires a real reason
+  ---
+  duration_ms: 133.367786
+  type: 'test'
+  ...
+# Subtest: correction refuses carrier/Click orders and only allows internal completion from ready
+ok 122 - correction refuses carrier/Click orders and only allows internal completion from ready
+  ---
+  duration_ms: 157.686269
+  type: 'test'
+  ...
+# Subtest: reopening a delivered internal order clears current completion fields but keeps history
+ok 123 - reopening a delivered internal order clears current completion fields but keeps history
+  ---
+  duration_ms: 101.657036
+  type: 'test'
+  ...
+# Subtest: phone, barcode, product and note are independent combines conditions
+ok 124 - phone, barcode, product and note are independent combines conditions
+  ---
+  duration_ms: 2392.615304
+  type: 'test'
+  ...
+# Subtest: dispatch date filters only orders that were actually sent
+ok 125 - dispatch date filters only orders that were actually sent
+  ---
+  duration_ms: 64.588644
+  type: 'test'
+  ...
+# Subtest: phone filter matches primary and extra independently (no tail+head false match)
+ok 126 - phone filter matches primary and extra independently (no tail+head false match)
+  ---
+  duration_ms: 282.151224
+  type: 'test'
+  ...
+# Subtest: invalid text filters are rejected instead of scanning unbounded input
+ok 127 - invalid text filters are rejected instead of scanning unbounded input
+  ---
+  duration_ms: 30.448606
+  type: 'test'
+  ...
+# Subtest: general manager resets an employee password and audits without the secret
+ok 128 - general manager resets an employee password and audits without the secret
+  ---
+  duration_ms: 1824.738198
+  type: 'test'
+  ...
+# Subtest: reset rejects short passwords, missing ids and self-reset
+ok 129 - reset rejects short passwords, missing ids and self-reset
+  ---
+  duration_ms: 41.576512
+  type: 'test'
+  ...
+# Subtest: delegated manager cannot reset equal, higher or self accounts
+ok 130 - delegated manager cannot reset equal, higher or self accounts
+  ---
+  duration_ms: 45.451196
+  type: 'test'
+  ...
+# Subtest: delegated manager resets lower-ranked employees but not privileged warehouse
+ok 131 - delegated manager resets lower-ranked employees but not privileged warehouse
+  ---
+  duration_ms: 62.362654
+  type: 'test'
+  ...
+# Subtest: employees without the permission are refused and Google-only accounts are refused
+ok 132 - employees without the permission are refused and Google-only accounts are refused
+  ---
+  duration_ms: 31.545043
+  type: 'test'
+  ...
+# Subtest: rank matrix: dataEntry and sales cannot reset a higher or peer role
+ok 133 - rank matrix: dataEntry and sales cannot reset a higher or peer role
+  ---
+  duration_ms: 310.723398
+  type: 'test'
+  ...
+# Subtest: a new order always stores quantity 1 even when the payload sends another value
+ok 134 - a new order always stores quantity 1 even when the payload sends another value
+  ---
+  duration_ms: 1624.821561
+  type: 'test'
+  ...
+# Subtest: editing an existing order preserves its historical quantity
+ok 135 - editing an existing order preserves its historical quantity
+  ---
+  duration_ms: 87.84341
+  type: 'test'
+  ...
+# Subtest: search keeps paging past a starved first candidate window instead of declaring the end
+ok 136 - search keeps paging past a starved first candidate window instead of declaring the end
+  ---
+  duration_ms: 1910.586933
+  type: 'test'
+  ...
+# Subtest: search still ends exactly when every source is exhausted
+ok 137 - search still ends exactly when every source is exhausted
+  ---
+  duration_ms: 60.624874
+  type: 'test'
+  ...
+# Subtest: 5-digit query reaches an old clickOrderRef behind 130 newer phone matches
+ok 138 - 5-digit query reaches an old clickOrderRef behind 130 newer phone matches
+  ---
+  duration_ms: 1703.777409
+  type: 'test'
+  ...
+# Subtest: a later match behind a starved first window is still reachable
+ok 139 - a later match behind a starved first window is still reachable
+  ---
+  duration_ms: 464.25314
+  type: 'test'
+  ...
+# Subtest: sales across 31 creators merges a large source and an older small source without loss
+ok 140 - sales across 31 creators merges a large source and an older small source without loss
+  ---
+  duration_ms: 1849.791815
+  type: 'test'
+  ...
+# Subtest: listOrders cursor is bound to the current filters
+ok 141 - listOrders cursor is bound to the current filters
+  ---
+  duration_ms: 36.285385
+  type: 'test'
+  ...
+# Subtest: descending: a direct old id plus six newer content matches are all returned
+ok 142 - descending: a direct old id plus six newer content matches are all returned
+  ---
+  duration_ms: 987.532823
+  type: 'test'
+  ...
+# Subtest: descending with equal createdAt: tie order loses nothing
+ok 143 - descending with equal createdAt: tie order loses nothing
+  ---
+  duration_ms: 163.402881
+  type: 'test'
+  ...
+# Subtest: ascending: the old direct id is first and all six newer matches follow
+ok 144 - ascending: the old direct id is first and all six newer matches follow
+  ---
+  duration_ms: 171.520675
+  type: 'test'
+  ...
+# Subtest: duplicate concurrent push triggers claim one send and preserve unread state
+ok 145 - duplicate concurrent push triggers claim one send and preserve unread state
+  ---
+  duration_ms: 3791.816179
+  type: 'test'
+  ...
+# Subtest: temporary failure backs off then succeeds without retrying an acknowledged device
+ok 146 - temporary failure backs off then succeeds without retrying an acknowledged device
+  ---
+  duration_ms: 84.138984
+  type: 'test'
+  ...
+# Subtest: expired processing lease is recovered and a previous completion is fenced
+ok 147 - expired processing lease is recovered and a previous completion is fenced
+  ---
+  duration_ms: 77.739271
+  type: 'test'
+  ...
+# Subtest: retry limit and permanent failures stop without storing raw error text
+ok 148 - retry limit and permanent failures stop without storing raw error text
+  ---
+  duration_ms: 164.248597
+  type: 'test'
+  ...
+# Subtest: per-device failures clean invalid tokens and retry only the temporary device with current scope
+ok 149 - per-device failures clean invalid tokens and retry only the temporary device with current scope
+  ---
+  duration_ms: 130.49162
+  type: 'test'
+  ...
+# Subtest: existing schedule recovers due work and failures from old push implementation
+ok 150 - existing schedule recovers due work and failures from old push implementation
+  ---
+  duration_ms: 85.436105
+  type: 'test'
+  ...
+# Subtest: exhausted partial delivery is failed rather than falsely marking the notice sent
+ok 151 - exhausted partial delivery is failed rather than falsely marking the notice sent
+  ---
+  duration_ms: 29.173567
+  type: 'test'
+  ...
+# Subtest: real transactions handle duplicate concurrent webhooks and late states on archived carrier
+ok 152 - real transactions handle duplicate concurrent webhooks and late states on archived carrier
+  ---
+  duration_ms: 3325.547619
+  type: 'test'
+  ...
+# Subtest: early provider update is retryable until shipment confirmation, not burned as duplicate
+ok 153 - early provider update is retryable until shipment confirmation, not burned as duplicate
+  ---
+  duration_ms: 63.6503
+  type: 'test'
+  ...
+# Subtest: successful unchanged status clears a sync error without a business revision or extra event
+ok 154 - successful unchanged status clears a sync error without a business revision or extra event
+  ---
+  duration_ms: 102.650065
+  type: 'test'
+  ...
+# Subtest: replayed webhook does not clear a subsequent sync failure
+ok 155 - replayed webhook does not clear a subsequent sync failure
+  ---
+  duration_ms: 57.281086
+  type: 'test'
+  ...
+# Subtest: unmatched orders and path injection never mutate data
+ok 156 - unmatched orders and path injection never mutate data
+  ---
+  duration_ms: 34.034565
+  type: 'test'
+  ...
+# Subtest: Click payloads cannot use invented generic status fields or close an order
+ok 157 - Click payloads cannot use invented generic status fields or close an order
+  ---
+  duration_ms: 22.360399
+  type: 'test'
+  ...
+# [2026-10-31T12:51:41.575Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce629 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L10, false for 'create' @ L18, false for 'update' @ L10, false for 'update' @ L18
+# Subtest: own profile is readable, other profiles and profile mutation are denied
+ok 158 - own profile is readable, other profiles and profile mutation are denied
+  ---
+  duration_ms: 579.637908
+  type: 'test'
+  ...
+# [2026-10-31T12:51:41.704Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce62b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.724Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce62c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.748Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce62d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.762Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce62e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.788Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce62f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.803Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce630 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.824Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce631 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.838Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce632 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.864Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce633 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.877Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce634 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.896Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce635 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.906Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce636 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.925Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce637 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.934Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce638 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.956Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce639 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.965Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce63a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:41.985Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce63b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:41.996Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce63c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.020Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce63d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:42.031Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce63e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# Subtest: generalManager cannot access privileged collections through client SDK
+ok 159 - generalManager cannot access privileged collections through client SDK
+  ---
+  duration_ms: 429.094389
+  type: 'test'
+  ...
+# [2026-10-31T12:51:42.095Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce640 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.106Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce641 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.124Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce642 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.136Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce643 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.153Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce644 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.162Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce645 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.182Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce646 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.191Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce647 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.208Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce648 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.215Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce649 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.230Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.239Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.257Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.264Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.283Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.292Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce64f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.307Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce650 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.317Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce651 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.335Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce652 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:42.345Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce653 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# Subtest: manager cannot access privileged collections through client SDK
+ok 160 - manager cannot access privileged collections through client SDK
+  ---
+  duration_ms: 314.220295
+  type: 'test'
+  ...
+# [2026-10-31T12:51:42.404Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce655 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.414Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce656 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.431Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce657 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.438Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce658 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.456Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce659 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.467Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.483Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.492Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.508Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.519Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.535Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce65f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.545Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce660 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.563Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce661 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.573Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce662 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.591Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce663 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.604Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce664 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.621Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce665 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.630Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce666 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.650Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce667 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:42.661Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce668 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# Subtest: warehouse cannot access privileged collections through client SDK
+ok 161 - warehouse cannot access privileged collections through client SDK
+  ---
+  duration_ms: 315.414781
+  type: 'test'
+  ...
+# [2026-10-31T12:51:42.800Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.809Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.830Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.843Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.861Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.871Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce66f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.888Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce670 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.899Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce671 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.918Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce672 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.931Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce673 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.949Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce674 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.957Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce675 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.973Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce676 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:42.981Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce677 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:42.996Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce678 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.004Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce679 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.020Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce67a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.027Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce67b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.044Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce67c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:43.053Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce67d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# Subtest: sales cannot access privileged collections through client SDK
+ok 162 - sales cannot access privileged collections through client SDK
+  ---
+  duration_ms: 392.091261
+  type: 'test'
+  ...
+# [2026-10-31T12:51:43.102Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce67f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.109Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce680 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.126Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce681 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.134Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce682 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.149Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce683 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.161Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce684 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.177Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce685 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.186Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce686 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.201Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce687 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.209Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce688 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.224Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce689 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.235Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68a error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.249Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.259Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.277Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.296Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68e error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.314Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce68f error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L18, false for 'update' @ L18
+# [2026-10-31T12:51:43.322Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce690 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L18
+# [2026-10-31T12:51:43.345Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce691 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:43.364Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce692 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# Subtest: dataEntry cannot access privileged collections through client SDK
+ok 163 - dataEntry cannot access privileged collections through client SDK
+  ---
+  duration_ms: 311.918463
+  type: 'test'
+  ...
+# Subtest: unauthenticated users cannot read a profile or order
+ok 164 - unauthenticated users cannot read a profile or order
+  ---
+  duration_ms: 61.240594
+  type: 'test'
+  ...
+# [2026-10-31T12:51:43.690Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce696 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:43.705Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce697 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# [2026-10-31T12:51:43.757Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce698 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L10, false for 'create' @ L18, false for 'update' @ L10, false for 'update' @ L18
+# [2026-10-31T12:51:43.895Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce69b error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:43.908Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce69c error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# [2026-10-31T12:51:43.945Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce69d error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L10, false for 'create' @ L18, false for 'update' @ L10, false for 'update' @ L18
+# [2026-10-31T12:51:44.051Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce6a0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L15, false for 'create' @ L18, false for 'update' @ L15, false for 'update' @ L18
+# [2026-10-31T12:51:44.062Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce6a1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'delete' @ L15, false for 'delete' @ L18
+# [2026-10-31T12:51:44.098Z]  @firebase/firestore: Firestore (12.19.0): GrpcConnection RPC 'Write' stream 0x81fce6a2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+# false for 'create' @ L10, false for 'create' @ L18, false for 'update' @ L10, false for 'update' @ L18
+# Subtest: pending rejected and disabled identities cannot read internal data or change their decision
+ok 165 - pending rejected and disabled identities cannot read internal data or change their decision
+  ---
+  duration_ms: 671.964985
+  type: 'test'
+  ...
+# Subtest: search and filters journey: number, name, phone, click ref and combined
+ok 166 - search and filters journey: number, name, phone, click ref and combined
+  ---
+  duration_ms: 1257.827649
+  type: 'test'
+  ...
+# Subtest: contract: signed out cannot reach any protected callable
+ok 167 - contract: signed out cannot reach any protected callable
+  ---
+  duration_ms: 682.247675
+  type: 'test'
+  ...
+# Subtest: contract: authenticated GM passes the gate callables
+ok 168 - contract: authenticated GM passes the gate callables
+  ---
+  duration_ms: 129.246821
+  type: 'test'
+  ...
+# Subtest: contract: non-GM roles are denied GM-only scope
+ok 169 - contract: non-GM roles are denied GM-only scope
+  ---
+  duration_ms: 95.319967
+  type: 'test'
+  ...
+# Subtest: contract: createOrder forces internal-only fields regardless of forged input
+ok 170 - contract: createOrder forces internal-only fields regardless of forged input
+  ---
+  duration_ms: 72.894035
+  type: 'test'
+  ...
+# Subtest: RETIRED HARNESS BUG: partial updateOrder payload is rejected (needs full fields + revision)
+ok 171 - RETIRED HARNESS BUG: partial updateOrder payload is rejected (needs full fields + revision)
+  ---
+  duration_ms: 75.658924
+  type: 'test'
+  ...
+# Subtest: contract: full-payload update with matching revision succeeds and bumps revision
+ok 172 - contract: full-payload update with matching revision succeeds and bumps revision
+  ---
+  duration_ms: 90.703921
+  type: 'test'
+  ...
+# Subtest: RETIRED HARNESS BUG: client DTO exposes amount, never amountMinor
+ok 173 - RETIRED HARNESS BUG: client DTO exposes amount, never amountMinor
+  ---
+  duration_ms: 56.043272
+  type: 'test'
+  ...
+# Subtest: contract: same requestKey never creates a second order
+ok 174 - contract: same requestKey never creates a second order
+  ---
+  duration_ms: 119.58842
+  type: 'test'
+  ...
+# Subtest: journey: create, edit, search and the four internal transitions
+ok 175 - journey: create, edit, search and the four internal transitions
+  ---
+  duration_ms: 473.166179
+  type: 'test'
+  ...
+# Subtest: journey: terminal internal order refuses further unauthorised change
+ok 176 - journey: terminal internal order refuses further unauthorised change
+  ---
+  duration_ms: 206.518722
+  type: 'test'
+  ...
+# Subtest: contract: invalid transition target is refused
+ok 177 - contract: invalid transition target is refused
+  ---
+  duration_ms: 94.912539
+  type: 'test'
+  ...
+# Subtest: B1: zero tagged orders is NOT TESTED, never PASS
+ok 178 - B1: zero tagged orders is NOT TESTED, never PASS
+  ---
+  duration_ms: 2.857815
+  type: 'test'
+  ...
+# Subtest: B1: exactly one tagged order is PASS
+ok 179 - B1: exactly one tagged order is PASS
+  ---
+  duration_ms: 0.674669
+  type: 'test'
+  ...
+# Subtest: B1: more than one tagged order is FAIL and blocks every later gate
+ok 180 - B1: more than one tagged order is FAIL and blocks every later gate
+  ---
+  duration_ms: 0.307181
+  type: 'test'
+  ...
+# Subtest: pagination: listAll follows nextPageToken to exhaustion
+ok 181 - pagination: listAll follows nextPageToken to exhaustion
+  ---
+  duration_ms: 1.42109
+  type: 'test'
+  ...
+# Subtest: pagination: a repeated page token is rejected rather than silently trusted
+ok 182 - pagination: a repeated page token is rejected rather than silently trusted
+  ---
+  duration_ms: 0.871878
+  type: 'test'
+  ...
+# Subtest: E1/E2: missing notice is NOT TESTED, not PASS
+ok 183 - E1/E2: missing notice is NOT TESTED, not PASS
+  ---
+  duration_ms: 0.831066
+  type: 'test'
+  ...
+# Subtest: E2: notice present but unread is NOT TESTED, never an unconditional PASS
+ok 184 - E2: notice present but unread is NOT TESTED, never an unconditional PASS
+  ---
+  duration_ms: 0.779575
+  type: 'test'
+  ...
+# Subtest: E2: notice present and read is PASS from the observed flag
+ok 185 - E2: notice present and read is PASS from the observed flag
+  ---
+  duration_ms: 0.419728
+  type: 'test'
+  ...
+# Subtest: E2: a notice belonging to another order is not counted
+ok 186 - E2: a notice belonging to another order is not counted
+  ---
+  duration_ms: 0.617655
+  type: 'test'
+  ...
+# Subtest: documentIdFromName: only orders/<id> is accepted
+ok 187 - documentIdFromName: only orders/<id> is accepted
+  ---
+  duration_ms: 0.47941
+  type: 'test'
+  ...
+# Subtest: C0: a document whose name cannot be parsed is FAIL, not silently accepted
+ok 188 - C0: a document whose name cannot be parsed is FAIL, not silently accepted
+  ---
+  duration_ms: 0.348917
+  type: 'test'
+  ...
+# Subtest: C1: a wrong fixture amount or quantity is FAIL
+ok 189 - C1: a wrong fixture amount or quantity is FAIL
+  ---
+  duration_ms: 0.316487
+  type: 'test'
+  ...
+# Subtest: C1: a real-looking phone number would be FAIL, never reported
+ok 190 - C1: a real-looking phone number would be FAIL, never reported
+  ---
+  duration_ms: 0.508522
+  type: 'test'
+  ...
+# Subtest: C3/C4: a half-finished workflow is NOT TESTED, never PASS
+ok 191 - C3/C4: a half-finished workflow is NOT TESTED, never PASS
+  ---
+  duration_ms: 0.30519
+  type: 'test'
+  ...
+# Subtest: D1/D2: a complete workflow is PASS
+ok 192 - D1/D2: a complete workflow is PASS
+  ---
+  duration_ms: 0.283338
+  type: 'test'
+  ...
+# Subtest: audit for a different order does not satisfy this order gates
+ok 193 - audit for a different order does not satisfy this order gates
+  ---
+  duration_ms: 0.209797
+  type: 'test'
+  ...
+# Subtest: a failed read is NOT TESTED, never a silent PASS
+ok 194 - a failed read is NOT TESTED, never a silent PASS
+  ---
+  duration_ms: 0.260787
+  type: 'test'
+  ...
+# Subtest: identity failures are FAIL, and the report never echoes member PII
+ok 195 - identity failures are FAIL, and the report never echoes member PII
+  ---
+  duration_ms: 0.241016
+  type: 'test'
+  ...
+# Subtest: the client-SDK gate is always reported, even before an order exists
+ok 196 - the client-SDK gate is always reported, even before an order exists
+  ---
+  duration_ms: 0.307645
+  type: 'test'
+  ...
+# Subtest: FCM is never claimed as tested; only the internal notice is assessed
+ok 197 - FCM is never claimed as tested; only the internal notice is assessed
+  ---
+  duration_ms: 0.46516
+  type: 'test'
+  ...
+# Subtest: UI generates the idempotency requestKey itself, with a random secure value
+ok 198 - UI generates the idempotency requestKey itself, with a random secure value
+  ---
+  duration_ms: 2.812553
+  type: 'test'
+  ...
+# Subtest: UI sends a full field set plus revision on edit, matching the server contract
+ok 199 - UI sends a full field set plus revision on edit, matching the server contract
+  ---
+  duration_ms: 2.212817
+  type: 'test'
+  ...
+# Subtest: UI exposes the internal-completion confirmation the journey depends on
+ok 200 - UI exposes the internal-completion confirmation the journey depends on
+  ---
+  duration_ms: 1.960766
+  type: 'test'
+  ...
+# Subtest: reporting: all gates unverified can never produce an overall PASS
+ok 201 - reporting: all gates unverified can never produce an overall PASS
+  ---
+  duration_ms: 0.228104
+  type: 'test'
+  ...
+# Subtest: reporting: identity gates passing is still not an overall PASS
+ok 202 - reporting: identity gates passing is still not an overall PASS
+  ---
+  duration_ms: 0.42816
+  type: 'test'
+  ...
+# Subtest: reporting: a failed read makes the verdict UNVERIFIED
+ok 203 - reporting: a failed read makes the verdict UNVERIFIED
+  ---
+  duration_ms: 0.213651
+  type: 'test'
+  ...
+# Subtest: reporting: an incomplete page scan makes the verdict UNVERIFIED
+ok 204 - reporting: an incomplete page scan makes the verdict UNVERIFIED
+  ---
+  duration_ms: 0.214758
+  type: 'test'
+  ...
+# Subtest: reporting: an idempotency record pointing at another order is a FAIL
+ok 205 - reporting: an idempotency record pointing at another order is a FAIL
+  ---
+  duration_ms: 0.228004
+  type: 'test'
+  ...
+# Subtest: reporting: a fully verified journey is PASS despite F1 outstanding
+ok 206 - reporting: a fully verified journey is PASS despite F1 outstanding
+  ---
+  duration_ms: 0.212156
+  type: 'test'
+  ...
+# Subtest: reporting: every row states whether it is frontend or backend evidence
+ok 207 - reporting: every row states whether it is frontend or backend evidence
+  ---
+  duration_ms: 0.324768
+  type: 'test'
+  ...
+# Subtest: reporting: the duplicate verdict is FAIL even though later gates never ran
+ok 208 - reporting: the duplicate verdict is FAIL even though later gates never ran
+  ---
+  duration_ms: 0.662587
+  type: 'test'
+  ...
+# Subtest: A3: a genuine google-linked verified user is required, not a single user globally
+ok 209 - A3: a genuine google-linked verified user is required, not a single user globally
+  ---
+  duration_ms: 1.618346
+  type: 'test'
+  ...
+# Subtest: F1: verified client evidence turns the observational gate into PASS
+ok 210 - F1: verified client evidence turns the observational gate into PASS
+  ---
+  duration_ms: 0.607583
+  type: 'test'
+  ...
+# Subtest: F1: absent evidence stays NOT TESTED and never becomes an assumed PASS
+ok 211 - F1: absent evidence stays NOT TESTED and never becomes an assumed PASS
+  ---
+  duration_ms: 0.168383
+  type: 'test'
+  ...
+# Subtest: F1: evidence naming another order is rejected
+ok 212 - F1: evidence naming another order is rejected
+  ---
+  duration_ms: 0.394007
+  type: 'test'
+  ...
+# Subtest: F1: admin-SDK or unauthenticated evidence is rejected
+ok 213 - F1: admin-SDK or unauthenticated evidence is rejected
+  ---
+  duration_ms: 0.171575
+  type: 'test'
+  ...
+# Subtest: F1: a non-permission failure never counts as a denial
+ok 214 - F1: a non-permission failure never counts as a denial
+  ---
+  duration_ms: 0.297289
+  type: 'test'
+  ...
+# Subtest: F1: a probe that unexpectedly succeeded is a hard failure
+ok 215 - F1: a probe that unexpectedly succeeded is a hard failure
+  ---
+  duration_ms: 0.16323
+  type: 'test'
+  ...
+# Subtest: F1: missing probes are rejected rather than partially accepted
+ok 216 - F1: missing probes are rejected rather than partially accepted
+  ---
+  duration_ms: 0.121752
+  type: 'test'
+  ...
+# Subtest: disabled carrier and unconfirmed Click fail before claiming a shipment lock
+ok 217 - disabled carrier and unconfirmed Click fail before claiming a shipment lock
+  ---
+  duration_ms: 874.815655
+  type: 'test'
+  ...
+# {"id":"no_vendor_attempt","code":"failed-precondition","phase":"pre_send","reason":"بيانات اعتماد شركة التوصيل غير موجودة","severity":"ERROR","message":"Error: delivery dispatch failed\\n    at entryFromArgs (/w/functions/node_modules/firebase-functions/lib/logger/index.js:120:13)\\n    at Object.error (/w/functions/node_modules/firebase-functions/lib/logger/index.js:109:8)\\n    at dispatchOrder (/w/functions/src/index.js:923:12)\\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\\n    at async /w/functions/src/index.js:30:127\\n    at async waitForActual (node:assert:644:5)\\n    at async Function.rejects (node:assert:767:25)\\n    at async TestContext.<anonymous> (/w/functions/test/emulator/workflow.test.js:26:3)\\n    at async Test.run (node:internal/test_runner/test:1054:7)\\n    at async Test.processPendingSubtests (node:internal/test_runner/test:744:7)"}
+# Subtest: missing credentials before a vendor attempt return to idle and retain an audited order
+ok 218 - missing credentials before a vendor attempt return to idle and retain an audited order
+  ---
+  duration_ms: 95.036873
+  type: 'test'
+  ...
+# Subtest: Click company activates with User_ID, stays assignable, and sending remains separately gated
+ok 219 - Click company activates with User_ID, stays assignable, and sending remains separately gated
+  ---
+  duration_ms: 252.337299
+  type: 'test'
+  ...
+# Subtest: Click activation uses its pinned URL and does not depend on the generic host allowlist
+ok 220 - Click activation uses its pinned URL and does not depend on the generic host allowlist
+  ---
+  duration_ms: 29.349999
+  type: 'test'
+  ...
+# Subtest: company and member updates require explicit state and cannot silently wipe, disable or reactivate
+ok 221 - company and member updates require explicit state and cannot silently wipe, disable or reactivate
+  ---
+  duration_ms: 90.987932
+  type: 'test'
+  ...
+# Subtest: no permanent order-delete or Click-remove callable exists; rules deny deletion for every role
+ok 222 - no permanent order-delete or Click-remove callable exists; rules deny deletion for every role
+  ---
+  duration_ms: 0.460161
+  type: 'test'
+  ...
+# Subtest: order creation cannot forge carrier status, identifiers or unverified financial fields
+ok 223 - order creation cannot forge carrier status, identifiers or unverified financial fields
+  ---
+  duration_ms: 72.073209
+  type: 'test'
+  ...
+# Subtest: legacy password authentication remains enabled but cannot authorize Velnix; Google policy preserves roles
+ok 224 - legacy password authentication remains enabled but cannot authorize Velnix; Google policy preserves roles
+  ---
+  duration_ms: 92.456685
+  type: 'test'
+  ...
+# Subtest: generalManager creates a real persisted order and sees it
+ok 225 - generalManager creates a real persisted order and sees it
+  ---
+  duration_ms: 109.863265
+  type: 'test'
+  ...
+# Subtest: manager creates a real persisted order and sees it
+ok 226 - manager creates a real persisted order and sees it
+  ---
+  duration_ms: 84.915256
+  type: 'test'
+  ...
+# Subtest: warehouse creates a real persisted order and sees it
+ok 227 - warehouse creates a real persisted order and sees it
+  ---
+  duration_ms: 87.550393
+  type: 'test'
+  ...
+# Subtest: sales creates a real persisted order and sees it
+ok 228 - sales creates a real persisted order and sees it
+  ---
+  duration_ms: 112.555076
+  type: 'test'
+  ...
+# Subtest: dataEntry creates a real persisted order and sees it
+ok 229 - dataEntry creates a real persisted order and sees it
+  ---
+  duration_ms: 91.527003
+  type: 'test'
+  ...
+# Subtest: concurrent duplicate requests produce one order and one creation event
+ok 230 - concurrent duplicate requests produce one order and one creation event
+  ---
+  duration_ms: 3427.867014
+  type: 'test'
+  ...
+# Subtest: concurrent distinct orders receive unique sequence numbers
+ok 231 - concurrent distinct orders receive unique sequence numbers
+  ---
+  duration_ms: 3565.576037
+  type: 'test'
+  ...
+# Subtest: roles, private amounts and disabled accounts enforced by handlers
+ok 232 - roles, private amounts and disabled accounts enforced by handlers
+  ---
+  duration_ms: 47.667285
+  type: 'test'
+  ...
+# Subtest: workflow blocks forged carrier states and revisions prevent lost updates
+ok 233 - workflow blocks forged carrier states and revisions prevent lost updates
+  ---
+  duration_ms: 326.797762
+  type: 'test'
+  ...
+# Subtest: Arabic phone search and exact aggregates exceed 10000 records
+ok 234 - Arabic phone search and exact aggregates exceed 10000 records
+  ---
+  duration_ms: 2438.695059
+  type: 'test'
+  ...
+# Subtest: settings are persisted by authorized administrators and forbidden for ordinary staff
+ok 235 - settings are persisted by authorized administrators and forbidden for ordinary staff
+  ---
+  duration_ms: 34.89587
+  type: 'test'
+  ...
+# Subtest: removed sales role cannot use historical team arrays for lists or aggregate counts
+ok 236 - removed sales role cannot use historical team arrays for lists or aggregate counts
+  ---
+  duration_ms: 1009.53744
+  type: 'test'
+  ...
+# Subtest: historical orders transfer immediately with current employee membership without rewriting orders
+ok 237 - historical orders transfer immediately with current employee membership without rewriting orders
+  ---
+  duration_ms: 227.595716
+  type: 'test'
+  ...
+# Subtest: team queries spanning more than 30 creators paginate without loss or duplication
+ok 238 - team queries spanning more than 30 creators paginate without loss or duplication
+  ---
+  duration_ms: 44559.598298
+  type: 'test'
+  ...
+# Subtest: password employee creation is refused and delegated managers cannot escalate
+ok 239 - password employee creation is refused and delegated managers cannot escalate
+  ---
+  duration_ms: 53.362694
+  type: 'test'
+  ...
+# Subtest: deleteMember archives the profile, disables the account, keeps orders and audit, and enforces rank guards
+ok 240 - deleteMember archives the profile, disables the account, keeps orders and audit, and enforces rank guards
+  ---
+  duration_ms: 291.061914
+  type: 'test'
+  ...
+# Subtest: durable notices survive duplicate event delivery without resetting read state or leaking scope
+ok 241 - durable notices survive duplicate event delivery without resetting read state or leaking scope
+  ---
+  duration_ms: 258.935051
+  type: 'test'
+  ...
+# Subtest: a sales employee cannot become their own supervisor during a role change
+ok 242 - a sales employee cannot become their own supervisor during a role change
+  ---
+  duration_ms: 26.671701
+  type: 'test'
+  ...
+# Subtest: concurrent mutual administrator deactivation preserves an active administrator
+ok 243 - concurrent mutual administrator deactivation preserves an active administrator
+  ---
+  duration_ms: 3471.049531
+  type: 'test'
+  ...
+# Subtest: authorized internal completion records provenance and protects assigned and locked shipments
+ok 244 - authorized internal completion records provenance and protects assigned and locked shipments
+  ---
+  duration_ms: 322.870481
+  type: 'test'
+  ...
+# Subtest: directories paginate more than 100 records with stable name ties and scoped creator search
+ok 245 - directories paginate more than 100 records with stable name ties and scoped creator search
+  ---
+  duration_ms: 712.129993
+  type: 'test'
+  ...
+# Subtest: audit pagination is stable, bounded and rejects an unknown cursor
+ok 246 - audit pagination is stable, bounded and rejects an unknown cursor
+  ---
+  duration_ms: 70.177973
+  type: 'test'
+  ...
+# Subtest: sync center reports a bounded view instead of silently truncating
+ok 247 - sync center reports a bounded view instead of silently truncating
+  ---
+  duration_ms: 351.924142
+  type: 'test'
+  ...
+# Subtest: order event history paginates without loss or duplicates
+ok 248 - order event history paginates without loss or duplicates
+  ---
+  duration_ms: 111.477436
+  type: 'test'
+  ...
+# Subtest: webhook rejects an unknown company with 404 before signature checks
+ok 249 - webhook rejects an unknown company with 404 before signature checks
+  ---
+  duration_ms: 5.313355
+  type: 'test'
+  ...
+1..249
+# tests 249
+# suites 0
+# pass 249
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 274940.646974
+✔  Script exited successfully (code 0)
+i  emulators: Shutting down emulators.
+i  firestore: Stopping Firestore Emulator
+i  auth: Stopping Authentication Emulator
+i  hub: Stopping emulator hub
+i  logging: Stopping Logging Emulator
+npm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice
