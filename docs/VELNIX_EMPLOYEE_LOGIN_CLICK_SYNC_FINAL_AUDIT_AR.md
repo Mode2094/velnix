@@ -160,6 +160,7 @@
 - **رابط CI:** https://github.com/Mode2094/velnix/actions — سير العمل `.github/workflows/ci.yml` (مهام: flutter / firebase / android / emulator-ui). الملفات الجديدة تقع ضمن `functions/test/emulator/` فيلتقطها `npm run test:emulator` تلقائيًا.
 - **حالة النشر:** لم يُنشَر أي شيء. لا تغييرات إنتاج مطلوبة (لم يُصلَح أي خلل). لم تُعدَّل موارد سحابية (`cloudResourcesChanged:false`).
 - **Commit SHA المُفحوص:** `6894dae4919e005eb5c4434084ff0ad3caf3fe3c`.
+- **Commit الدليل المُضاف:** `2dee71e7342eb1db3f02503d7b30b088744ad7f7` (مدفوع إلى `origin/main`).
 
 ---
 
