@@ -100,3 +100,18 @@
 - **ملفات معدّلة:** `lib/live/live_order_journey.dart` (إصلاح العرض)، `test/order_journey_test.dart` (+2 اختبار).
 - **ملفات جديدة:** `functions/test/emulator/click_dispatch_diagnosis.test.js` (7 اختبارات)، هذا التقرير.
 - **لا تغيير إنتاجي** في الخادم أو القواعد أو الإعدادات.
+
+---
+
+## 6) التسليم والإصدار
+
+- **Commit SHA للإصلاح:** `168528a972cf864a6fab5ab52fabc137be0b4027` (مدفوع إلى `origin/main`).
+- **Commit التشخيص/التنظيف السابق:** `2dee71e` ثم `5f63330`.
+- **النشر:**
+  - **Firebase Functions: لا يعاد نشره** — الإصلاح في الواجهة فقط، ولم تتغيّر أي دالة خادم أو قواعد أو إعدادات.
+  - **التطبيق (عميل Flutter):** أُعيد بناء الإصدار الموقّع بالكامل:
+    - APK: `build/app/outputs/flutter-apk/app-release.apk` (81.1MB، موقّع V2، `CN=Velnix`)
+    - AAB: `build/app/outputs/bundle/release/app-release.aab` (73.8MB)
+    - ونُسخا إلى `delivery/apk/Velnix-release.apk` و`delivery/android/Velnix-release.aab` (مجلد محلي غير مُرفوع).
+- **CI:** سير العمل `.github/workflows/ci.yml` يلتقط الاختبارات الجديدة تلقائيًا (`npm run test:emulator` يشمل `click_dispatch_diagnosis.test.js`، و`flutter test` يشمل اختبارَي الرحلة).
+- **التحقق قبل التسليم:** `flutter analyze` نظيف، `dart format` نظيف، 439 اختبار Flutter، 195 وحدة دوال، 273 إموليتور، 0 فشل.
