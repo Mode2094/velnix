@@ -55,3 +55,6 @@ android/key.properties
 
 # Local APK build outputs
 delivery/
+
+# Production data exports / local backups — never commit
+backups/

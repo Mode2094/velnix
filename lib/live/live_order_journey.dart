@@ -27,6 +27,11 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
   String? note;
   bool noteOk = true;
 
+  /// True when the last action produced an *uncertain* delivery outcome: the
+  /// vendor may have created the shipment, so the status is not a plain error.
+  /// It is shown as a pending-verification notice, never a red failure.
+  bool noteUncertain = false;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +50,7 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
     setState(() {
       busy = true;
       note = null;
+      noteUncertain = false;
     });
     try {
       await operation();
@@ -52,6 +58,7 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
       setState(() {
         note = success;
         noteOk = true;
+        noteUncertain = false;
         reload();
       });
     } catch (e) {
@@ -59,6 +66,10 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
         setState(() {
           note = e.toString();
           noteOk = false;
+          // A delivery send whose result is unconfirmed must not be shown as a
+          // plain failure: the shipment may already exist at the carrier. The
+          // server signals this with code 'unavailable' and an explicit message.
+          noteUncertain = _isUncertainDispatch(e);
           // Reload so the order shows the server's real dispatch state
           // (idle / sending / needs_review / sent) even after a failure or an
           // uncertain outcome. This is what makes the UI state-based instead of
@@ -69,6 +80,19 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  /// Detects the backend's "uncertain delivery result" rejection so the UI can
+  /// present it as pending verification instead of an error.
+  bool _isUncertainDispatch(Object error) {
+    if (error is! VelnixException) return false;
+    if (error.code != 'unavailable' && error.code != 'deadline-exceeded') {
+      return false;
+    }
+    final m = error.message;
+    return m.contains('غير مؤكدة') ||
+        m.contains('قد تكون الشحنة') ||
+        m.contains('لا تُعد الإرسال');
   }
 
   Future<void> _changeStatus(String target, String success) {
@@ -271,11 +295,15 @@ class _LiveOrderJourneyState extends State<LiveOrderJourney> {
                 if (note != null) ...[
                   const SizedBox(height: 10),
                   VFeedbackPanel(
-                    title: noteOk ? 'تم' : 'لم تكتمل العملية',
+                    title: noteUncertain
+                        ? 'نتيجة الإرسال غير مؤكدة'
+                        : (noteOk ? 'تم' : 'لم تكتمل العملية'),
                     message: note,
-                    icon: noteOk
-                        ? Icons.check_circle_outline
-                        : Icons.error_outline,
+                    icon: noteUncertain
+                        ? Icons.hourglass_top_outlined
+                        : (noteOk
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline),
                   ),
                 ],
                 const SizedBox(height: 12),

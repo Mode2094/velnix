@@ -335,4 +335,81 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
   });
+
+  testWidgets(
+    'an uncertain send is shown as pending verification, not as a red failure',
+    (tester) async {
+      // The manager sends a ready Click order; the server answers with the
+      // uncertain-outcome rejection (the vendor may have created the shipment).
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        if (name == 'getOrder') {
+          return {
+            'order': order(
+              status: 'ready',
+              companyId: 'click_delivery_1603',
+              dispatch: true,
+            ),
+            'events': <dynamic>[],
+          };
+        }
+        if (name == 'sendOrderToDelivery') {
+          throw VelnixException(
+            'نتيجة الإرسال غير مؤكدة. يجري التحقق من الشحنة، ولا يلزم إعادة الإرسال.',
+            code: 'unavailable',
+          );
+        }
+        throw StateError(name);
+      });
+      await tester.pumpWidget(
+        app(LiveOrderJourney(orderId: 'journey_order', policy: gm())),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تأكيد وإرسال إلى Click'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تأكيد'));
+      await tester.pumpAndSettle();
+
+      // The uncertain result is presented as pending verification...
+      expect(find.text('نتيجة الإرسال غير مؤكدة'), findsOneWidget);
+      // ...not as a generic failure, and the guidance tells the user not to resend.
+      expect(find.text('لم تكتمل العملية'), findsNothing);
+      expect(find.textContaining('لا يلزم إعادة الإرسال'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a genuine error is still shown as a failure, not as uncertainty', (
+    tester,
+  ) async {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      if (name == 'getOrder') {
+        return {
+          'order': order(
+            status: 'ready',
+            companyId: 'click_delivery_1603',
+            dispatch: true,
+          ),
+          'events': <dynamic>[],
+        };
+      }
+      if (name == 'sendOrderToDelivery') {
+        throw VelnixException(
+          'تعذر تجهيز اتصال شركة التوصيل. لم تبدأ محاولة الإرسال. راجع المسؤول.',
+          code: 'failed-precondition',
+        );
+      }
+      throw StateError(name);
+    });
+    await tester.pumpWidget(
+      app(LiveOrderJourney(orderId: 'journey_order', policy: gm())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تأكيد وإرسال إلى Click'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تأكيد'));
+    await tester.pumpAndSettle();
+    expect(find.text('لم تكتمل العملية'), findsOneWidget);
+    expect(find.text('نتيجة الإرسال غير مؤكدة'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
