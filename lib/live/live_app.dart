@@ -48,6 +48,31 @@ bool shouldEndSession({required String? errorCode, required bool hasAuthUser}) {
   return errorCode == 'unauthenticated' && !hasAuthUser;
 }
 
+/// Turns a session-load failure into a clear, non-technical Arabic message.
+///
+/// It deliberately never prints a raw exception string: a rejected App Check /
+/// device-attestation token surfaces from the SDK as "Unauthenticated" (English)
+/// and must not be shown to the user. Only a message that is already Arabic and
+/// free of SDK identifiers is passed through.
+String sessionErrorMessage(Object? error) {
+  if (error is VelnixException) {
+    final m = error.message.trim();
+    if (_looksLikeArabicGuidance(m)) return m;
+    if (error.code == 'unauthenticated') {
+      return 'تعذر التحقق من أمان الجهاز أو الاتصال. تأكد من الإنترنت ثم أعد المحاولة.';
+    }
+    return 'تعذر تحميل بيانات الحساب. أعد المحاولة، وإذا استمر الخطأ راجع مسؤول المؤسسة.';
+  }
+  return 'تعذر تحميل بيانات الحساب. أعد المحاولة، وإذا استمر الخطأ راجع مسؤول المؤسسة.';
+}
+
+bool _looksLikeArabicGuidance(String value) {
+  if (value.isEmpty) return false;
+  if (!RegExp(r'[\u0600-\u06FF]').hasMatch(value)) return false;
+  if (RegExp(r'[A-Za-z]{3,}').hasMatch(value)) return false;
+  return true;
+}
+
 final statusLabels = <String, String>{
   for (final status in OrderStatus.values) status.name: status.label,
 };
@@ -701,18 +726,37 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
       };
     } on VelnixException catch (e) {
       if (e.code == 'unauthenticated') {
-        // A cached/transient App Check or transport failure also surfaces as
-        // 'unauthenticated'. Only end the session when Firebase Auth itself no
-        // longer has a user; otherwise keep the valid session and let the user
-        // retry instead of being forced back to the login screen.
-        if (shouldEndSession(
-          errorCode: e.code,
-          hasAuthUser: VelnixGateway.instance.auth.currentUser != null,
-        )) {
+        final user = VelnixGateway.instance.auth.currentUser;
+        // A genuinely invalid session (no Firebase user) ends and returns to
+        // the login screen.
+        if (shouldEndSession(errorCode: e.code, hasAuthUser: user != null)) {
           VelnixGateway.instance.clearCache();
           return {'status': 'signed_out'};
         }
-        rethrow;
+        // The user IS signed in, so 'unauthenticated' means a rejected App Check
+        // / device-attestation or a transient token problem. Force a fresh ID
+        // token once and retry the call a single time; never loop. If it still
+        // fails, keep the session and surface clear guidance so the user can
+        // retry rather than being forced to log out.
+        try {
+          await user!.getIdToken(true);
+          final status = await VelnixGateway.instance.call('joinSession');
+          if (status['status'] != 'approved') return status;
+          final member = status['member'];
+          if (member is Map) {
+            return {
+              'status': 'approved',
+              'member': Map<String, dynamic>.from(member),
+            };
+          }
+          return {
+            'status': 'approved',
+            'member': await VelnixGateway.instance.me(),
+          };
+        } on VelnixException catch (retry) {
+          if (retry.code == 'unauthenticated') rethrow;
+          rethrow;
+        }
       }
       rethrow;
     }
@@ -805,26 +849,53 @@ class _AuthenticatedWorkspaceState extends State<AuthenticatedWorkspace> {
       }
       if (!snap.hasData || snap.hasError) {
         if (snap.hasError) {
+          // A transient App Check / transport rejection must never look like a
+          // raw "Unauthenticated" crash. The session is kept; the user can
+          // retry, and sign-out stays available but is not forced.
+          final message = sessionErrorMessage(snap.error);
           return Scaffold(
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'تعذر تحميل الحساب: ${snap.error}',
-                      textAlign: TextAlign.center,
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => session = loadSession()),
-                      child: const Text('إعادة المحاولة'),
-                    ),
-                    TextButton(
-                      onPressed: () => NotificationsService.instance.signOut(),
-                      child: const Text('تسجيل الخروج'),
-                    ),
-                  ],
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.shield_outlined,
+                        size: 40,
+                        color: VColors.warning,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'تعذر تحميل الحساب',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: VColors.ink, height: 1.5),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () =>
+                            setState(() => session = loadSession()),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('إعادة المحاولة'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            NotificationsService.instance.signOut(),
+                        child: const Text('تسجيل الخروج'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),

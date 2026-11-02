@@ -48,11 +48,26 @@ void main() {
   test('unauthenticated errors produce a clear session message', () {
     expect(
       callableErrorMessage('unauthenticated', null),
-      contains('انتهت الجلسة'),
+      contains('تعذر التحقق من أمان الجهاز'),
+    );
+    // A raw SDK string ("Unauthenticated" / "App Check token rejected") must
+    // NEVER reach the user; it falls back to clear Arabic guidance.
+    expect(
+      callableErrorMessage('unauthenticated', 'Unauthenticated'),
+      isNot(contains('Unauthenticated')),
     );
     expect(
       callableErrorMessage('unauthenticated', 'App Check token rejected'),
-      'App Check token rejected',
+      isNot(contains('App Check')),
+    );
+    expect(
+      callableErrorMessage('unauthenticated', 'App Check token rejected'),
+      contains('تعذر التحقق من أمان الجهاز'),
+    );
+    // A genuine Arabic server message is preserved.
+    expect(
+      callableErrorMessage('unauthenticated', 'انتهت الجلسة، أعد تسجيل الدخول'),
+      'انتهت الجلسة، أعد تسجيل الدخول',
     );
   });
 
@@ -74,5 +89,41 @@ void main() {
       isFalse,
     );
     expect(shouldEndSession(errorCode: null, hasAuthUser: false), isFalse);
+  });
+
+  test('session errors are clear and never leak a raw SDK message', () {
+    // Case 2 & 5: a rejected App Check / device-attestation token arrives as
+    // 'unauthenticated'. The screen must give clear Arabic, not "Unauthenticated".
+    expect(
+      sessionErrorMessage(
+        VelnixException('Unauthenticated', code: 'unauthenticated'),
+      ),
+      isNot(contains('Unauthenticated')),
+    );
+    expect(
+      sessionErrorMessage(
+        VelnixException('Unauthenticated', code: 'unauthenticated'),
+      ),
+      contains('تعذر التحقق من أمان الجهاز'),
+    );
+    expect(
+      sessionErrorMessage(
+        VelnixException('App Check token rejected', code: 'unauthenticated'),
+      ),
+      isNot(contains('App Check')),
+    );
+    // Case 3: a transport failure keeps the session and invites a retry.
+    expect(
+      sessionErrorMessage(
+        VelnixException('تعذر الاتصال. تحقق من الشبكة', code: 'unavailable'),
+      ),
+      'تعذر الاتصال. تحقق من الشبكة',
+    );
+    // An unexpected/raw failure falls back to a safe Arabic sentence.
+    expect(
+      sessionErrorMessage(StateError('boom')),
+      contains('تعذر تحميل بيانات الحساب'),
+    );
+    expect(sessionErrorMessage(StateError('boom')), isNot(contains('boom')));
   });
 }

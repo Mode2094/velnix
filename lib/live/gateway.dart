@@ -579,10 +579,14 @@ String callableErrorMessage(
         ? serverMessage!.trim()
         : 'تعذر إتمام العملية. تحقق من الاتصال ثم أعد المحاولة، أو راجع المسؤول إذا استمرت المشكلة',
   'aborted' => 'تغيرت بيانات الطلب؛ أعد تحميله قبل الحفظ',
+  // 'unauthenticated' is Firebase's wrapper for BOTH a genuinely expired
+  // session AND a rejected App Check / device-attestation token (the app is
+  // signed in but the platform refused the request). Never surface the raw
+  // SDK text "Unauthenticated": give clear, actionable Arabic instead.
   'unauthenticated' =>
-    serverMessage?.trim().isNotEmpty == true
-        ? serverMessage!
-        : 'انتهت الجلسة أو تعذر التحقق من أمان المتصفح؛ أعد تسجيل الدخول.',
+    _safeServerMessage(serverMessage)
+        ? serverMessage!.trim()
+        : 'تعذر التحقق من أمان الجهاز أو انتهت الجلسة. تأكد من الاتصال بالإنترنت ثم أعد المحاولة.',
   _ => serverMessage ?? 'حدث خطأ أثناء الاتصال بالخادم',
 };
 
