@@ -50,10 +50,10 @@ bool shouldEndSession({required String? errorCode, required bool hasAuthUser}) {
 
 /// Turns a session-load failure into a clear, non-technical Arabic message.
 ///
-/// It deliberately never prints a raw exception string: a rejected App Check /
-/// device-attestation token surfaces from the SDK as "Unauthenticated" (English)
-/// and must not be shown to the user. Only a message that is already Arabic and
-/// free of SDK identifiers is passed through.
+/// It never prints a raw SDK string: a rejected App Check / device-attestation
+/// token surfaces from the SDK as "Unauthenticated" (English) and must not be
+/// shown. Our own backend messages are Arabic (they may embed a brand token
+/// such as "Google"), so those are preserved.
 String sessionErrorMessage(Object? error) {
   if (error is VelnixException) {
     final m = error.message.trim();
@@ -66,11 +66,17 @@ String sessionErrorMessage(Object? error) {
   return 'تعذر تحميل بيانات الحساب. أعد المحاولة، وإذا استمر الخطأ راجع مسؤول المؤسسة.';
 }
 
+/// True when [value] is our backend's own guidance: mostly Arabic. A raw SDK
+/// string ("Unauthenticated", "App Check token rejected") is Latin-first and is
+/// rejected; a legitimate Arabic sentence that merely contains a brand name
+/// (e.g. "Google") is accepted.
 bool _looksLikeArabicGuidance(String value) {
   if (value.isEmpty) return false;
-  if (!RegExp(r'[\u0600-\u06FF]').hasMatch(value)) return false;
-  if (RegExp(r'[A-Za-z]{3,}').hasMatch(value)) return false;
-  return true;
+  final firstRune = value.runes.first;
+  if (firstRune < 0x0600 || firstRune > 0x06FF) return false;
+  final arabic = RegExp(r'[\u0600-\u06FF]').allMatches(value).length;
+  final latin = RegExp(r'[A-Za-z]').allMatches(value).length;
+  return arabic >= latin;
 }
 
 final statusLabels = <String, String>{

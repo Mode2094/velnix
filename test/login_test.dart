@@ -126,4 +126,26 @@ void main() {
     );
     expect(sessionErrorMessage(StateError('boom')), isNot(contains('boom')));
   });
+
+  test('a disabled-account server message is preserved, not replaced', () {
+    // Regression: the backend rejects a disabled account with a legitimate
+    // Arabic message that embeds the brand token "Google". This must reach the
+    // user (the emulator-ui session-revocation scenario depends on it); it is
+    // our own backend guidance, not a raw SDK string.
+    const serverMessage =
+        'يلزم حساب موثق وفعال بالبريد أو Google؛ راجع المسؤول';
+    expect(
+      sessionErrorMessage(
+        VelnixException(serverMessage, code: 'failed-precondition'),
+      ),
+      serverMessage,
+    );
+    // A predominantly Latin SDK string is still replaced.
+    expect(
+      sessionErrorMessage(
+        VelnixException('failed-precondition', code: 'failed-precondition'),
+      ),
+      isNot(contains('failed-precondition')),
+    );
+  });
 }
