@@ -31,6 +31,41 @@ void main() {
       );
     }
   });
+
+  test(
+    'Android App Check defaults to reCAPTCHA Enterprise (works off-store)',
+    () {
+      // The default Android provider must be reCAPTCHA Enterprise so an APK
+      // installed outside Google Play can attest without Play Console.
+      const defaultProvider = String.fromEnvironment(
+        'VELNIX_ANDROID_APPCHECK',
+        defaultValue: 'recaptcha_enterprise',
+      );
+      expect(
+        FirebaseConfiguration.usePlayIntegrityOnAndroid(defaultProvider),
+        isFalse,
+      );
+      // An explicit Play Integrity opt-in is still honoured for store builds.
+      expect(
+        FirebaseConfiguration.usePlayIntegrityOnAndroid('play_integrity'),
+        isTrue,
+      );
+      expect(
+        FirebaseConfiguration.usePlayIntegrityOnAndroid('PLAY_INTEGRITY'),
+        isTrue,
+      );
+      // Anything else (including empty) stays on the off-store-safe default.
+      for (final value in ['', '  ', 'recaptcha', 'other']) {
+        expect(
+          FirebaseConfiguration.usePlayIntegrityOnAndroid(value),
+          isFalse,
+          reason: value,
+        );
+      }
+      // The public Android site key is present and is not empty.
+      expect(FirebaseConfiguration.androidReCaptchaSiteKeyDefault, isNotEmpty);
+    },
+  );
   testWidgets('missing Enterprise key shows setup error without login', (
     tester,
   ) async {

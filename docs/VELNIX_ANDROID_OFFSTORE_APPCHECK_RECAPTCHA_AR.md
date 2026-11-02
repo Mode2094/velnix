@@ -1,0 +1,102 @@
+# تشغيل Android APK خارج Google Play — حل Unauthenticated عبر reCAPTCHA Enterprise
+
+**المشروع:** `Mode2094/velnix`
+**Firebase:** `velnix-6c1a2`
+**Package:** `com.mode2094.velnix`
+**تاريخ التنفيذ:** 2026-11-02
+
+---
+
+## 1) الحل المختار: مزوّد reCAPTCHA Enterprise على Android
+
+**القرار:** الانتقال من **Play Integrity** إلى **reCAPTCHA Enterprise** كمزوّد App Check على Android.
+
+**لماذا هو الحل الصحيح:**
+- **موثّق رسميًا** من Firebase/Flutter: `AndroidReCaptchaProvider(siteKey)` مدعوم في حزمة `firebase_app_check` (الإصدار 0.4.8 المثبّت لدينا).
+- **يعمل دون Google Play ودون Play Console:** مفتاح reCAPTCHA من نوع Android يُربط بـ **اسم الحزمة** (`com.mode2094.velnix`) مع دعم صريح **`supportNonGoogleAppStoreDistribution: true`** للتوزيع خارج المتجر.
+- **لا يشترط نشر التطبيق** ولا تسجيله في Play Console خلافًا لـ Play Integrity.
+- **لا يعتمد على أي سر ثابت داخل الـAPK:** مفتاح reCAPTCHA **عام** (مثل مفتاح الويب)، والأصالة تأتي من **تحليل مخاطر خادمي قائم على القيمة (score-based)** على سيرفرات Google. لا توجد بيانات اعتماد مخزّنة في التطبيق.
+
+**حالة Preview:** استخدام reCAPTCHA Enterprise على المنصات المحمولة/Flutter **في مرحلة Preview** وفق توثيق Firebase (لا يخضع لـ SLA وقد يتغير بطرق غير متوافقة). أُعلن ذلك بوضوح؛ البديل المستقر (Play Integrity) لا يحقق الشرط غير القابل للتفاوض (تشغيل دون Play).
+
+---
+
+## 2) ما نُفِّذ فعليًا
+
+### أ) على Firebase / Google Cloud (منفّذ ومنسّق)
+1. **إنشاء مفتاح reCAPTCHA Enterprise من نوع Android:**
+   - الاسم: `projects/948196868655/keys/6LeNIQ0uAAAAAAKWAcejQCpL5b63erSFzS9dOhCB`
+   - **siteKey العام:** `6LeNIQ0uAAAAAAKWAcejQCpL5b63erSFzS9dOhCB`
+   - مقيّد بالحزمة: `com.mode2094.velnix`
+   - `supportNonGoogleAppStoreDistribution: true`
+2. **تسجيل المزوّد في App Check لتطبيق Android:**
+   - PATCH على `.../androidApps/1:948196868655:android:4465def254bb941ac43cda/recaptchaEnterpriseConfig`
+   - النتيجة: `siteKey` مضبوط + `minValidScore: 0.5`.
+3. **إبقاء App Check مُفعَّلًا:** لم يُعطَّل enforceAppCheck، ولم يُستخدم Debug Provider.
+4. **بصمات الشهادة سليمة ومُنظّفة** (upload `6e57f935…` + Play signing `9bdabcf8…`).
+
+### ب) في كود التطبيق (منفّذ ومُختبر)
+- `lib/core/firebase_configuration.dart`:
+  - `androidReCaptchaSiteKeyDefault` = المفتاح العام.
+  - `usePlayIntegrityOnAndroid(String)` — يحدّد المزوّد.
+- `lib/main.dart`:
+  - Android يستخدم `AndroidReCaptchaProvider(siteKey)` **افتراضيًا**.
+  - Play Integrity يبقى خيارًا صريحًا (`--dart-define=VELNIX_ANDROID_APPCHECK=play_integrity`) لمن يوزّع عبر المتجر.
+  - Web يبقى على `ReCaptchaEnterpriseProvider` الحالي بلا تغيير.
+- لا تغيير في: Firebase Auth، حسابات الموظفين، صلاحيات Firestore/Functions، وظائف Click، منطق الطلبات.
+
+---
+
+## 3) الأثر الأمني
+
+| البند | Play Integrity (السابق) | reCAPTCHA Enterprise (الجديد) |
+|---|---|---|
+| يعمل خارج Google Play | لا (بدون ربط Play Console) | **نعم** |
+| إثبات أصالة التطبيق | تصنيف Play الرسمي | تحليل مخاطر خادمي (score) + ربط اسم الحزمة |
+| سر داخل الـAPK | لا | **لا** (المفتاح عام) |
+| App Check مُفعَّل | نعم | **نعم** |
+| مناسب لتوزيع مباشر APK | محدود | **مصمَّم له** |
+
+**الخطر المتبقّي:** reCAPTCHA على الموبايل يعطي **درجة تقديرية** وليس ائتمانًا قاطعًا مثل Play Integrity. لذلك:
+- `minValidScore = 0.5` (الموصى به) — ليس 0.
+- **لا يزال يتطلب** تسجيل دخول Firebase Auth صالحًا + عضوية معتمدة + كل صلاحيات الخادم.
+- Engineer/automation محتمل قد يمرر التطبيق لكن **لا يمتلك حساب الموظف**، فتبقى الحماية الفعلية على طبقة المصادقة والتفويض.
+
+الأثر الأمني مقبول ومتجان مع متطلّب "تشغيل دون Play".
+
+---
+
+## 4) الاختبارات
+
+### ما أُثبِت
+- **Flutter:** 441 اختبارًا ناجحًا (يشمل اختبارًا جديدًا لمنطق اختيار المزوّد).
+- **Functions (وحدات):** 195/195.
+- **Firebase Emulator:** 273/273.
+- **`flutter analyze`:** نظيف. **`dart format`:** نظيف.
+- **بناء APK Release موقّع** ناجح مع المزوّد الجديد.
+- **إثبات على إيميوليتور Android (Google APIs + Play Services):**
+  - التطبيق أقلع بلا crash.
+  - السجل: **`rCEAppCheckProvider: Initializing RecaptchaTasksClient for siteKey: 6LeNIQ0uAAAAAAKWAcejQCpL5b63erSFzS9dOhCB`** — أي أن التطبيق الذي نوزّعه تهيّأ فعليًا على مزوّد reCAPTCHA بالمفتاح الصحيح.
+  - خدمة `recaptchabase` المرتبطة كُوِّنت وتهيّأت.
+  - المفتاح العام مُدمج في `libapp.so`.
+
+### ما لم يُثبَت — `BLOCKED`
+- **تسجيل دخول كامل على جهاز/إيميوليتور بحساب حقيقي:** `BLOCKED` — لا توجد بيانات اعتماد صالحة، وممنوع تعديل/إنشاء حسابات المستخدمين. الإيميوليتور لا يكفي كدليل نهائي على قبول الخادم للرمز بحساب حقيقي.
+- **جهاز Android فعلي بالعميل:** `BLOCKED` — غير متاح.
+
+**لذلك لا أعلن PASS نهائيًا لتسجيل الدخول من البداية للنهاية حتى تُجرَّب بحساب حقيقي.**
+
+---
+
+## 5) قيود
+- مزوّد reCAPTCHA Enterprise على الموبايل **Preview** (توثيق Firebase).
+- التحقق النهائي من قبول الخادم (`app: VALID`) بحساب حقيقي ينتظر اختبارًا ميدانيًا.
+
+---
+
+## 6) الخطوات المطلوبة منك لإكمال التحقق الميداني
+1. ثبّت الـAPK الجديد (بعد بنائه) على جهاز Android حقيقي.
+2. سجّل الدخول بحساب **مدير عام** وحساب **موظف**.
+3. أبلغني بالنتيجة؛ سأتحقق من سجلات الإنتاج أن الطلبات صارت **`app: VALID`**.
+
+*(ملاحظة: بموجب تعليمك السابق "انتظر إعدادات App Check"، أضع الإصلاح في الكود وأجهّز البناء، لكنني أنتظر تأكيدك قبل نشر إصدار جديد.)*

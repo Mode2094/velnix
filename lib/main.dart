@@ -51,6 +51,14 @@ Future<void> main() async {
     }
     config.validateProject(Firebase.app().options.projectId);
     const webSiteKey = String.fromEnvironment('FIREBASE_APPCHECK_SITE_KEY');
+    const androidSiteKey = String.fromEnvironment(
+      'VELNIX_ANDROID_APPCHECK_SITE_KEY',
+      defaultValue: FirebaseConfiguration.androidReCaptchaSiteKeyDefault,
+    );
+    const androidProvider = String.fromEnvironment(
+      'VELNIX_ANDROID_APPCHECK',
+      defaultValue: 'recaptcha_enterprise',
+    );
     const debugAppCheck = bool.fromEnvironment('VELNIX_DEBUG_APPCHECK');
     if (debugAppCheck && kReleaseMode) {
       throw StateError('App Check debug غير مسموح في إصدار الإنتاج');
@@ -68,7 +76,12 @@ Future<void> main() async {
         () => FirebaseAppCheck.instance.activate(
           providerAndroid: debugAppCheck
               ? const AndroidDebugProvider()
-              : const AndroidPlayIntegrityProvider(),
+              // reCAPTCHA Enterprise on Android works for an APK installed
+              // outside Google Play (no Play Console registration required).
+              // Play Integrity is kept as an explicit opt-in for store builds.
+              : FirebaseConfiguration.usePlayIntegrityOnAndroid(androidProvider)
+              ? const AndroidPlayIntegrityProvider()
+              : const AndroidReCaptchaProvider(androidSiteKey),
           providerApple: debugAppCheck
               ? const AppleDebugProvider()
               : const AppleDeviceCheckProvider(),

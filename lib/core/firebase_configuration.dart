@@ -14,6 +14,21 @@ class FirebaseConfiguration {
     return ReCaptchaEnterpriseProvider(siteKey);
   }
 
+  /// App Check provider for Android.
+  ///
+  /// The default is reCAPTCHA Enterprise, which — unlike Play Integrity —
+  /// works for an APK installed directly outside Google Play and does not
+  /// require the app to be published or registered in Play Console. The site
+  /// key is a PUBLIC identifier bound (server-side) to the package name
+  /// `com.mode2094.velnix` plus Google's score-based risk analysis; it is not a
+  /// secret and carries no fixed credential. Play Integrity remains available
+  /// via `VELNIX_ANDROID_APPCHECK=play_integrity` for stores that require it.
+  static const androidReCaptchaSiteKeyDefault =
+      '6LeNIQ0uAAAAAAKWAcejQCpL5b63erSFzS9dOhCB';
+
+  static bool usePlayIntegrityOnAndroid(String configured) =>
+      configured.trim().toLowerCase() == 'play_integrity';
+
   static const supplied = FirebaseOptions(
     apiKey: String.fromEnvironment('FIREBASE_API_KEY'),
     appId: String.fromEnvironment('FIREBASE_APP_ID'),
