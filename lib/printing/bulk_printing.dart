@@ -26,9 +26,16 @@ class BulkPrintScreen extends StatefulWidget {
 class _BulkPrintScreenState extends State<BulkPrintScreen> {
   OrderPaper paper = OrderPaper.a4;
   OrderTemplate template = OrderTemplate.professional;
+  bool landscape = false;
   bool busy = false;
 
-  PdfPageFormat get format => paper.format();
+  /// The chosen format, with width/height swapped when landscape is selected so
+  /// the user can print the same vouchers in portrait or landscape.
+  PdfPageFormat get format {
+    final base = paper.format();
+    if (!landscape) return base;
+    return PdfPageFormat(base.height, base.width, marginAll: base.marginLeft);
+  }
 
   List<Map<String, dynamic>> get orders =>
       widget.orders.take(BulkPrintScreen.maxOrders).toList();
@@ -108,6 +115,17 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                 onChanged: (v) =>
                     setState(() => template = v ?? OrderTemplate.professional),
               ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<bool>(
+                initialValue: landscape,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'الاتجاه'),
+                items: const [
+                  DropdownMenuItem(value: false, child: Text('عمودي')),
+                  DropdownMenuItem(value: true, child: Text('أفقي')),
+                ],
+                onChanged: (v) => setState(() => landscape = v ?? false),
+              ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: busy
@@ -146,7 +164,9 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
       ],
     );
     final preview = PdfPreview(
-      key: ValueKey('bulk-${paper.name}-${template.name}-${orders.length}'),
+      key: ValueKey(
+        'bulk-${paper.name}-${template.name}-${landscape ? 'l' : 'p'}-${orders.length}',
+      ),
       initialPageFormat: format,
       canChangePageFormat: false,
       canChangeOrientation: false,

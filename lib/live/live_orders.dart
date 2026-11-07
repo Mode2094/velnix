@@ -566,7 +566,17 @@ class _LiveOrdersState extends State<LiveOrders> {
 
   Future<void> _bulkPrint() async {
     if (selected.isEmpty) return;
-    final ids = selected.toList();
+    await _printOrders(selected.toList());
+  }
+
+  /// Fetches the latest authorized printable data for [ids] and opens the batch
+  /// print preview (one voucher per order, user chooses portrait/landscape).
+  /// Used both by the print action and by the optional print after a status
+  /// change. It is independent of any status change: a print failure never
+  /// reverses a completed change, and calling it twice for the same ids would
+  /// only re-open the preview, never re-run a change.
+  Future<void> _printOrders(List<String> ids) async {
+    if (ids.isEmpty) return;
     // Large selections are printed in explicit chunks with a warning, never
     // silently truncated.
     final chunks = <List<String>>[];
@@ -742,12 +752,16 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// No chunk is retried here (a retry could duplicate an uncertain effect) and
   /// the server's own uncertain outcomes stay uncertain. Every requested order
   /// is reported exactly once.
-  Future<void> _runBulkChunked(
+  ///
+  /// Returns the merged per-order result rows ({id, ok, ...}) so the caller can
+  /// act on exactly the orders the server confirmed (for an optional follow-up
+  /// such as printing), or null when the call was a no-op (busy/empty).
+  Future<List<Map<String, dynamic>>?> _runBulkChunked(
     List<String> ids,
     Future<Map<String, dynamic>> Function(List<String> chunk) call, {
     int chunkSize = _bulkChunk,
   }) async {
-    if (bulkBusy || ids.isEmpty) return;
+    if (bulkBusy || ids.isEmpty) return null;
     setState(() => bulkBusy = true);
     final merged = <String, dynamic>{'results': <dynamic>[]};
     var succeeded = 0, failed = 0, uncertain = 0, unchanged = 0;
@@ -788,7 +802,10 @@ class _LiveOrdersState extends State<LiveOrders> {
     merged['failed'] = failed;
     merged['uncertain'] = uncertain;
     merged['unchanged'] = unchanged;
-    if (!mounted) return;
+    final results = (merged['results'] as List)
+        .map((r) => Map<String, dynamic>.from(r as Map))
+        .toList();
+    if (!mounted) return results;
     try {
       _showBulkResultsDialog(
         'نتيجة العملية — ${ids.length} طلب',
@@ -796,9 +813,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         unchanged,
         uncertain,
         failed,
-        (merged['results'] as List)
-            .map((r) => Map<String, dynamic>.from(r as Map))
-            .toList(),
+        results,
         unknownIds: unknownIds,
         notStarted: notStarted,
         transportError: transportError,
@@ -808,17 +823,24 @@ class _LiveOrdersState extends State<LiveOrders> {
     } finally {
       if (mounted) setState(() => bulkBusy = false);
     }
+    return results;
   }
 
   /// Bulk internal status change. Every valid internal status is offered, with
   /// no forward-only restriction, so a user may move orders backwards, reopen a
   /// cancelled order or correct a completed one. Authorisation, tenant scope and
   /// carrier-contract safety are enforced server-side; this dialog only chooses
-  /// the target and confirms it.
+  /// the target, whether to print afterwards, and confirms.
+  ///
+  /// When printing is requested it happens strictly AFTER the change and only
+  /// for orders the server confirmed (ok:true, including unchanged), using the
+  /// latest authorized printable data. Printing is an independent local job: it
+  /// never re-runs the change, and a print failure never reverses a completed
+  /// change. The confirmed change is never affected by the print outcome.
   Future<void> _bulkChangeStatus() async {
     final count = selected.length;
     if (count == 0 || bulkBusy) return;
-    final target = await showDialog<String>(
+    final choice = await showDialog<_BulkStatusChoice>(
       context: context,
       builder: (ctx) => _BulkStatusDialog(
         statuses: internalChangeableStatuses,
@@ -826,11 +848,23 @@ class _LiveOrdersState extends State<LiveOrders> {
         count: count,
       ),
     );
-    if (target == null || !mounted) return;
-    await _runBulkChunked(
+    if (choice == null || !mounted) return;
+    final results = await _runBulkChunked(
       selected.toList(),
-      (chunk) => gateway.bulkChangeStatus(chunk, target),
+      (chunk) => gateway.bulkChangeStatus(chunk, choice.target.name),
     );
+    if (!choice.printAfter || !mounted) return;
+    // Print ONLY the orders the server confirmed as processed. A failed,
+    // unauthorized, unresolved or uncertain order is never printed as success.
+    final printable = <String>[
+      for (final r in (results ?? const []))
+        if (r['ok'] == true && r['id'] != null) r['id'].toString(),
+    ];
+    if (printable.isEmpty) {
+      showSuccess(context, 'لم تُحدَّث أي طلبات قابلة للطباعة.');
+      return;
+    }
+    await _printOrders(printable);
   }
 
   Future<void> _bulkAssign() async {
@@ -1434,6 +1468,19 @@ class _LiveOrdersState extends State<LiveOrders> {
 /// status in a dropdown with its Arabic label, states how many orders will be
 /// affected, requires an explicit confirmation and blocks duplicate submissions
 /// while it closes. Narrow-screen friendly and keyboard aware.
+/// The outcome chosen in the bulk status dialog: the target status and whether
+/// the user asked to print the successfully-changed orders afterwards.
+class _BulkStatusChoice {
+  const _BulkStatusChoice(this.target, this.printAfter);
+  final OrderStatus target;
+  final bool printAfter;
+}
+
+/// RTL dialog for a bulk internal status change. Shows every valid internal
+/// status in a dropdown with its Arabic label, states how many orders will be
+/// affected, offers an optional (default-off) "print after change" checkbox and
+/// requires an explicit confirmation. The confirm button is disabled until a
+/// status is chosen and while submitting, so a double tap cannot submit twice.
 class _BulkStatusDialog extends StatefulWidget {
   const _BulkStatusDialog({
     required this.statuses,
@@ -1449,6 +1496,7 @@ class _BulkStatusDialog extends StatefulWidget {
 
 class _BulkStatusDialogState extends State<_BulkStatusDialog> {
   OrderStatus? _target;
+  bool _printAfter = false;
   bool _submitting = false;
 
   @override
@@ -1504,6 +1552,20 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
                     ? null
                     : (value) => setState(() => _target = value),
               ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: _printAfter,
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _printAfter = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('طباعة الطلبات بعد تغيير الحالة'),
+                subtitle: const Text(
+                  'تُطبع الطلبات التي تغيّرت حالتها بنجاح فقط، بوليصات منفصلة.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
             ],
           ),
         ),
@@ -1519,7 +1581,10 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
               : () {
                   // Guard against a double tap closing/submitting twice.
                   setState(() => _submitting = true);
-                  Navigator.pop(context, _target!.name);
+                  Navigator.pop(
+                    context,
+                    _BulkStatusChoice(_target!, _printAfter),
+                  );
                 },
           child: label == 'تطبيق الحالة'
               ? const Text('تطبيق الحالة')
