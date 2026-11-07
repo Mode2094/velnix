@@ -8,7 +8,7 @@ function publicOrder(d) {
     address:o.address,description:o.description,quantity:o.quantity,amount:o.amountMinor/1000,
     pageId:o.pageId||null,pageName:o.pageName||null,pageFacebookUrl:o.pageFacebookUrl||null,
     pagePhone:o.pagePhone||'',pageWhatsapp:o.pageWhatsapp||'',orderType:o.orderType||'normal',
-    paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,createdBy:o.createdBy,createdByName:o.createdByName,
+    paymentMethod:o.paymentMethod,note:o.note||'',status:o.status,internalStatus:require('./policy').internalStatusOf(o),createdBy:o.createdBy,createdByName:o.createdByName,
     companyId:o.companyId||null,trackingNumber:o.trackingNumber||null,remoteStatus:o.remoteStatus||null,providerOrderId:o.providerOrderId||null,
     clickOrderRef:o.clickOrderRef||null,clickClientSerial:o.clickClientSerial||null,clickStatusRaw:o.clickStatusRaw||null,clickStatusDate:o.clickStatusDate||null,
     clickStatusNote:o.clickStatusNote||null,clickAmounts:o.clickAmounts||null,shippingStatus:shippingStatus(o.shippingStatus),shippingStatusSource:o.shippingStatusSource||null,shippingStatusUpdatedAt:safeDate(o.shippingStatusUpdatedAt),
@@ -20,11 +20,15 @@ function orderForUser(user,d) {
   const source=d.data();
   const data=publicOrder(d);
   if(!can(user,'viewAmounts') && source.createdBy!==user.id){delete data.amount;delete data.clickAmounts;}
+  const internal=require('./policy').internalStatusOf(source);
+  // Dispatch is offered from ANY internal status once a company is assigned and
+  // no send is in flight/undetermined. It is not limited to 'ready'.
+  const canDispatch=can(user,'sendToDelivery')&&!!source.companyId&&!dispatchBlocked(source)&&!['sending','needs_review'].includes(source.dispatchState);
   data.actions={
     edit:canEditOrder(user,source),
     statuses:STATUSES.filter(target=>allowedTransition(user,source,target)),
-    assign:can(user,'sendToDelivery')&&!dispatchBlocked(source)&&['created','review','preparing','ready'].includes(source.status),
-    dispatch:can(user,'sendToDelivery')&&source.status==='ready'&&!!source.companyId&&!dispatchBlocked(source),
+    assign:can(user,'sendToDelivery')&&!dispatchBlocked(source)&&internal!==null,
+    dispatch:canDispatch,
     resolve:user.role==='generalManager'&&canResolveDispatch(source),
     corrections:user.role==='generalManager'?correctionTargets(source):[],
   };

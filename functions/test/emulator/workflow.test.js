@@ -194,7 +194,7 @@ test('workflow blocks forged carrier states and revisions prevent lost updates',
   await assert.rejects(invoke('resolveDispatchException','manager',{id:orderId,outcome:'not_created',reason:'Verified locally'}),{code:'permission-denied'});
   await ref.update({dispatchState:'sending',dispatchLockId:'old-lock',dispatchLockUntil:Timestamp.fromMillis(Date.now()-1000)});
   await invoke('resolveDispatchException','gm',{id:orderId,outcome:'shipment_exists',trackingNumber:'TRACK-1',reason:'Vendor confirmed shipment'});
-  const resolved=(await ref.get()).data();assert.equal(resolved.status,'dispatched');assert.equal(resolved.trackingNumber,'TRACK-1');assert.equal(resolved.dispatchLockId,undefined);
+  const resolved=(await ref.get()).data();assert.equal(resolved.status,'ready');assert.equal(resolved.internalStatus,'ready');assert.equal(resolved.trackingNumber,'TRACK-1');assert.equal(resolved.dispatchLockId,undefined);
 });
 test('Arabic phone search and exact aggregates exceed 10000 records',async()=>{
   // Chunked WriteBatches keep the seed deterministic inside containerised

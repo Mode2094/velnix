@@ -163,24 +163,39 @@ function correctionTargets(order) {
     return true;
   });
 }
-// Unrestricted internal status changes (bulk): any valid internal status may be
-// set regardless of the current one — forward, backward, reopening a cancelled
-// order or moving a completed order. Safety is preserved: an order that entered
-// a carrier contract, or whose dispatch is in flight/undetermined, is never
-// touched, so an internal edit can never desync, cancel or re-send an external
-// shipment. Returns null when the target is not a valid internal status, or a
-// short reason string when the order is out of scope for an internal edit.
+// Unrestricted internal status changes (bulk/single). Any valid internal status
+// may be set from any other one, at any time — including AFTER a confirmed
+// dispatch, because the internal status is a separate field from the carrier
+// lifecycle and editing it never touches an external shipment. The only guard
+// is an in-flight or undetermined SEND (dispatchState sending/sent? no: sent is
+// confirmed and editable; only sending/needs_review are unsafe to edit while a
+// send is unresolved). Returns null when allowed, or a short reason otherwise.
 function internalStatusChangeReason(user, order, target) {
   if (!order) return 'not-found';
   if (!INTERNAL_CORRECTION_STATUSES.includes(target)) return 'invalid_status';
   if (!canSeeOrder(user, order)) return 'permission-denied';
   if (!can(user, 'updateOrderStatus') &&
       !['generalManager', 'warehouse'].includes(user.role)) return 'permission-denied';
-  if (!canCorrectInternalStatus(order)) return 'carrier_contract';
+  // Never mutate an order while a send is in flight or undetermined. A sent
+  // order (dispatchState 'sent') IS editable: only its internal status changes.
+  if (['sending', 'needs_review'].includes(order.dispatchState)) return 'dispatch_active';
+  // The current internal status must be resolvable (guards unknown/legacy
+  // carrier states from being silently overwritten).
+  if (internalStatusOf(order) === null) return 'unknown_internal_status';
   return null;
 }
 function canChangeInternalStatus(user, order, target) {
   return internalStatusChangeReason(user, order, target) === null;
+}
+// The order's INTERNAL status, independent of the carrier/dispatch lifecycle.
+// New writes set `internalStatus`; legacy orders only have `status`. A legacy
+// carrier status (dispatched/inTransit/returned) is NOT an internal status, so
+// it resolves to null and the caller must fall back to a legacy-safe view.
+function internalStatusOf(order) {
+  if (!order) return null;
+  if (typeof order.internalStatus === 'string' && INTERNAL_CORRECTION_STATUSES.includes(order.internalStatus)) return order.internalStatus;
+  if (INTERNAL_CORRECTION_STATUSES.includes(order.status)) return order.status;
+  return null;
 }
 function canResolveDispatch(order, now=Date.now()) {
   return order?.status==='ready' && (order.dispatchState==='needs_review' ||
@@ -190,4 +205,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus,internalStatusOf};

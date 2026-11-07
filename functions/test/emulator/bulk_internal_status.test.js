@@ -92,23 +92,39 @@ test('a real change writes one status_changed event and one audit with previous 
   assert.equal(audits.docs[0].data().extra.status,'created');
 });
 
-test('an order with a carrier contract is refused and its external fields stay untouched',async()=>{
+test('a legacy carrier status is refused and nothing on the order changes',async()=>{
+  // A legacy order whose `status` is a carrier value (dispatched) and which has
+  // no resolvable internal status must not be silently overwritten.
   const id=await internalOrder('dispatched',{companyId:'c1',hasDelivery:true,trackingNumber:'TRK-1',clickOrderRef:'VNX-1',providerOrderId:'777',shippingStatus:'outForDelivery',shippingStatusSource:'click_api'});
   const before=await doc(id);
   const r=await invoke('bulkChangeStatus','ops_gm',{ids:[id],status:'created'});
-  assert.equal(r.failed,1,'a carrier-contract order is not changed');
+  assert.equal(r.failed,1,'an order with an unknown internal status is not changed');
   assert.equal(r.results[0].ok,false);
   const after=await doc(id);
-  assert.deepEqual(after, before,'no field on a carrier-contract order may change');
+  assert.deepEqual(after, before,'no field may change when the internal status is unknown');
 });
 
-test('an order with an in-flight or undetermined dispatch is refused',async()=>{
-  for(const dispatchState of ['sending','sent','needs_review']){
+test('an in-flight or undetermined dispatch is refused, but a confirmed send stays editable',async()=>{
+  // Only sending/needs_review block an internal edit (a send is unresolved).
+  for(const dispatchState of ['sending','needs_review']){
     const id=await internalOrder('ready',{companyId:'c1',hasDelivery:true,dispatchState});
     const r=await invoke('bulkChangeStatus','ops_gm',{ids:[id],status:'created'});
     assert.equal(r.failed,1,`dispatchState ${dispatchState} must be refused`);
     assert.equal((await doc(id)).status,'ready');
   }
+  // A CONFIRMED send (dispatchState sent) with a carrier contract IS editable:
+  // the internal status is separate from the carrier lifecycle.
+  const sentId=await internalOrder('ready',{companyId:'c1',hasDelivery:true,dispatchState:'sent',trackingNumber:'TRK-9',internalStatus:'ready'});
+  const r2=await invoke('bulkChangeStatus','ops_gm',{ids:[sentId],status:'preparing'});
+  assert.equal(r2.succeeded,1,'a confirmed shipment still allows an internal edit');
+  const after=await doc(sentId);
+  assert.equal(after.status,'preparing');
+  assert.equal(after.internalStatus,'preparing');
+  // Critically, the carrier data is untouched.
+  assert.equal(after.dispatchState,'sent');
+  assert.equal(after.trackingNumber,'TRK-9');
+  assert.equal(after.companyId,'c1');
+  assert.equal(after.hasDelivery,true);
 });
 
 test('unauthorized member is rejected and a permitted member is accepted',async()=>{

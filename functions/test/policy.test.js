@@ -104,11 +104,18 @@ test('unrestricted internal status change allows any direction and blocks carrie
   for(const target of ['dispatched','inTransit','returned','partiallyDelivered','bogus','']){
     assert.equal(internalStatusChangeReason(ops,internal,target),'invalid_status');
   }
-  // A carrier contract or an in-flight/undetermined dispatch is refused.
-  // `companyId` alone is NOT a contract: assignment does not send the shipment.
-  for(const patch of [{hasDelivery:true},{trackingNumber:'t'},{clickOrderRef:'r'},{providerOrderId:'p'},{remoteStatus:'delivered'},{dispatchState:'sending'},{dispatchState:'sent'},{dispatchState:'needs_review'},{status:'dispatched'},{status:'inTransit'},{status:'returned'}]){
-    assert.equal(internalStatusChangeReason(ops,{...internal,...patch},'created'),'carrier_contract',`${JSON.stringify(patch)} must be refused`);
+  // Internal status is SEPARATE from the carrier lifecycle: a confirmed
+  // shipment (hasDelivery/tracking/Click refs/remote status) does NOT block an
+  // internal edit, because the internal field is independent of the carrier.
+  for(const patch of [{hasDelivery:true},{trackingNumber:'t'},{clickOrderRef:'r'},{providerOrderId:'p'},{remoteStatus:'delivered'},{dispatchState:'sent'}]){
+    assert.equal(internalStatusChangeReason(ops,{...internal,...patch},'created'),null,`${JSON.stringify(patch)} must still allow an internal edit`);
   }
+  // Only an in-flight or undetermined SEND blocks editing, and an unknown
+  // current internal status is refused.
+  for(const dispatchState of ['sending','needs_review']){
+    assert.equal(internalStatusChangeReason(ops,{...internal,dispatchState},'created'),'dispatch_active');
+  }
+  assert.equal(internalStatusChangeReason(ops,{...internal,status:'weird_legacy'},'created'),'unknown_internal_status');
   // An assigned-but-unsent order stays editable.
   assert.equal(internalStatusChangeReason(ops,{...internal,companyId:'c1',hasDelivery:false},'created'),null);
   // Permission and visibility still apply.
