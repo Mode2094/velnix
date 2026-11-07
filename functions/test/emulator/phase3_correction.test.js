@@ -55,7 +55,7 @@ test('correction refuses carrier/Click orders and only allows internal completio
   await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_sent',status:'delivered',reason:'محاولة تزوير',revision:0}),{code:'failed-precondition'});
   await assert.rejects(invoke('correctOrderStatus','gm',{id:'correct_1',status:'delivered',reason:'ليست جاهزة',revision:1}),{code:'failed-precondition'});
   assert.deepEqual(correctionTargets({status:'created',hasDelivery:false,dispatchState:'idle'}),['review','preparing','ready','cancelled']);
-  assert.deepEqual(correctionTargets({status:'ready',hasDelivery:false,companyId:null,dispatchState:'idle'}),['created','review','preparing','cancelled','delivered']);
+  assert.deepEqual(correctionTargets({status:'ready',hasDelivery:false,companyId:null,dispatchState:'idle'}),['created','review','preparing','delivered','cancelled']);
   assert.deepEqual(correctionTargets({status:'ready',companyId:'c',hasDelivery:false,dispatchState:'idle'}),['created','review','preparing','cancelled']);
   assert.deepEqual(correctionTargets({status:'ready',dispatchState:'sent'}),[]);
   await invoke('correctOrderStatus','gm',{id:'correct_ready',status:'delivered',reason:'إكمال داخلي مصحح',revision:0});

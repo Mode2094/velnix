@@ -148,6 +148,19 @@ test('an invalid target status is rejected before any order is touched',async()=
   assert.equal((await doc(id)).status,'created');
 });
 
+test('an order whose CURRENT status is outside the internal set is refused and never overwritten',async()=>{
+  // Carrier/dispatch statuses and unknown/legacy values must be left untouched:
+  // the internal flow does not own them.
+  for(const current of ['dispatched','inTransit','returned','pending','','weird_state']){
+    const id=await internalOrder(current);
+    const before=await doc(id);
+    const r=await invoke('bulkChangeStatus','ops_gm',{ids:[id],status:'created'});
+    assert.equal(r.failed,1,`current status "${current}" must be refused`);
+    assert.equal(r.results[0].ok,false);
+    assert.deepEqual(await doc(id),before,`order with current status "${current}" must be untouched`);
+  }
+});
+
 test('partial failure keeps the successful updates and reports both accurately',async()=>{
   const good=await internalOrder('created');
   const locked=await internalOrder('ready',{companyId:'c1',hasDelivery:true,dispatchState:'sending'});

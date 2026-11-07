@@ -135,7 +135,9 @@ function safeStatusMap(obj) {
 function dispatchBlocked(order) { return ['sending','sent','needs_review'].includes(order?.dispatchState); }
 // Administrative correction is limited to orders that never entered a carrier
 // contract. It can never fake Click states or bypass dispatch protection.
-const INTERNAL_CORRECTION_STATUSES = ['created','review','preparing','ready','cancelled','delivered'];
+// Order is the canonical lifecycle order and MUST match the Flutter
+// internalChangeableStatuses list (enforced by internal_status_contract.test.js).
+const INTERNAL_CORRECTION_STATUSES = ['created','review','preparing','ready','delivered','cancelled'];
 function canCorrectInternalStatus(order) {
   if (!order) return false;
   if (dispatchBlocked(order)) return false;
@@ -145,7 +147,11 @@ function canCorrectInternalStatus(order) {
   // assigned-but-unsent order stays editable.
   if (order.hasDelivery === true || order.trackingNumber || order.clickOrderRef ||
       order.providerOrderId || order.remoteStatus) return false;
-  if (['dispatched','inTransit','returned'].includes(order.status)) return false;
+  // Allowlist, not blacklist: the CURRENT status must be one of the six internal
+  // statuses. A carrier/dispatch status (dispatched/inTransit/returned) or any
+  // unknown/legacy value is refused, so an internal edit can never silently
+  // overwrite a state the internal flow does not own.
+  if (!INTERNAL_CORRECTION_STATUSES.includes(order.status)) return false;
   return true;
 }
 function correctionTargets(order) {

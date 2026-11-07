@@ -457,4 +457,75 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'a dropped chunk keeps earlier successes and reports the rest as not started',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 1600);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      // 60 orders -> two bulk chunks of 50 and 10. The second chunk throws
+      // (connection drop) so the test can prove the first chunk's result is not
+      // hidden and the untouched orders are reported as not started.
+      var svcCalls = 0;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        switch (name) {
+          case 'listOrders':
+            // Select-all walks pages; a single full page is enough here.
+            return {
+              'items': [for (var i = 0; i < 60; i++) order('$i')],
+              'nextAfterId': null,
+            };
+          case 'bulkChangeStatus':
+            svcCalls++;
+            if (svcCalls == 1) {
+              final ids = (data['ids'] as List).cast<String>();
+              return {
+                'succeeded': ids.length,
+                'unchanged': 0,
+                'failed': 0,
+                'results': [
+                  for (final id in ids) {'id': id, 'ok': true},
+                ],
+              };
+            }
+            // The network drops on the second chunk.
+            throw StateError('connection lost');
+          case 'listCompanies':
+          case 'listAllowedPages':
+          case 'listOrderCreators':
+            return {'items': <dynamic>[]};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('عميل 0'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد كل النتائج'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد الكل'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تغيير الحالة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('الحالة الجديدة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ملغي').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('تطبيق الحالة على 60 طلب'));
+      await tester.pumpAndSettle();
+
+      // Two chunk calls were made; the first succeeded fully, the second threw.
+      expect(svcCalls, 2);
+      // The summary must still show the first chunk's successes (50), never 0.
+      expect(find.textContaining('تم التغيير: 50'), findsOneWidget);
+      // The 10 unstarted orders are reported separately, not as failures.
+      expect(find.textContaining('لم يبدأ: 10'), findsOneWidget);
+      expect(find.textContaining('لم تُعد المحاولة تلقائيًا'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

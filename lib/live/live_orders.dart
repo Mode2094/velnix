@@ -636,32 +636,22 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
   }
 
-  void _showBulkResult(String title, Map<String, dynamic> result) {
-    final results = (result['results'] as List? ?? [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-    final ok =
-        (result['succeeded'] ?? results.where((r) => r['ok'] == true).length)
-            as int;
-    final unchanged = (result['unchanged'] as num?)?.toInt() ?? 0;
-    final uncertain = (result['uncertain'] as num?)?.toInt() ?? 0;
-    final failed = result['failed'] ?? (results.length - ok);
-    _showBulkResultsDialog(title, ok, unchanged, uncertain, failed, results);
-  }
-
   void _showBulkResultsDialog(
     String title,
     int ok,
     int unchanged,
     int uncertain,
     Object failed,
-    List<Map<String, dynamic>> results,
-  ) {
+    List<Map<String, dynamic>> results, {
+    List<String> notStarted = const [],
+    String? transportError,
+  }) {
     final summary = <String>[
       'تم التغيير: ${ok - unchanged}',
       if (unchanged > 0) 'بلا تغيير (نفس الحالة): $unchanged',
       if (uncertain > 0) 'غير مؤكد: $uncertain',
       'فشل: $failed',
+      if (notStarted.isNotEmpty) 'لم يبدأ: ${notStarted.length}',
     ].join(' • ');
     showDialog<void>(
       context: context,
@@ -675,12 +665,28 @@ class _LiveOrdersState extends State<LiveOrders> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(summary),
+                if (transportError != null || notStarted.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'توقف التنفيذ قبل إتمام كل الدفعات؛ النتائج أعلاه تخص ما نُفّذ فعلاً '
+                    'ولم تُعد المحاولة تلقائيًا لتجنّب تكرار غير مقصود.',
+                    style: const TextStyle(fontSize: 12, color: VColors.danger),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 for (final r in results.where((r) => r['ok'] != true))
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       '• ${r['id']}: ${_bulkReason(r)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                if (notStarted.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'لم يبدأ: ${notStarted.join(', ')}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -711,6 +717,12 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// Runs a bulk call in chunks of [_bulkChunk] and merges per-order results so
   /// a selection larger than the server's per-call limit is processed fully and
   /// reported accurately (partial success is never presented as full success).
+  ///
+  /// A failure or a dropped connection in one chunk never hides the results of
+  /// chunks that already completed: everything gathered so far is kept, the
+  /// orders that were never attempted are reported as "not started" rather than
+  /// failed, and no chunk is retried here (a retry could duplicate an uncertain
+  /// effect). The server's own uncertain outcomes stay uncertain, not failures.
   Future<void> _runBulkChunked(
     List<String> ids,
     Future<Map<String, dynamic>> Function(List<String> chunk) call, {
@@ -720,6 +732,8 @@ class _LiveOrdersState extends State<LiveOrders> {
     setState(() => bulkBusy = true);
     final merged = <String, dynamic>{'results': <dynamic>[]};
     var succeeded = 0, failed = 0, uncertain = 0, unchanged = 0;
+    var started = 0;
+    String? transportError;
     try {
       for (var i = 0; i < ids.length; i += chunkSize) {
         final chunk = ids.sublist(
@@ -727,21 +741,40 @@ class _LiveOrdersState extends State<LiveOrders> {
           (i + chunkSize) > ids.length ? ids.length : i + chunkSize,
         );
         final result = await call(chunk);
+        started += chunk.length;
         (merged['results'] as List).addAll(result['results'] as List? ?? []);
         succeeded += (result['succeeded'] as num?)?.toInt() ?? 0;
         failed += (result['failed'] as num?)?.toInt() ?? 0;
         uncertain += (result['uncertain'] as num?)?.toInt() ?? 0;
         unchanged += (result['unchanged'] as num?)?.toInt() ?? 0;
       }
-      merged['succeeded'] = succeeded;
-      merged['failed'] = failed;
-      merged['uncertain'] = uncertain;
-      merged['unchanged'] = unchanged;
-      if (!mounted) return;
-      _showBulkResult('نتيجة العملية — ${ids.length} طلب', merged);
-      await load(reset: true, fresh: true);
     } catch (e) {
-      if (mounted) showError(context, e);
+      // Keep every completed chunk's outcome. Do not retry: an interrupted call
+      // may already have applied a partial effect server-side.
+      transportError = '$e';
+    }
+    // Orders in chunks that never ran are "not started", never failed.
+    final notStarted = ids.sublist(started);
+    merged['succeeded'] = succeeded;
+    merged['failed'] = failed;
+    merged['uncertain'] = uncertain;
+    merged['unchanged'] = unchanged;
+    if (!mounted) return;
+    try {
+      _showBulkResultsDialog(
+        'نتيجة العملية — ${ids.length} طلب',
+        succeeded,
+        unchanged,
+        uncertain,
+        failed,
+        (merged['results'] as List)
+            .map((r) => Map<String, dynamic>.from(r as Map))
+            .toList(),
+        notStarted: notStarted,
+        transportError: transportError,
+      );
+      // Refresh regardless: completed chunks may already have changed orders.
+      await load(reset: true, fresh: true);
     } finally {
       if (mounted) setState(() => bulkBusy = false);
     }
