@@ -643,14 +643,21 @@ class _LiveOrdersState extends State<LiveOrders> {
     int uncertain,
     Object failed,
     List<Map<String, dynamic>> results, {
+    List<String> unknownIds = const [],
     List<String> notStarted = const [],
     String? transportError,
   }) {
+    final interrupted =
+        transportError != null ||
+        unknownIds.isNotEmpty ||
+        notStarted.isNotEmpty;
     final summary = <String>[
       'تم التغيير: ${ok - unchanged}',
       if (unchanged > 0) 'بلا تغيير (نفس الحالة): $unchanged',
       if (uncertain > 0) 'غير مؤكد: $uncertain',
       'فشل: $failed',
+      if (unknownIds.isNotEmpty)
+        'غير مؤكد (لم تصل النتيجة): ${unknownIds.length}',
       if (notStarted.isNotEmpty) 'لم يبدأ: ${notStarted.length}',
     ].join(' • ');
     showDialog<void>(
@@ -665,10 +672,11 @@ class _LiveOrdersState extends State<LiveOrders> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(summary),
-                if (transportError != null || notStarted.isNotEmpty) ...[
+                if (interrupted) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'توقف التنفيذ قبل إتمام كل الدفعات؛ النتائج أعلاه تخص ما نُفّذ فعلاً '
+                    'توقف التنفيذ قبل إتمام كل الدفعات؛ النتائج أعلاه تخص ما نُفّذ فعلاً. '
+                    'الطلبات التي أُرسلت ولم تصل نتيجتها «غير مؤكدة» وتحتاج تحققًا يدويًا، '
                     'ولم تُعد المحاولة تلقائيًا لتجنّب تكرار غير مقصود.',
                     style: const TextStyle(fontSize: 12, color: VColors.danger),
                   ),
@@ -679,6 +687,14 @@ class _LiveOrdersState extends State<LiveOrders> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
                       '• ${r['id']}: ${_bulkReason(r)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                if (unknownIds.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'غير مؤكد (لم تصل النتيجة): ${unknownIds.join(', ')}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -718,11 +734,14 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// a selection larger than the server's per-call limit is processed fully and
   /// reported accurately (partial success is never presented as full success).
   ///
-  /// A failure or a dropped connection in one chunk never hides the results of
-  /// chunks that already completed: everything gathered so far is kept, the
-  /// orders that were never attempted are reported as "not started" rather than
-  /// failed, and no chunk is retried here (a retry could duplicate an uncertain
-  /// effect). The server's own uncertain outcomes stay uncertain, not failures.
+  /// Classification on any interruption:
+  ///   - completed chunks keep their exact per-order results;
+  ///   - the chunk that was actually sent when the call failed is UNKNOWN (its
+  ///     outcome was never received), never "not started" and never failed;
+  ///   - chunks that were never dispatched are "not started".
+  /// No chunk is retried here (a retry could duplicate an uncertain effect) and
+  /// the server's own uncertain outcomes stay uncertain. Every requested order
+  /// is reported exactly once.
   Future<void> _runBulkChunked(
     List<String> ids,
     Future<Map<String, dynamic>> Function(List<String> chunk) call, {
@@ -732,7 +751,10 @@ class _LiveOrdersState extends State<LiveOrders> {
     setState(() => bulkBusy = true);
     final merged = <String, dynamic>{'results': <dynamic>[]};
     var succeeded = 0, failed = 0, uncertain = 0, unchanged = 0;
-    var started = 0;
+    // Number of orders in fully-completed chunks (their results were received).
+    var completed = 0;
+    // Number of orders in the chunk that was SENT but whose result was lost.
+    var unknown = 0;
     String? transportError;
     try {
       for (var i = 0; i < ids.length; i += chunkSize) {
@@ -740,8 +762,13 @@ class _LiveOrdersState extends State<LiveOrders> {
           i,
           (i + chunkSize) > ids.length ? ids.length : i + chunkSize,
         );
+        // Mark the chunk in flight BEFORE awaiting: if await throws, these
+        // orders were dispatched and their outcome is unknown, not unstarted.
+        unknown = chunk.length;
         final result = await call(chunk);
-        started += chunk.length;
+        // Success: the chunk is now completed, not in-flight.
+        completed += chunk.length;
+        unknown = 0;
         (merged['results'] as List).addAll(result['results'] as List? ?? []);
         succeeded += (result['succeeded'] as num?)?.toInt() ?? 0;
         failed += (result['failed'] as num?)?.toInt() ?? 0;
@@ -749,12 +776,14 @@ class _LiveOrdersState extends State<LiveOrders> {
         unchanged += (result['unchanged'] as num?)?.toInt() ?? 0;
       }
     } catch (e) {
-      // Keep every completed chunk's outcome. Do not retry: an interrupted call
-      // may already have applied a partial effect server-side.
+      // Keep every completed chunk's outcome. The in-flight chunk stays unknown
+      // (never failed, never not-started). Do not retry.
       transportError = '$e';
     }
-    // Orders in chunks that never ran are "not started", never failed.
-    final notStarted = ids.sublist(started);
+    // Disjoint, exhaustive partition of ids: completed | unknown | not started.
+    // Each requested order is counted in exactly one bucket, never twice.
+    final unknownIds = ids.sublist(completed, completed + unknown);
+    final notStarted = ids.sublist(completed + unknown);
     merged['succeeded'] = succeeded;
     merged['failed'] = failed;
     merged['uncertain'] = uncertain;
@@ -770,6 +799,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         (merged['results'] as List)
             .map((r) => Map<String, dynamic>.from(r as Map))
             .toList(),
+        unknownIds: unknownIds,
         notStarted: notStarted,
         transportError: transportError,
       );

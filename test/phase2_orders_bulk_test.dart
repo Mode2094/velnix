@@ -459,7 +459,7 @@ void main() {
   });
 
   testWidgets(
-    'a dropped chunk keeps earlier successes and reports the rest as not started',
+    'a dropped chunk keeps earlier successes and marks the in-flight chunk unknown',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(900, 1600);
@@ -467,14 +467,14 @@ void main() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
-      // 60 orders -> two bulk chunks of 50 and 10. The second chunk throws
-      // (connection drop) so the test can prove the first chunk's result is not
-      // hidden and the untouched orders are reported as not started.
+      // 60 orders -> two bulk chunks of 50 and 10. The first succeeds, the
+      // second is SENT but its result is lost (connection drop). The 10 orders
+      // of the second chunk were dispatched, so they are UNKNOWN, not "not
+      // started": the server may have processed them.
       var svcCalls = 0;
       VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
         switch (name) {
           case 'listOrders':
-            // Select-all walks pages; a single full page is enough here.
             return {
               'items': [for (var i = 0; i < 60; i++) order('$i')],
               'nextAfterId': null,
@@ -492,7 +492,7 @@ void main() {
                 ],
               };
             }
-            // The network drops on the second chunk.
+            // The network drops while the second chunk is in flight.
             throw StateError('connection lost');
           case 'listCompanies':
           case 'listAllowedPages':
@@ -520,11 +520,86 @@ void main() {
 
       // Two chunk calls were made; the first succeeded fully, the second threw.
       expect(svcCalls, 2);
-      // The summary must still show the first chunk's successes (50), never 0.
-      expect(find.textContaining('تم التغيير: 50'), findsOneWidget);
-      // The 10 unstarted orders are reported separately, not as failures.
-      expect(find.textContaining('لم يبدأ: 10'), findsOneWidget);
-      expect(find.textContaining('لم تُعد المحاولة تلقائيًا'), findsOneWidget);
+      // The exact summary line: 50 changed, 10 transport-unknown, nothing
+      // unstarted (there is no third chunk).
+      expect(
+        find.text('تم التغيير: 50 • فشل: 0 • غير مؤكد (لم تصل النتيجة): 10'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('لم يبدأ'), findsNothing);
+      expect(find.textContaining('لم تُعد المحاولة'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'chunks after the lost one are reported as not started (never sent)',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 1600);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      // 110 orders -> three chunks of 50, 50 and 10. Chunk 1 succeeds, chunk 2
+      // is sent but lost, chunk 3 is never dispatched -> 50 / 50 / 10.
+      var svcCalls = 0;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        switch (name) {
+          case 'listOrders':
+            return {
+              'items': [for (var i = 0; i < 110; i++) order('$i')],
+              'nextAfterId': null,
+            };
+          case 'bulkChangeStatus':
+            svcCalls++;
+            if (svcCalls == 1) {
+              final ids = (data['ids'] as List).cast<String>();
+              return {
+                'succeeded': ids.length,
+                'unchanged': 0,
+                'failed': 0,
+                'results': [
+                  for (final id in ids) {'id': id, 'ok': true},
+                ],
+              };
+            }
+            // The second chunk is in flight when the connection drops; the
+            // third chunk is therefore never sent.
+            throw StateError('connection lost');
+          case 'listCompanies':
+          case 'listAllowedPages':
+          case 'listOrderCreators':
+            return {'items': <dynamic>[]};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('عميل 0'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد كل النتائج'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد الكل'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تغيير الحالة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('الحالة الجديدة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ملغي').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('تطبيق الحالة على 110 طلب'));
+      await tester.pumpAndSettle();
+
+      // Only two calls were made (the third chunk was never dispatched).
+      expect(svcCalls, 2);
+      // The exact summary line: 50 changed, 50 transport-unknown, 10 unstarted.
+      expect(
+        find.text(
+          'تم التغيير: 50 • فشل: 0 • غير مؤكد (لم تصل النتيجة): 50 • لم يبدأ: 10',
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
