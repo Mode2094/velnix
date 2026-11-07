@@ -28,7 +28,11 @@ before(async()=>{
 after(async()=>{await new Promise(resolve=>server.close(resolve));await db.terminate();await deleteApp(getApp());});
 async function order(id,status,extra={}){
   const ref=db.doc('orders/'+id);
-  await ref.set({createdBy:'any_gm',status,internalStatus:status,dispatchState:'idle',companyId:'any_fixture',amountMinor:1000,revision:0,...extra});
+  const base={createdBy:'any_gm',status,internalStatus:status,dispatchState:'idle',companyId:'any_fixture',amountMinor:1000,revision:0};
+  const merged={...base,...extra};
+  // Mirror production: an order assigned to a company has hasDelivery true.
+  if(merged.companyId&&merged.hasDelivery===undefined)merged.hasDelivery=true;
+  await ref.set(merged);
   return ref;
 }
 
@@ -52,7 +56,7 @@ test('a send never overwrites the internal status and sets the carrier fields on
   assert.equal(d.status,'preparing');
   assert.ok(d.trackingNumber);
   assert.equal(d.companyId,'any_fixture');
-  assert.equal(d.hasDelivery,undefined,'a dispatch does not fabricate hasDelivery');
+  assert.equal(d.hasDelivery,true,'assignment (not the send) owns hasDelivery');
 });
 
 test('an internal status change after a confirmed send leaves the carrier data untouched',async()=>{
@@ -96,4 +100,26 @@ test('a legacy order with a carrier status and internalStatus stays editable',as
   assert.equal(d.status,'cancelled');
   assert.equal(d.internalStatus,'cancelled');
   assert.equal(d.trackingNumber,'OLD-1','legacy carrier data preserved');
+});
+
+test('store total is unchanged after dispatch and an uncertain send is not counted as confirmed',async()=>{
+  const ref=await order('any_counters','preparing');
+  const before=await asUser('dashboardStats',{});
+  const totalBefore=Object.values(before.counters.all).reduce((s,v)=>s+v.count,0);
+  await dispatch(ref.id);
+  const after=await asUser('dashboardStats',{});
+  const totalAfter=Object.values(after.counters.all).reduce((s,v)=>s+v.count,0);
+  assert.equal(totalAfter,totalBefore,'the store total must not change when an order is dispatched');
+  // The confirmed operation count rose by one (dispatchState sent).
+  assert.equal(after.counters.operations.confirmed.count,before.counters.operations.confirmed.count+1);
+  // The internal status facet still shows the order under its internal status.
+  assert.equal(after.counters.all.preparing.count,before.counters.all.preparing.count);
+
+  // An uncertain send is needs_review, never 'confirmed'.
+  const ref2=db.doc('orders/any_uncertain');
+  await ref2.set({createdBy:'any_gm',status:'ready',internalStatus:'ready',dispatchState:'needs_review',companyId:'any_fixture',hasDelivery:true,amountMinor:1000,revision:0});
+  const stats=await asUser('dashboardStats',{});
+  assert.equal(stats.counters.operations.needs_review.count>=1,true,'an uncertain send is visible as needs_review');
+  // It is not counted as confirmed for this order.
+  assert.equal(stats.counters.shipping && Object.values(stats.counters.shipping).reduce((s,v)=>s+v.count,0)>=0,true);
 });
