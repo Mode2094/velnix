@@ -466,6 +466,29 @@ exports.dashboardStats=callable(async req=>{
     shippingStates.map(state=>base.map(query=>query.where('shippingStatus','==',state))),
     query=>sumOrders(query,showAmount));
   shippingStates.forEach((state,i)=>{counter.shipping[state]=shippingValues[i];});
+  // Operational lifecycle of assigned orders, kept apart from the carrier
+  // vocabulary so an order assigned to a company but never sent is never shown
+  // as a carrier state. Every assigned order contributes to exactly ONE group,
+  // so these are additive views and never change `all`.
+  //   confirmed    : the send was confirmed (dispatchState 'sent')
+  //   sending      : a send is in flight
+  //   needs_review : the send outcome is unresolved (never resent blindly)
+  //   unshipped    : assigned but never sent (dispatchState idle or absent)
+  const deliveryBase=base.map(query=>query.where('hasDelivery','==',true));
+  const dispatchValues=await aggregateGroups([
+    deliveryBase.map(query=>query.where('dispatchState','==','sent')),
+    deliveryBase.map(query=>query.where('dispatchState','==','sending')),
+    deliveryBase.map(query=>query.where('dispatchState','==','needs_review')),
+  ],query=>sumOrders(query,showAmount));
+  const confirmed=dispatchValues[0],sending=dispatchValues[1],needsReview=dispatchValues[2];
+  const assignedTotal=statuses.reduce((sum,status)=>sum+counter.delivery[status].count,0);
+  const assignedAmount=statuses.reduce((sum,status)=>sum+counter.delivery[status].amountMinor,0);
+  // "unshipped" is the assignment remainder: neither sent, nor in flight, nor
+  // awaiting review. This cannot go negative; a missing dispatchState counts as
+  // unshipped, which keeps every legacy assigned order visible exactly once.
+  const unshippedCount=Math.max(0,assignedTotal-confirmed.count-sending.count-needsReview.count);
+  const unshippedAmount=Math.max(0,assignedAmount-confirmed.amountMinor-sending.amountMinor-needsReview.amountMinor);
+  counter.operations={confirmed,unshipped:{count:unshippedCount,amountMinor:unshippedAmount},sending,needs_review:needsReview};
   return {counters:counter,partial:false,amountsVisible:showAmount};
 });
 exports.companyStats=callable(async req=>{

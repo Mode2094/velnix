@@ -28,8 +28,12 @@ const bucketTitles = <String, String>{
 /// to a company is not sending, so only real carrier states appear here.
 bool bucketShowsShipping(String bucket) => bucket == 'delivery';
 
-/// A single tile in the bucket status grid: either an internal [OrderStatus] or
-/// a carrier [ShippingStatus]. Keeps the two vocabularies visibly separate.
+/// A single tile in the bucket status grid. [facet] names which server filter
+/// the tile opens with so a carrier state, an operational lifecycle category and
+/// an internal status are never confused:
+///   'shipping' -> shippingStatus (carrier vocabulary)
+///   'dispatch' -> dispatch lifecycle (unshipped / sending / needs_review / sent)
+///   'status'   -> internal OrderStatus
 class _StatusTile {
   const _StatusTile({
     required this.wire,
@@ -37,6 +41,7 @@ class _StatusTile {
     required this.icon,
     required this.color,
     required this.count,
+    required this.facet,
     this.note,
   });
   final String wire;
@@ -44,6 +49,7 @@ class _StatusTile {
   final IconData icon;
   final Color color;
   final int count;
+  final String facet;
   final String? note;
 }
 
@@ -60,12 +66,12 @@ class LiveBucketStatusGrid extends StatefulWidget {
   final SessionPolicy policy;
   final String bucket;
 
-  /// Opens the orders list for this bucket. When the bucket shows delivery
-  /// states the second argument is a [ShippingStatus] name; otherwise it is an
-  /// internal [OrderStatus] name. The third argument names which facet was
-  /// chosen so the list never confuses a carrier state with an internal one.
-  final void Function(String bucket, String state, bool isShipping)
-  onOpenOrders;
+  /// Opens the orders list for this bucket. [state] is a [ShippingStatus] name
+  /// for a 'shipping' tile, a dispatch lifecycle key for a 'dispatch' tile
+  /// (unshipped/sending/needs_review/sent) or an internal [OrderStatus] name.
+  /// [facet] names which server filter to apply so the two vocabularies are
+  /// never confused.
+  final void Function(String bucket, String state, String facet) onOpenOrders;
   @override
   State<LiveBucketStatusGrid> createState() => _LiveBucketStatusGridState();
 }
@@ -82,23 +88,70 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
       setState(() => request = VelnixGateway.instance.dashboard({}, true));
 
   /// Reads the correct counter facet for this bucket. The delivery bucket shows
-  /// the carrier vocabulary (`counters.shipping`), every other bucket shows the
-  /// internal order statuses (`counters[bucket]`). The `all` facet stays the
-  /// single grand total and is never derived from the delivery facet.
+  /// TWO clearly separated groups: the operational lifecycle of assigned orders
+  /// (never sent / sending / needs review / send confirmed) and, below it, the
+  /// real carrier states reported by the delivery company. Every other bucket
+  /// shows the internal order statuses. The `all` facet stays the single grand
+  /// total and is never derived from the delivery facets.
   List<_StatusTile> _tiles(Map<String, dynamic> data) {
     final counters = Map<String, dynamic>.from(data['counters'] as Map? ?? {});
     if (bucketShowsShipping(widget.bucket)) {
-      final facet = Map<String, dynamic>.from(
+      final operations = Map<String, dynamic>.from(
+        counters['operations'] as Map? ?? {},
+      );
+      final shippingFacet = Map<String, dynamic>.from(
         counters['shipping'] as Map? ?? {},
       );
+      int countOf(Map<String, dynamic> f, String key) =>
+          (f[key] as Map?)?['count'] as int? ?? 0;
       return [
+        // Operational lifecycle: an assigned order that was never sent must not
+        // be presented as a carrier state.
+        _StatusTile(
+          wire: 'unshipped',
+          label: 'غير مرسلة (بانتظار الإرسال)',
+          icon: Icons.pending_actions_outlined,
+          color: const Color(0xFF8A5A00),
+          count: countOf(operations, 'unshipped'),
+          facet: 'dispatch',
+          note: 'معيّنة لشركة، لم تُرسل بعد',
+        ),
+        _StatusTile(
+          wire: 'sending',
+          label: 'جاري الإرسال',
+          icon: Icons.upload_outlined,
+          color: const Color(0xFF176391),
+          count: countOf(operations, 'sending'),
+          facet: 'dispatch',
+          note: 'محاولة إرسال قيد التنفيذ',
+        ),
+        _StatusTile(
+          wire: 'review',
+          label: 'تحتاج مراجعة',
+          icon: Icons.help_outline,
+          color: const Color(0xFFB52B3F),
+          count: countOf(operations, 'needs_review'),
+          facet: 'dispatch',
+          note: 'نتيجة إرسال غير مؤكدة',
+        ),
+        _StatusTile(
+          wire: 'sent',
+          label: 'تم تأكيد الإرسال',
+          icon: Icons.mark_email_read_outlined,
+          color: const Color(0xFF006D55),
+          count: countOf(operations, 'confirmed'),
+          facet: 'dispatch',
+          note: 'أُرسلت الشحنة للشركة',
+        ),
+        // Carrier vocabulary, only from the shipping facet.
         for (final status in ShippingStatus.values)
           _StatusTile(
             wire: status.name,
             label: status.label,
             icon: _shippingIcon(status),
             color: _shippingColor(status),
-            count: (facet[status.name] as Map?)?['count'] as int? ?? 0,
+            count: countOf(shippingFacet, status.name),
+            facet: 'shipping',
             note: _shippingNote(status),
           ),
       ];
@@ -114,6 +167,7 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
           icon: statusIcons[status.name] ?? Icons.circle_outlined,
           color: status.color,
           count: (bucket[status.name] as Map?)?['count'] as int? ?? 0,
+          facet: 'status',
         ),
     ];
   }
@@ -165,7 +219,16 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
       loading: const Center(child: CircularProgressIndicator()),
       builder: (data) {
         final tiles = _tiles(data);
-        final total = tiles.fold<int>(0, (acc, tile) => acc + tile.count);
+        final shipping = bucketShowsShipping(widget.bucket);
+        // For the delivery bucket the operational group is the mutually
+        // exclusive partition of assigned orders, so it is the true total. The
+        // carrier states below it are a second, overlapping view and must never
+        // be added to the total (that would double-count a shipped order).
+        final total = shipping
+            ? tiles
+                  .where((t) => t.facet == 'dispatch')
+                  .fold<int>(0, (acc, t) => acc + t.count)
+            : tiles.fold<int>(0, (acc, tile) => acc + tile.count);
         return RefreshIndicator(
           onRefresh: () async {
             refresh();
@@ -178,8 +241,8 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    bucketShowsShipping(widget.bucket)
-                        ? 'اختر حالة شحنة (من شركة التوصيل) لعرض الطلبات المطابقة'
+                    shipping
+                        ? 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة'
                         : 'اختر حالة داخلية لعرض الطلبات المطابقة',
                     style: const TextStyle(color: VColors.muted),
                   ),
@@ -196,6 +259,8 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
                           'ستظهر الحالات هنا فور وجود طلبات في هذا النطاق.',
                       icon: Icons.inbox_outlined,
                     )
+                  else if (shipping)
+                    _sectionedGrid(tiles)
                   else
                     _statusGrid(tiles),
                 ],
@@ -204,6 +269,39 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
           ),
         );
       },
+    ),
+  );
+
+  /// Delivery bucket: an operational-lifecycle section followed by the carrier
+  /// states, each with its own header so the two are never read as one list.
+  Widget _sectionedGrid(List<_StatusTile> tiles) {
+    final ops = tiles.where((t) => t.facet == 'dispatch').toList();
+    final carriers = tiles.where((t) => t.facet == 'shipping').toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _sectionHeader('حالة الإرسال التشغيلية'),
+        const SizedBox(height: 10),
+        _statusGrid(ops),
+        const SizedBox(height: 26),
+        _sectionHeader('حالات شركة التوصيل الفعلية'),
+        const SizedBox(height: 6),
+        Text(
+          'تُملأ من شركة التوصيل فقط؛ لا تُخلط مع حالة الإرسال التشغيلية.',
+          style: const TextStyle(fontSize: 11.5, color: VColors.muted),
+        ),
+        const SizedBox(height: 10),
+        _statusGrid(carriers),
+      ],
+    );
+  }
+
+  Widget _sectionHeader(String title) => Text(
+    title,
+    style: const TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w800,
+      color: VColors.ink,
     ),
   );
 
@@ -248,11 +346,8 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
           ),
           child: InkWell(
             onTap: enabled
-                ? () => widget.onOpenOrders(
-                    widget.bucket,
-                    tile.wire,
-                    bucketShowsShipping(widget.bucket),
-                  )
+                ? () =>
+                      widget.onOpenOrders(widget.bucket, tile.wire, tile.facet)
                 : null,
             mouseCursor: enabled
                 ? SystemMouseCursors.click
@@ -336,11 +431,13 @@ class LiveOrdersPage extends StatelessWidget {
     required this.bucket,
     this.status,
     this.shippingStatus,
+    this.dispatch,
   });
   final SessionPolicy policy;
   final String bucket;
   final String? status;
   final String? shippingStatus;
+  final String? dispatch;
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('قائمة الطلبات')),
@@ -349,6 +446,7 @@ class LiveOrdersPage extends StatelessWidget {
       bucket: bucket,
       status: status,
       shippingStatus: shippingStatus,
+      dispatch: dispatch,
     ),
   );
 }

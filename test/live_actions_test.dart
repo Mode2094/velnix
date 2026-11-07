@@ -947,4 +947,90 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'select-all-matching keeps the carrier shippingStatus filter in every page',
+    (tester) async {
+      // A carrier-scoped list must never widen its "select all matching" to
+      // orders from other shipping states. Every listOrders/searchOrders call
+      // issued by the action must carry shippingStatus.
+      final selectCalls = <Map<String, dynamic>>[];
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        if (name == 'listCompanies' || name == 'listOrderCreators') {
+          return {'items': <Map<String, dynamic>>[]};
+        }
+        if (name == 'listOrders') {
+          selectCalls.add(Map<String, dynamic>.from(data));
+          final first = data['afterId'] == null;
+          return {
+            'items': [
+              {
+                'id': first ? 'o1' : 'o2',
+                'customer': 'عميل',
+                'phone': '0791234567',
+                'status': 'dispatched',
+                'shippingStatus': 'deferred',
+                'companyId': 'c1',
+                'amount': 1.0,
+                'createdAt': '2026-10-19T10:00:00.000Z',
+                'actions': {
+                  'edit': false,
+                  'assign': false,
+                  'dispatch': false,
+                  'resolve': false,
+                  'statuses': <String>[],
+                },
+              },
+            ],
+            'nextAfterId': first ? 'cursor1' : null,
+          };
+        }
+        if (name == 'searchOrders') {
+          selectCalls.add(Map<String, dynamic>.from(data));
+          return {'items': <Map<String, dynamic>>[]};
+        }
+        throw StateError(name);
+      });
+      tester.view.physicalSize = const Size(390, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      await tester.pumpWidget(
+        app(
+          LiveOrders(
+            policy: SessionPolicy({
+              'id': 'gm',
+              'role': 'generalManager',
+              'active': true,
+            }),
+            bucket: 'delivery',
+            shippingStatus: 'deferred',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Enter selection mode by long-pressing a row.
+      await tester.longPress(find.text('عميل').first);
+      await tester.pumpAndSettle();
+      expect(find.text('تحديد كل النتائج'), findsOneWidget);
+      await tester.tap(find.text('تحديد كل النتائج'));
+      await tester.pumpAndSettle();
+      // Confirm the dialog.
+      await tester.tap(find.text('تحديد الكل'));
+      await tester.pumpAndSettle();
+      expect(selectCalls, isNotEmpty);
+      for (final call in selectCalls) {
+        expect(
+          call['shippingStatus'],
+          'deferred',
+          reason: 'select-all must keep the carrier filter: $call',
+        );
+      }
+      // More than one page was walked, so the filter held across pagination.
+      expect(selectCalls.length, greaterThan(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

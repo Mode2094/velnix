@@ -7,6 +7,7 @@ class LiveOrders extends StatefulWidget {
     this.bucket = 'all',
     this.status,
     this.shippingStatus,
+    this.dispatch,
     this.companyId,
     this.initialFilters = const {},
     this.onFiltersChanged,
@@ -20,6 +21,10 @@ class LiveOrders extends StatefulWidget {
   /// A delivery-company state ([ShippingStatus]); never an internal status. The
   /// two filters are independent and may be combined with search and the rest.
   final String? shippingStatus;
+
+  /// Operational dispatch lifecycle within the delivery bucket: 'unshipped',
+  /// 'sending', 'review' or 'sent'. Kept separate from [shippingStatus].
+  final String? dispatch;
   final String? companyId;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
@@ -44,6 +49,8 @@ class _LiveOrdersState extends State<LiveOrders> {
   Map<String, dynamic> filters = {};
   String sort = 'desc';
   String? after, status, shippingStatus;
+  // Active operational dispatch group (idle/sending/sent/review), if any.
+  String? _dispatch;
   // Cursor for search pagination (keyword search), separate from list `after`.
   String? searchCursor;
   late String bucket;
@@ -135,6 +142,7 @@ class _LiveOrdersState extends State<LiveOrders> {
             ? await gateway.searchOrders(
                 query,
                 status: status,
+                shippingStatus: shippingStatus,
                 bucket: bucket,
                 companyId: widget.companyId,
                 filters: filters,
@@ -146,6 +154,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                 pageSize: 50,
                 sort: sort,
                 status: status,
+                shippingStatus: shippingStatus,
                 bucket: bucket,
                 companyId: widget.companyId,
                 filters: filters,
@@ -189,6 +198,16 @@ class _LiveOrdersState extends State<LiveOrders> {
     filters = Map.of(widget.initialFilters);
     status = widget.status;
     shippingStatus = widget.shippingStatus;
+    // The operational lifecycle is carried by the existing server `dispatch`
+    // filter group so no new query contract is introduced. Mapping the tile key
+    // to the group: unshipped -> idle, review -> review, others pass through.
+    if (widget.dispatch != null) {
+      final group = widget.dispatch == 'unshipped' ? 'idle' : widget.dispatch!;
+      filters = {...filters, 'dispatch': group};
+      _dispatch = group;
+    } else {
+      _dispatch = filters['dispatch'] as String?;
+    }
     bucket = widget.bucket;
     load(reset: true);
     if (widget.autoSearchFocus) {
@@ -304,6 +323,7 @@ class _LiveOrdersState extends State<LiveOrders> {
       (bucket != 'all' ? 1 : 0) +
       (status != null ? 1 : 0) +
       (shippingStatus != null ? 1 : 0) +
+      (_dispatch != null ? 1 : 0) +
       (filters.isNotEmpty ? 1 : 0) +
       (sort != 'desc' ? 1 : 0);
 
@@ -312,6 +332,10 @@ class _LiveOrdersState extends State<LiveOrders> {
       bucket = 'all';
       status = null;
       shippingStatus = null;
+      _dispatch = null;
+      if (filters.containsKey('dispatch')) {
+        filters = {...filters}..remove('dispatch');
+      }
     });
     load(reset: true);
   }
@@ -325,8 +349,21 @@ class _LiveOrdersState extends State<LiveOrders> {
     return parsed?.label ?? wire;
   }
 
+  /// Arabic label for a server dispatch-lifecycle group.
+  static String _dispatchLabel(String group) =>
+      const {
+        'idle': 'غير مرسلة (بانتظار الإرسال)',
+        'sending': 'جاري الإرسال',
+        'sent': 'تم تأكيد الإرسال',
+        'review': 'تحتاج مراجعة',
+      }[group] ??
+      group;
+
   Widget _appliedFilterBanner() {
-    if (bucket == 'all' && status == null && shippingStatus == null) {
+    if (bucket == 'all' &&
+        status == null &&
+        shippingStatus == null &&
+        _dispatch == null) {
       return const SizedBox.shrink();
     }
     final parts = <String>[
@@ -334,6 +371,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         bucket == 'delivery' ? 'شركات التوصيل' : 'غير المسندة لشركة',
       if (status != null) statusLabels[status] ?? status!,
       if (shippingStatus != null) _shippingLabel(shippingStatus!),
+      if (_dispatch != null) _dispatchLabel(_dispatch!),
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -416,6 +454,10 @@ class _LiveOrdersState extends State<LiveOrders> {
                   status = null;
                 } else {
                   shippingStatus = null;
+                  _dispatch = null;
+                  if (filters.containsKey('dispatch')) {
+                    filters = {...filters}..remove('dispatch');
+                  }
                 }
               });
               load(reset: true);

@@ -183,3 +183,89 @@ test('combined search + shipping filter stays consistent and paginates without l
   // Counts remain exactly one per order after any number of list reads.
   assert.equal(grandTotal(await invoke('dashboardStats', 'gm', {})), 4);
 });
+
+test('operational categories separate assigned-but-unsent from real carrier states', async () => {
+  const clickId = await reset();
+  const make = async (key, customer) => {
+    const r = await invoke('createOrder', 'gm', {...base, customer, phone: '0794000001', requestKey: key});
+    await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'review'});
+    await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'preparing'});
+    await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'ready'});
+    await invoke('assignCompany', 'gm', {id: r.id, companyId: clickId});
+    return r.id;
+  };
+  // A: assigned, never sent. B: assigned and carrier-confirmed.
+  const unsent = await make('op_unsent_order_0001', 'عميل غير مرسل');
+  const sent = await make('op_sent_order_000001', 'عميل مرسل');
+  await invoke('reconcileClickShipment', 'gm', {
+    id: sent, clickOrderId: '90000301', clickOrderRef: 'VNX-OP-1',
+    shippingStatus: 'outForDelivery', reason: 'حالة مؤكدة من بوابة الشريك',
+  });
+
+  const stats = await invoke('dashboardStats', 'gm', {});
+  // Grand total counts each order once; the operational facets never change it.
+  assert.equal(grandTotal(stats), 2);
+  const ops = stats.counters.operations;
+  // The never-sent order is an operational category, NOT a carrier state.
+  assert.equal(ops.unshipped.count, 1, 'assigned-but-unsent must be unshipped');
+  assert.equal(ops.confirmed.count, 1, 'a sent order is confirmed');
+  assert.equal(ops.sending.count, 0);
+  assert.equal(ops.needs_review.count, 0);
+  // Only the truly shipped order carries a carrier state.
+  assert.equal(stats.counters.shipping.outForDelivery.count, 1);
+  const carrierTotal = Object.values(stats.counters.shipping).reduce((s, v) => s + v.count, 0);
+  assert.equal(carrierTotal, 1, 'the unsent order must not appear as any carrier state');
+  // The operational partition is complete and disjoint from the carrier facet.
+  assert.equal(ops.unshipped.count + ops.confirmed.count + ops.sending.count + ops.needs_review.count, 2);
+
+  // The operational filter surfaces exactly the unsent order.
+  const unshipped = await invoke('listOrders', 'gm', {bucket: 'delivery', dispatch: 'idle'});
+  assert.deepEqual(unshipped.items.map((o) => o.id), [unsent]);
+  // And the carrier filter surfaces only the confirmed order.
+  const byCarrier = await invoke('listOrders', 'gm', {bucket: 'delivery', shippingStatus: 'outForDelivery'});
+  assert.deepEqual(byCarrier.items.map((o) => o.id), [sent]);
+});
+
+test('legacy orders with no dispatchState stay visible and counted once', async () => {
+  const clickId = await reset();
+  // Simulate a legacy assigned order: companyId set, hasDelivery true, but no
+  // dispatchState field at all (pre-lifecycle data). It must remain visible,
+  // land in the operational partition and never be lost or double-counted.
+  await db.doc('orders/legacy_order_1').set({
+    customer: 'عميل قديم', phone: '0795000001', phoneDigits: '0795000001',
+    customerKey: 'عميل قديم', city: 'عمان', area: 'وسط', address: 'شارع',
+    description: 'طرد', quantity: 1, amountMinor: 12345,
+    status: 'ready', companyId: clickId, hasDelivery: true,
+    createdBy: 'gm', createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+  });
+  const stats = await invoke('dashboardStats', 'gm', {});
+  assert.equal(grandTotal(stats), 1, 'a legacy order is counted exactly once');
+  assert.equal(stats.counters.operations.unshipped.count, 1, 'a missing dispatchState counts as unshipped');
+  const list = await invoke('listOrders', 'gm', {bucket: 'delivery', dispatch: 'idle'});
+  assert.deepEqual(list.items.map((o) => o.id), ['legacy_order_1']);
+});
+
+test('every role sees the operational facet and permissions gate the lists', async () => {
+  const clickId = await reset();
+  // Add a restricted sales member and a manager.
+  await auth.createUser({uid: 'sales1'}).catch(() => {});
+  await db.doc('members/sales1').set({name: 'Sales', role: 'sales', active: true, permissions: [], authorizedCreatorIds: ['sales1']});
+  await db.doc('members/gm').update({permissions: []});
+  const r = await invoke('createOrder', 'gm', {...base, customer: 'عميل صلاحيات', phone: '0796000001', requestKey: 'perm_order_00000001'});
+  await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'review'});
+  await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'preparing'});
+  await invoke('changeOrderStatus', 'gm', {id: r.id, status: 'ready'});
+  await invoke('assignCompany', 'gm', {id: r.id, companyId: clickId});
+
+  // The general manager sees the operational facet.
+  const gmStats = await invoke('dashboardStats', 'gm', {});
+  assert.equal(gmStats.counters.operations.unshipped.count, 1);
+  // The sales member who did not create the order sees a zero scope, not a leak.
+  const salesStats = await invoke('dashboardStats', 'sales1', {});
+  assert.equal(salesStats.counters.operations.unshipped.count, 0);
+  // A member without updateOrderStatus cannot change state.
+  await assert.rejects(invoke('changeOrderStatus', 'sales1', {id: r.id, status: 'cancelled'}));
+  // And cannot read the order list beyond their scope.
+  const salesList = await invoke('listOrders', 'sales1', {bucket: 'delivery', dispatch: 'idle'});
+  assert.equal(salesList.items.length, 0);
+});

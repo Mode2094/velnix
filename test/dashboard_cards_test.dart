@@ -208,6 +208,14 @@ void main() {
                   'amountMinor': 1000,
                 },
             },
+            // Operational lifecycle of assigned orders, kept apart from the
+            // carrier vocabulary: assignment is not sending.
+            'operations': {
+              'confirmed': {'count': 2, 'amountMinor': 1000},
+              'unshipped': {'count': 3, 'amountMinor': 1000},
+              'sending': {'count': 0, 'amountMinor': 0},
+              'needs_review': {'count': 1, 'amountMinor': 1000},
+            },
           },
           'partial': false,
         };
@@ -221,20 +229,31 @@ void main() {
         LiveBucketStatusGrid(
           policy: policy(),
           bucket: 'delivery',
-          onOpenOrders: (bucket, state, isShipping) =>
-              opened = '$bucket:$state:$isShipping',
+          onOpenOrders: (bucket, state, facet) =>
+              opened = '$bucket:$state:$facet',
         ),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('طلبات شركات التوصيل'), findsWidgets);
+    // Two clearly separated sections.
+    expect(find.text('حالة الإرسال التشغيلية'), findsOneWidget);
+    expect(find.text('حالات شركة التوصيل الفعلية'), findsOneWidget);
+    // The operational group shows assigned-but-unsent orders.
+    expect(find.text('غير مرسلة (بانتظار الإرسال)'), findsOneWidget);
+    expect(find.text('تحتاج مراجعة'), findsOneWidget);
     // A carrier state label, not an internal status such as «تم الإرسال».
     expect(find.text('مؤجل'), findsOneWidget);
     expect(find.text('تم الإرسال'), findsNothing);
-    expect(find.text('4 طلب'), findsOneWidget);
-    await tester.tap(find.text('مؤجل'));
+    // The grand total is the operational partition only (2+3+0+1 = 6), never
+    // the carrier facet added on top.
+    expect(find.text('الإجمالي: 6 طلب'), findsOneWidget);
+    final deferredTile = find.text('مؤجل');
+    await tester.ensureVisible(deferredTile);
     await tester.pumpAndSettle();
-    expect(opened, 'delivery:deferred:true');
+    await tester.tap(deferredTile);
+    await tester.pumpAndSettle();
+    expect(opened, 'delivery:deferred:shipping');
     expect(tester.takeException(), isNull);
   });
 

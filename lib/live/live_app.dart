@@ -1354,14 +1354,15 @@ class _LiveShellState extends State<LiveShell> {
           builder: (_) => LiveBucketStatusGrid(
             policy: widget.policy,
             bucket: bucket,
-            onOpenOrders: (b, state, isShipping) => Navigator.push(
+            onOpenOrders: (b, state, facet) => Navigator.push(
               context,
               MaterialPageRoute<void>(
                 builder: (_) => LiveOrdersPage(
                   policy: widget.policy,
                   bucket: b,
-                  status: isShipping ? null : state,
-                  shippingStatus: isShipping ? state : null,
+                  status: facet == 'status' ? state : null,
+                  shippingStatus: facet == 'shipping' ? state : null,
+                  dispatch: facet == 'dispatch' ? state : null,
                 ),
               ),
             ),
