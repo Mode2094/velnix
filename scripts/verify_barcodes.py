@@ -1,4 +1,8 @@
-"""Render the actual PDF fixtures and decode Code128 and QR at printer DPI."""
+"""Render the actual PDF fixtures and decode the Code128 barcode at printer DPI.
+
+The voucher no longer carries a QR code (removed by the voucher redesign), so
+only the single Code128 barcode is verified. One page per order is asserted.
+"""
 import json
 import subprocess
 from pathlib import Path
@@ -20,7 +24,6 @@ for pdf in sorted(source.glob('*.pdf')):
         subprocess.run(['pdftoppm', '-r', str(dpi), '-png', str(pdf), str(prefix)], check=True, capture_output=True)
         images = sorted(output.glob(prefix.name + '-*.png'))
         decoded = set()
-        decoded_qr = set()
         preprocessing = []
         for image in images:
             with Image.open(image) as original:
@@ -35,21 +38,16 @@ for pdf in sorted(source.glob('*.pdf')):
                     if codes:
                         preprocessing.append({'image': image.name, 'method': '2x bilinear upsampling'})
                 decoded.update(code.text for code in codes)
-                # QR: the payload must equal the same stable internal reference.
-                qr_codes = zxingcpp.read_barcodes(grayscale, formats=zxingcpp.BarcodeFormat.QRCode)
-                decoded_qr.update(code.text for code in qr_codes)
                 grayscale.close()
-        # The QR shares the barcode's internal reference (VNX-<id>).
-        qr_ok = expected in decoded_qr
-        success = expected in decoded and qr_ok
+        # No QR is printed; only the Code128 must decode to the stable reference.
+        success = expected in decoded
         results.append({
             'paper': pdf.stem, 'dpi': dpi, 'pages': len(images), 'expected': expected,
-            'decoded': sorted(decoded), 'decodedQr': sorted(decoded_qr),
-            'preprocessing': preprocessing, 'passed': success,
+            'decoded': sorted(decoded), 'preprocessing': preprocessing, 'passed': success,
         })
-        print(f'{pdf.stem} {dpi} DPI: {"PASS" if success else "FAIL"} (barcode={"ok" if expected in decoded else "miss"}, qr={"ok" if qr_ok else "miss"}) ({len(images)} pages)', flush=True)
+        print(f'{pdf.stem} {dpi} DPI: {"PASS" if success else "FAIL"} (barcode={"ok" if expected in decoded else "miss"}) ({len(images)} pages)', flush=True)
 if not results:
     raise SystemExit('Generate PDF fixtures with Flutter tests before decoding')
 (output / 'decode-results.json').write_text(json.dumps(results, indent=2) + '\n')
 if any(not result['passed'] for result in results):
-    raise SystemExit('Barcode/QR decoding failed; inspect rendered artifacts')
+    raise SystemExit('Barcode decoding failed; inspect rendered artifacts')

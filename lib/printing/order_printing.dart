@@ -154,13 +154,12 @@ class OrderInvoicePdf {
     final bold = pw.Font.ttf(
       await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
     );
-    final logo = await _loadVelnixLogo();
     final pdf = pw.Document(
       title: 'Velnix - ${order['orderNumber'] ?? order['id']}',
       author: 'Velnix Smart Order Management',
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
-    pdf.addPage(_orderPage(order, font, bold, format, template, logo));
+    pdf.addPage(_orderPage(order, font, bold, format, template));
     return pdf.save();
   }
 
@@ -182,27 +181,15 @@ class OrderInvoicePdf {
     final bold = pw.Font.ttf(
       await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
     );
-    final logo = await _loadVelnixLogo();
     final pdf = pw.Document(
       title: 'Velnix - ${limited.length} طلب',
       author: 'Velnix Smart Order Management',
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
     for (final order in limited) {
-      pdf.addPage(_orderPage(order, font, bold, format, template, logo));
+      pdf.addPage(_orderPage(order, font, bold, format, template));
     }
     return pdf.save();
-  }
-
-  /// The Velnix wordmark used in the header. Missing asset must not break a
-  /// print, so it returns null and the header falls back to the text mark.
-  static Future<pw.MemoryImage?> _loadVelnixLogo() async {
-    try {
-      final data = await rootBundle.load('assets/images/logo.png');
-      return pw.MemoryImage(data.buffer.asUint8List());
-    } catch (_) {
-      return null;
-    }
   }
 
   /// Decodes a page logo data URI into a PDF image, or null when absent/invalid.
@@ -225,7 +212,6 @@ class OrderInvoicePdf {
     pw.Font bold,
     PdfPageFormat format,
     OrderTemplate template,
-    pw.MemoryImage? velnixLogo,
   ) {
     final narrow = format.width < 100 * PdfPageFormat.mm;
     final thermal = template == OrderTemplate.thermal || narrow;
@@ -233,7 +219,6 @@ class OrderInvoicePdf {
     final verticalMargin = (thermal ? 3 : 11) * PdfPageFormat.mm;
     final id = order['id']?.toString() ?? '';
     final barcode = orderBarcode(order);
-    final qr = orderQrPayload(order);
     final amount = order['amount']; // absent/null means server hid this field.
     final timestamp = DateTime.tryParse(order['createdAt']?.toString() ?? '');
     final created = timestamp == null ? null : businessTime(timestamp);
@@ -320,19 +305,15 @@ class OrderInvoicePdf {
       bottom: pw.BorderSide(color: PdfColors.grey400, width: .7),
     );
 
-    // ---- Symbols widget (computed from the printable width) ----
-    // The barcode always takes the full printable width (203-DPI grid geometry)
-    // and the QR is centered beneath it, so every paper size yields scannable
-    // symbols with clear quiet zones.
+    // ---- Symbol widget: a single, compact Code128 barcode ----
+    // No QR and no machine-readable text is printed: the scannable payload is
+    // unchanged (still the stable internal reference) but only the bars appear,
+    // at a smaller height that stays reliably scannable with clear quiet zones.
     final printableWidth = format.width - horizontalMargin * 2;
     final barcodeGeometry = invoiceBarcodeGeometry(
       barcode,
       printableWidth,
       horizontalMargin,
-    );
-    final qrSize = (printableWidth * 0.42).clamp(
-      thermal ? 34.0 : 48.0,
-      thermal ? 46.0 : 70.0,
     );
     final symbols = pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -346,30 +327,15 @@ class OrderInvoicePdf {
             barcode: pw.Barcode.code128(),
             data: barcode,
             drawText: false,
-            height: thermal ? 34 : 54,
+            height: thermal ? 22 : 34,
             width: barcodeGeometry.width,
-          ),
-        ),
-        pw.SizedBox(height: 3),
-        pw.Text(
-          barcode,
-          textDirection: pw.TextDirection.ltr,
-          style: pw.TextStyle(font: font, fontSize: thermal ? 6.5 : 9),
-        ),
-        pw.SizedBox(height: thermal ? 6 : 10),
-        pw.SizedBox(
-          width: qrSize,
-          height: qrSize,
-          child: pw.BarcodeWidget(
-            barcode: pw.Barcode.qrCode(),
-            data: qr,
-            drawText: false,
           ),
         ),
       ],
     );
 
-    // ---- Header: Velnix + page identity + order number + type ----
+    // ---- Header: sales page identity + barcode above the order number + type ----
+    final orderNumber = order['orderNumber'] ?? id;
     final header = pw.Container(
       padding: pw.EdgeInsets.only(
         bottom: thermal ? 6 : 10,
@@ -384,29 +350,25 @@ class OrderInvoicePdf {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          if (velnixLogo != null)
+          // The page's own logo/name is the identity here; Velnix is not shown.
+          if (pageLogo != null)
             pw.Container(
               width: thermal ? 34 : 52,
               height: thermal ? 34 : 52,
               margin: const pw.EdgeInsets.only(left: 8),
-              child: pw.Image(velnixLogo, fit: pw.BoxFit.contain),
+              child: pw.Image(pageLogo, fit: pw.BoxFit.contain),
             ),
           pw.Expanded(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text(
-                  'Velnix',
-                  textDirection: pw.TextDirection.ltr,
+                  pageName.isNotEmpty ? pageName : 'بوليصة شحن',
                   style: pw.TextStyle(
                     font: bold,
-                    fontSize: thermal ? 15 : 20,
+                    fontSize: thermal ? 12 : 16,
                     color: brandColor,
                   ),
-                ),
-                pw.Text(
-                  pageName.isNotEmpty ? pageName : 'بوليصة شحن',
-                  style: pw.TextStyle(font: bold, fontSize: thermal ? 10 : 13),
                 ),
                 if (pagePhone.isNotEmpty || pageWhatsapp.isNotEmpty)
                   pw.Padding(
@@ -426,36 +388,48 @@ class OrderInvoicePdf {
                       ),
                     ),
                   ),
-                pw.SizedBox(height: 2),
-                // No forced LTR: the line mixes Arabic and Latin, and forcing a
-                // paragraph direction corrupts the bidi of following rich-text
-                // rows in the PDF engine.
+                pw.SizedBox(height: thermal ? 4 : 6),
+                // Barcode sits ABOVE the order number.
+                symbols,
+                pw.SizedBox(height: thermal ? 3 : 5),
+                // Only the order number is shown; the label «رقم الطلب» is removed.
                 pw.Text(
-                  'رقم الطلب: ${order['orderNumber'] ?? id}',
-                  style: pw.TextStyle(font: bold, fontSize: thermal ? 9 : 12),
+                  '$orderNumber',
+                  textDirection: pw.TextDirection.ltr,
+                  style: pw.TextStyle(font: bold, fontSize: thermal ? 12 : 16),
                 ),
+                pw.SizedBox(height: 3),
+                // The order type is emphasised: bold, dark and large.
                 pw.Text(
-                  'النوع: $orderType${created != null ? '  •  $date${time != null ? ' $time' : ''}' : ''}',
+                  orderType,
                   style: pw.TextStyle(
-                    font: font,
-                    fontSize: thermal ? 7 : 9,
-                    color: PdfColors.grey700,
+                    font: bold,
+                    fontSize: thermal ? 12 : 16,
+                    color: PdfColors.black,
                   ),
                 ),
+                if (created != null)
+                  pw.Text(
+                    '$date${time != null ? '  $time' : ''}',
+                    style: pw.TextStyle(
+                      font: font,
+                      fontSize: thermal ? 7 : 9,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
               ],
             ),
           ),
-          if (pageLogo != null)
-            pw.Container(
-              width: thermal ? 34 : 48,
-              height: thermal ? 34 : 48,
-              child: pw.Image(pageLogo, fit: pw.BoxFit.contain),
-            ),
         ],
       ),
     );
 
-    return pw.MultiPage(
+    // Exactly ONE physical page per order: a single Page (never MultiPage), so
+    // a batch of N orders always yields N pages, independent of content length.
+    // The content is NOT scaled: instead the few free-text fields are bounded to
+    // their printable line budget (with a clear ellipsis when exceeded), so all
+    // critical fields and the barcode keep their full, scannable size.
+    return pw.Page(
       pageFormat: format,
       margin: pw.EdgeInsets.fromLTRB(
         horizontalMargin,
@@ -464,67 +438,67 @@ class OrderInvoicePdf {
         verticalMargin,
       ),
       textDirection: pw.TextDirection.rtl,
-      // MultiPage may continue a very long slip; symbols are emitted as complete
-      // widgets, so they are never split. maxPages is only a runaway guard and
-      // never truncates a real order.
-      maxPages: 50,
-      build: (_) => [
-        header,
-        pw.SizedBox(height: thermal ? 5 : 9),
-        // ---- Recipient / destination ----
-        row('المستلم', order['customer']),
-        row('الهاتف', order['phone']),
-        if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
-          row('هاتف إضافي', order['extraPhone']),
-        row('المحافظة', order['city']),
-        row('المنطقة', order['area']),
-        if ((order['address']?.toString() ?? '').isNotEmpty)
-          flowRow('العنوان', order['address']),
-        pw.SizedBox(height: thermal ? 4 : 8),
-        pw.Divider(color: PdfColors.grey400),
-        // ---- Contents / financial ----
-        flowRow('وصف المحتويات', order['description']),
-        row('الكمية', order['quantity']),
-        row('طريقة الدفع', order['paymentMethod']),
-        if ((order['companyName']?.toString() ?? '').isNotEmpty)
-          row('شركة التوصيل', order['companyName']),
-        if (amount is num) row('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
-        if ((order['trackingNumber']?.toString() ?? '').isNotEmpty)
-          row('رقم تتبع الشحنة', order['trackingNumber']),
-        if ((order['clickOrderRef']?.toString() ?? '').isNotEmpty)
-          row('مرجع الشحنة', order['clickOrderRef']),
-        if ((order['note']?.toString() ?? '').isNotEmpty)
-          flowRow('ملاحظات', order['note']),
-        pw.SizedBox(height: thermal ? 8 : 14),
-        // ---- Symbols: Code128 + QR ----
-        // Sizes derive from the printable width: side-by-side when it fits,
-        // otherwise stacked (A6 / 58mm / narrow custom) so both symbols stay
-        // scannable. The Code128 keeps the 203-DPI grid geometry.
-        symbols,
-        pw.SizedBox(height: thermal ? 6 : 10),
-        // ---- Footer ----
-        if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
-          flowRow('معلومات المؤسسة', order['receiptFooter']),
-        pw.Text(
-          'امسح الباركود أو رمز QR للعثور على الطلب بالمعرّف الداخلي. لا يحتوي الرمز على بيانات العميل.',
-          style: pw.TextStyle(
-            font: font,
-            fontSize: thermal ? 6 : 8,
-            color: PdfColors.grey700,
+      build: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          header,
+          pw.SizedBox(height: thermal ? 5 : 9),
+          // ---- Recipient / destination ----
+          row('المستلم', order['customer']),
+          row('الهاتف', order['phone']),
+          if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
+            row('هاتف إضافي', order['extraPhone']),
+          row('المحافظة', order['city']),
+          row('المنطقة', order['area']),
+          if ((order['address']?.toString() ?? '').isNotEmpty)
+            flowRow('العنوان', _bounded(order['address'], thermal ? 160 : 320)),
+          pw.SizedBox(height: thermal ? 4 : 8),
+          pw.Divider(color: PdfColors.grey400),
+          // ---- Contents / financial ----
+          flowRow(
+            'وصف المحتويات',
+            _bounded(order['description'], thermal ? 320 : 900),
           ),
-          textAlign: pw.TextAlign.center,
-        ),
-        pw.Text(
-          'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
-          style: pw.TextStyle(
-            font: font,
-            fontSize: thermal ? 5.5 : 7,
-            color: PdfColors.grey700,
+          row('الكمية', order['quantity']),
+          row('طريقة الدفع', order['paymentMethod']),
+          if ((order['companyName']?.toString() ?? '').isNotEmpty)
+            row('شركة التوصيل', order['companyName']),
+          if (amount is num) row('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
+          if ((order['trackingNumber']?.toString() ?? '').isNotEmpty)
+            row('رقم تتبع الشحنة', order['trackingNumber']),
+          if ((order['clickOrderRef']?.toString() ?? '').isNotEmpty)
+            row('مرجع الشحنة', order['clickOrderRef']),
+          if ((order['note']?.toString() ?? '').isNotEmpty)
+            flowRow('ملاحظات', _bounded(order['note'], thermal ? 220 : 600)),
+          pw.SizedBox(height: thermal ? 6 : 10),
+          // ---- Footer ----
+          if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
+            flowRow(
+              'معلومات المؤسسة',
+              _bounded(order['receiptFooter'], thermal ? 160 : 400),
+            ),
+          pw.Text(
+            'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
+            style: pw.TextStyle(
+              font: font,
+              fontSize: thermal ? 5.5 : 7,
+              color: PdfColors.grey700,
+            ),
+            textAlign: pw.TextAlign.center,
           ),
-          textAlign: pw.TextAlign.center,
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  /// Bounds a free-text value to [max] characters so a single voucher always
+  /// fits one page at full font size. Truncation is explicit (ellipsis) and only
+  /// ever affects over-long free text, never a critical field or the barcode.
+  static String _bounded(dynamic value, int max) {
+    final text = value?.toString().trim() ?? '';
+    if (text.length <= max) return text;
+    return '${text.substring(0, max).trimRight()}…';
   }
 }
 
@@ -540,6 +514,7 @@ class OrderPrintScreen extends StatefulWidget {
 class _OrderPrintScreenState extends State<OrderPrintScreen> {
   OrderPaper paper = OrderPaper.a4;
   OrderTemplate template = OrderTemplate.professional;
+  bool landscape = false;
   final width = TextEditingController(text: '100');
   final height = TextEditingController(text: '180');
   bool busy = false;
@@ -559,7 +534,9 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
         'المقاس المخصص: العرض 50–420 مم والطول 80–600 مم',
       );
     }
-    return paper.format(widthMm: w, heightMm: h);
+    final base = paper.format(widthMm: w, heightMm: h);
+    if (!landscape) return base;
+    return PdfPageFormat(base.height, base.width, marginAll: base.marginLeft);
   }
 
   Future<void> run(Future<void> Function() action) async {
@@ -638,6 +615,20 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
                             () => template = v ?? OrderTemplate.professional,
                           ),
                   ),
+                  const SizedBox(height: 9),
+                  DropdownButtonFormField<bool>(
+                    isExpanded: true,
+                    key: ValueKey('orientation-$landscape'),
+                    initialValue: landscape,
+                    decoration: const InputDecoration(labelText: 'الاتجاه'),
+                    items: const [
+                      DropdownMenuItem(value: false, child: Text('عمودي')),
+                      DropdownMenuItem(value: true, child: Text('أفقي')),
+                    ],
+                    onChanged: busy
+                        ? null
+                        : (v) => setState(() => landscape = v ?? false),
+                  ),
                   if (paper == OrderPaper.custom) ...[
                     const SizedBox(height: 12),
                     TextField(
@@ -660,7 +651,7 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
                   ],
                   const SizedBox(height: 10),
                   const Text(
-                    'الباركود ورمز QR ثابتان لهذا الطلب في كل إعادة طباعة. لا تُظهر البوليصة المبلغ إذا لم يمنحه الخادم للمستخدم.',
+                    'الباركود ثابت لهذا الطلب في كل إعادة طباعة. لا تُظهر البوليصة المبلغ إذا لم يمنحه الخادم للمستخدم.',
                     style: TextStyle(fontSize: 12),
                   ),
                   const SizedBox(height: 14),
@@ -708,7 +699,7 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
             final format = currentFormat;
             preview = PdfPreview(
               key: ValueKey(
-                '${paper.name}-${template.name}-${width.text}-${height.text}-$id',
+                '${paper.name}-${template.name}-${landscape ? 'l' : 'p'}-${width.text}-${height.text}-$id',
               ),
               initialPageFormat: format,
               canChangePageFormat: false,
