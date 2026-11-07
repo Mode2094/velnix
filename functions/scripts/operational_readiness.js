@@ -25,7 +25,7 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
  const pagesReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(pages);
  // The bulk factory exposes bounded multi-order operations the same way.
  const bulkSrc=fs.readFileSync(path.join(root,'functions/src/bulk.js'),'utf8');
- const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
+  const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyInternalStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
  const bulkBinding='for(const [name,handler] of Object.entries(bulk))if(typeof handler===\'function\')exports[name]=callable(handler);';
  const bulkReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(bulkSrc);
  if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||!text.includes(bulkFactory)||!text.includes(bulkBinding)||[...text.matchAll(/exports\s*\[/g)].length!==3||!returned||!pagesReturned||!bulkReturned)throw Error('source_manifest_requires_review');

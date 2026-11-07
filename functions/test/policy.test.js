@@ -89,3 +89,30 @@ test('role hierarchy is a complete strict server-side matrix for password admini
   assert.equal(canAdministerMember({id:'x',role:'manager',active:false,permissions:['manageEmployees']},'dataEntry'),false);
   assert.equal(canAdministerMember(actor('manager',[]),'dataEntry'),false);
 });
+
+test('unrestricted internal status change allows any direction and blocks carrier contracts',()=>{
+  const {internalStatusChangeReason,canChangeInternalStatus,INTERNAL_CORRECTION_STATUSES}=require('../src/policy');
+  const ops=users.warehouse;
+  const internal={createdBy:'wh',status:'preparing'};
+  // Every internal target is allowed from any internal status.
+  for(const from of ['created','review','preparing','ready','delivered','cancelled']){
+    for(const target of INTERNAL_CORRECTION_STATUSES){
+      assert.equal(internalStatusChangeReason(ops,{...internal,status:from},target),null,`${from} -> ${target} must be allowed`);
+    }
+  }
+  // Carrier/dispatch states are never a valid internal target.
+  for(const target of ['dispatched','inTransit','returned','partiallyDelivered','bogus','']){
+    assert.equal(internalStatusChangeReason(ops,internal,target),'invalid_status');
+  }
+  // A carrier contract or an in-flight/undetermined dispatch is refused.
+  // `companyId` alone is NOT a contract: assignment does not send the shipment.
+  for(const patch of [{hasDelivery:true},{trackingNumber:'t'},{clickOrderRef:'r'},{providerOrderId:'p'},{remoteStatus:'delivered'},{dispatchState:'sending'},{dispatchState:'sent'},{dispatchState:'needs_review'},{status:'dispatched'},{status:'inTransit'},{status:'returned'}]){
+    assert.equal(internalStatusChangeReason(ops,{...internal,...patch},'created'),'carrier_contract',`${JSON.stringify(patch)} must be refused`);
+  }
+  // An assigned-but-unsent order stays editable.
+  assert.equal(internalStatusChangeReason(ops,{...internal,companyId:'c1',hasDelivery:false},'created'),null);
+  // Permission and visibility still apply.
+  assert.equal(internalStatusChangeReason(users.entry,{createdBy:'wh'},'review'),'permission-denied');
+  assert.equal(internalStatusChangeReason({id:'m',role:'manager',active:true,permissions:[]},internal,'review'),'permission-denied');
+  assert.equal(canChangeInternalStatus(ops,internal,'created'),true);
+});

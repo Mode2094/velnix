@@ -139,6 +139,10 @@ const INTERNAL_CORRECTION_STATUSES = ['created','review','preparing','ready','ca
 function canCorrectInternalStatus(order) {
   if (!order) return false;
   if (dispatchBlocked(order)) return false;
+  // A carrier contract blocks an internal edit, so a manual status move can
+  // never desync, cancel or re-send an external shipment. `companyId` alone is
+  // NOT a contract: assigning a company does not send the shipment, so an
+  // assigned-but-unsent order stays editable.
   if (order.hasDelivery === true || order.trackingNumber || order.clickOrderRef ||
       order.providerOrderId || order.remoteStatus) return false;
   if (['dispatched','inTransit','returned'].includes(order.status)) return false;
@@ -153,6 +157,25 @@ function correctionTargets(order) {
     return true;
   });
 }
+// Unrestricted internal status changes (bulk): any valid internal status may be
+// set regardless of the current one — forward, backward, reopening a cancelled
+// order or moving a completed order. Safety is preserved: an order that entered
+// a carrier contract, or whose dispatch is in flight/undetermined, is never
+// touched, so an internal edit can never desync, cancel or re-send an external
+// shipment. Returns null when the target is not a valid internal status, or a
+// short reason string when the order is out of scope for an internal edit.
+function internalStatusChangeReason(user, order, target) {
+  if (!order) return 'not-found';
+  if (!INTERNAL_CORRECTION_STATUSES.includes(target)) return 'invalid_status';
+  if (!canSeeOrder(user, order)) return 'permission-denied';
+  if (!can(user, 'updateOrderStatus') &&
+      !['generalManager', 'warehouse'].includes(user.role)) return 'permission-denied';
+  if (!canCorrectInternalStatus(order)) return 'carrier_contract';
+  return null;
+}
+function canChangeInternalStatus(user, order, target) {
+  return internalStatusChangeReason(user, order, target) === null;
+}
 function canResolveDispatch(order, now=Date.now()) {
   return order?.status==='ready' && (order.dispatchState==='needs_review' ||
     (order.dispatchState==='sending' && Number.isFinite(order.dispatchLockUntil?.toMillis?.()) && order.dispatchLockUntil.toMillis()<=now));
@@ -161,4 +184,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus};

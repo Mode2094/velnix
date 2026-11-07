@@ -641,8 +641,28 @@ class _LiveOrdersState extends State<LiveOrders> {
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
     final ok =
-        result['succeeded'] ?? results.where((r) => r['ok'] == true).length;
-    final failed = result['failed'] ?? (results.length - (ok as int));
+        (result['succeeded'] ?? results.where((r) => r['ok'] == true).length)
+            as int;
+    final unchanged = (result['unchanged'] as num?)?.toInt() ?? 0;
+    final uncertain = (result['uncertain'] as num?)?.toInt() ?? 0;
+    final failed = result['failed'] ?? (results.length - ok);
+    _showBulkResultsDialog(title, ok, unchanged, uncertain, failed, results);
+  }
+
+  void _showBulkResultsDialog(
+    String title,
+    int ok,
+    int unchanged,
+    int uncertain,
+    Object failed,
+    List<Map<String, dynamic>> results,
+  ) {
+    final summary = <String>[
+      'تم التغيير: ${ok - unchanged}',
+      if (unchanged > 0) 'بلا تغيير (نفس الحالة): $unchanged',
+      if (uncertain > 0) 'غير مؤكد: $uncertain',
+      'فشل: $failed',
+    ].join(' • ');
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -654,7 +674,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('نجح: $ok • فشل: $failed'),
+                Text(summary),
                 const SizedBox(height: 8),
                 for (final r in results.where((r) => r['ok'] != true))
                   Padding(
@@ -699,7 +719,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     if (bulkBusy || ids.isEmpty) return;
     setState(() => bulkBusy = true);
     final merged = <String, dynamic>{'results': <dynamic>[]};
-    var succeeded = 0, failed = 0, uncertain = 0;
+    var succeeded = 0, failed = 0, uncertain = 0, unchanged = 0;
     try {
       for (var i = 0; i < ids.length; i += chunkSize) {
         final chunk = ids.sublist(
@@ -711,10 +731,12 @@ class _LiveOrdersState extends State<LiveOrders> {
         succeeded += (result['succeeded'] as num?)?.toInt() ?? 0;
         failed += (result['failed'] as num?)?.toInt() ?? 0;
         uncertain += (result['uncertain'] as num?)?.toInt() ?? 0;
+        unchanged += (result['unchanged'] as num?)?.toInt() ?? 0;
       }
       merged['succeeded'] = succeeded;
       merged['failed'] = failed;
       merged['uncertain'] = uncertain;
+      merged['unchanged'] = unchanged;
       if (!mounted) return;
       _showBulkResult('نتيجة العملية — ${ids.length} طلب', merged);
       await load(reset: true, fresh: true);
@@ -725,26 +747,23 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
   }
 
+  /// Bulk internal status change. Every valid internal status is offered, with
+  /// no forward-only restriction, so a user may move orders backwards, reopen a
+  /// cancelled order or correct a completed one. Authorisation, tenant scope and
+  /// carrier-contract safety are enforced server-side; this dialog only chooses
+  /// the target and confirms it.
   Future<void> _bulkChangeStatus() async {
-    final targets = <String>[
-      'review',
-      'preparing',
-      'ready',
-    ]; // safe internal forward steps
+    final count = selected.length;
+    if (count == 0 || bulkBusy) return;
     final target = await showDialog<String>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('تغيير حالة ${selected.length} طلب'),
-        children: [
-          for (final t in targets)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, t),
-              child: Text(statusLabels[t] ?? t),
-            ),
-        ],
+      builder: (ctx) => _BulkStatusDialog(
+        statuses: internalChangeableStatuses,
+        labels: statusLabels,
+        count: count,
       ),
     );
-    if (target == null) return;
+    if (target == null || !mounted) return;
     await _runBulkChunked(
       selected.toList(),
       (chunk) => gateway.bulkChangeStatus(chunk, target),
@@ -1346,6 +1365,106 @@ class _LiveOrdersState extends State<LiveOrders> {
       style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12),
     ),
   );
+}
+
+/// RTL dialog for a bulk internal status change. Shows every valid internal
+/// status in a dropdown with its Arabic label, states how many orders will be
+/// affected, requires an explicit confirmation and blocks duplicate submissions
+/// while it closes. Narrow-screen friendly and keyboard aware.
+class _BulkStatusDialog extends StatefulWidget {
+  const _BulkStatusDialog({
+    required this.statuses,
+    required this.labels,
+    required this.count,
+  });
+  final List<OrderStatus> statuses;
+  final Map<String, String> labels;
+  final int count;
+  @override
+  State<_BulkStatusDialog> createState() => _BulkStatusDialogState();
+}
+
+class _BulkStatusDialogState extends State<_BulkStatusDialog> {
+  OrderStatus? _target;
+  bool _submitting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _target == null
+        ? 'تطبيق الحالة'
+        : 'تطبيق الحالة على ${widget.count} طلب';
+    return AlertDialog(
+      title: const Text('تغيير حالة الطلبات'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'تم تحديد ${widget.count} طلب. اختر الحالة الجديدة التي تريد '
+                'تطبيقها على جميع الطلبات المحددة.',
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<OrderStatus>(
+                // A bounded width keeps the field inside narrow phones.
+                isExpanded: true,
+                initialValue: _target,
+                decoration: const InputDecoration(labelText: 'الحالة الجديدة'),
+                items: [
+                  for (final status in widget.statuses)
+                    DropdownMenuItem(
+                      value: status,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: status.color,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              widget.labels[status.name] ?? status.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _target = value),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: (_target == null || _submitting)
+              ? null
+              : () {
+                  // Guard against a double tap closing/submitting twice.
+                  setState(() => _submitting = true);
+                  Navigator.pop(context, _target!.name);
+                },
+          child: label == 'تطبيق الحالة'
+              ? const Text('تطبيق الحالة')
+              : Text(label),
+        ),
+      ],
+    );
+  }
 }
 
 class LiveOrderDetail extends StatefulWidget {

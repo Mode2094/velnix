@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:velnix/core/theme.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
+import 'package:velnix/models/entities.dart';
 
 Widget app(Widget child) => MaterialApp(
   theme: velnixTheme(),
@@ -299,6 +300,161 @@ void main() {
     await tester.tap(find.text('عرض نتائج الطلبات'));
     await tester.pumpAndSettle();
     expect(find.textContaining('نتيجة غير مؤكدة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'bulk status dialog lists every internal status with its Arabic label',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        switch (name) {
+          case 'listOrders':
+            return {
+              'items': [order('1'), order('2')],
+              'nextAfterId': null,
+            };
+          case 'listCompanies':
+          case 'listAllowedPages':
+          case 'listOrderCreators':
+            return {'items': <dynamic>[]};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('عميل 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد الظاهر'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('تغيير الحالة'));
+      await tester.pumpAndSettle();
+      expect(find.text('تغيير حالة الطلبات'), findsOneWidget);
+      expect(find.textContaining('تم تحديد 2 طلب'), findsOneWidget);
+      expect(find.text('الحالة الجديدة'), findsOneWidget);
+
+      // Open the dropdown: every internal status must be present with its label.
+      await tester.tap(find.text('الحالة الجديدة'));
+      await tester.pumpAndSettle();
+      for (final status in internalChangeableStatuses) {
+        expect(
+          find.text(status.label).hitTestable(),
+          findsWidgets,
+          reason: '${status.name} (${status.label}) must be offered',
+        );
+      }
+      // The canonical list has six entries, proving the old three-status
+      // hardcode is gone.
+      expect(internalChangeableStatuses.length, 6);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('bulk status applies the chosen target after confirmation', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    List<String>? sentIds;
+    String? sentStatus;
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listOrders':
+          return {
+            'items': [order('1'), order('2')],
+            'nextAfterId': null,
+          };
+        case 'bulkChangeStatus':
+          sentIds = (data['ids'] as List).cast<String>();
+          sentStatus = data['status'] as String?;
+          return {
+            'succeeded': 2,
+            'unchanged': 0,
+            'failed': 0,
+            'results': [
+              {'id': '1', 'ok': true},
+              {'id': '2', 'ok': true},
+            ],
+          };
+        case 'listCompanies':
+        case 'listAllowedPages':
+        case 'listOrderCreators':
+          return {'items': <dynamic>[]};
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الحالة الجديدة'));
+    await tester.pumpAndSettle();
+    // Choose a BACKWARD target (cancelled) — the old hardcode never offered it.
+    await tester.tap(find.text('ملغي').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('تطبيق الحالة على 2 طلب'));
+    await tester.pumpAndSettle();
+
+    expect(sentStatus, 'cancelled');
+    expect(sentIds, unorderedEquals(['1', '2']));
+    // The completion summary is shown.
+    expect(find.textContaining('تم التغيير'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the confirm button is disabled until a status is chosen', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      switch (name) {
+        case 'listOrders':
+          return {
+            'items': [order('1')],
+            'nextAfterId': null,
+          };
+        case 'listCompanies':
+        case 'listAllowedPages':
+        case 'listOrderCreators':
+          return {'items': <dynamic>[]};
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    final confirm = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'تطبيق الحالة'),
+    );
+    expect(
+      confirm.onPressed,
+      isNull,
+      reason: 'confirm is disabled with no target',
+    );
     expect(tester.takeException(), isNull);
   });
 }
