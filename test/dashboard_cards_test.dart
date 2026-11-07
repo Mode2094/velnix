@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:velnix/core/theme.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
+import 'package:velnix/models/shipping_status.dart';
 
 void main() {
   final original = VelnixGateway.instance;
@@ -198,6 +199,15 @@ void main() {
                     'amountMinor': 1000,
                   },
               },
+            // The delivery bucket renders the carrier vocabulary, so a
+            // shipping state (never an internal status) must be what shows.
+            'shipping': {
+              for (final s in ShippingStatus.values)
+                s.name: {
+                  'count': s == ShippingStatus.deferred ? 4 : 1,
+                  'amountMinor': 1000,
+                },
+            },
           },
           'partial': false,
         };
@@ -211,17 +221,20 @@ void main() {
         LiveBucketStatusGrid(
           policy: policy(),
           bucket: 'delivery',
-          onOpenOrders: (bucket, status) => opened = '$bucket:$status',
+          onOpenOrders: (bucket, state, isShipping) =>
+              opened = '$bucket:$state:$isShipping',
         ),
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('طلبات شركات التوصيل'), findsWidgets);
-    expect(find.text('تم الإرسال'), findsOneWidget);
+    // A carrier state label, not an internal status such as «تم الإرسال».
+    expect(find.text('مؤجل'), findsOneWidget);
+    expect(find.text('تم الإرسال'), findsNothing);
     expect(find.text('4 طلب'), findsOneWidget);
-    await tester.tap(find.text('تم الإرسال'));
+    await tester.tap(find.text('مؤجل'));
     await tester.pumpAndSettle();
-    expect(opened, 'delivery:dispatched');
+    expect(opened, 'delivery:deferred:true');
     expect(tester.takeException(), isNull);
   });
 

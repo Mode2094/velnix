@@ -94,6 +94,7 @@ class VelnixGateway {
     String? afterId,
     int pageSize = 30,
     String? status,
+    String? shippingStatus,
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
@@ -106,6 +107,7 @@ class VelnixGateway {
       'pageSize': pageSize,
       'bucket': bucket,
       'status': ?status,
+      'shippingStatus': ?shippingStatus,
       'afterId': ?afterId,
       'companyId': ?companyId,
     };
@@ -122,6 +124,7 @@ class VelnixGateway {
   Future<Map<String, dynamic>> searchOrders(
     String query, {
     String? status,
+    String? shippingStatus,
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
@@ -134,6 +137,7 @@ class VelnixGateway {
       'bucket': bucket,
       'pageSize': pageSize,
       'status': ?status,
+      'shippingStatus': ?shippingStatus,
       'companyId': ?companyId,
       'cursor': ?cursor,
     };

@@ -192,7 +192,7 @@ async function applyCompanyAssignment(ref,user,id){
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_shipping_status:'اختر حالة شحنة صحيحة من حالات شركة التوصيل',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -444,10 +444,11 @@ async function sumOrders(query,showAmount){
 exports.dashboardStats=callable(async req=>{
   const user=await requireAuth(req);
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
-  const base=scopeQueries(user,{...filters,status:null,bucket:'all'});
+  const base=scopeQueries(user,{...filters,status:null,bucket:'all',shippingStatus:null});
   const statuses=require('./policy').STATUSES;
+  const shippingStates=require('./shipping_status').SHIPPING_STATUSES;
   const showAmount=user.role==='generalManager'||can(user,'viewAmounts');
-  const counter={all:{},delivery:{},internal:{}};
+  const counter={all:{},delivery:{},internal:{},shipping:{}};
   // Use independent aggregations by state and bucket; avoid scanning client lists.
   const values=await aggregateGroups(statuses.flatMap(status=>[
     base.map(query=>query.where('status','==',status).where('hasDelivery','==',true)),
@@ -458,6 +459,13 @@ exports.dashboardStats=callable(async req=>{
     counter.delivery[status]=delivery;counter.internal[status]=internal;
     counter.all[status]={count:delivery.count+internal.count,amountMinor:delivery.amountMinor+internal.amountMinor};
   }
+  // Delivery-company states are counted on their own facet, from the shipping
+  // vocabulary only. They are NEVER added into `all`: that would double-count a
+  // shipped order against its internal status. This is an additive view.
+  const shippingValues=await aggregateGroups(
+    shippingStates.map(state=>base.map(query=>query.where('shippingStatus','==',state))),
+    query=>sumOrders(query,showAmount));
+  shippingStates.forEach((state,i)=>{counter.shipping[state]=shippingValues[i];});
   return {counters:counter,partial:false,amountsVisible:showAmount};
 });
 exports.companyStats=callable(async req=>{

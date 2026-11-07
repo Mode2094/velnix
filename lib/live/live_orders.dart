@@ -6,6 +6,7 @@ class LiveOrders extends StatefulWidget {
     required this.policy,
     this.bucket = 'all',
     this.status,
+    this.shippingStatus,
     this.companyId,
     this.initialFilters = const {},
     this.onFiltersChanged,
@@ -15,6 +16,10 @@ class LiveOrders extends StatefulWidget {
   final SessionPolicy policy;
   final String bucket;
   final String? status;
+
+  /// A delivery-company state ([ShippingStatus]); never an internal status. The
+  /// two filters are independent and may be combined with search and the rest.
+  final String? shippingStatus;
   final String? companyId;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
@@ -38,7 +43,7 @@ class _LiveOrdersState extends State<LiveOrders> {
   List<Map<String, dynamic>> rows = [];
   Map<String, dynamic> filters = {};
   String sort = 'desc';
-  String? after, status;
+  String? after, status, shippingStatus;
   // Cursor for search pagination (keyword search), separate from list `after`.
   String? searchCursor;
   late String bucket;
@@ -183,6 +188,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     super.initState();
     filters = Map.of(widget.initialFilters);
     status = widget.status;
+    shippingStatus = widget.shippingStatus;
     bucket = widget.bucket;
     load(reset: true);
     if (widget.autoSearchFocus) {
@@ -237,6 +243,7 @@ class _LiveOrdersState extends State<LiveOrders> {
           ? await gateway.searchOrders(
               query,
               status: status,
+              shippingStatus: shippingStatus,
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
@@ -247,6 +254,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               afterId: token,
               sort: sort,
               status: status,
+              shippingStatus: shippingStatus,
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
@@ -295,6 +303,7 @@ class _LiveOrdersState extends State<LiveOrders> {
   int get _activeFilterCount =>
       (bucket != 'all' ? 1 : 0) +
       (status != null ? 1 : 0) +
+      (shippingStatus != null ? 1 : 0) +
       (filters.isNotEmpty ? 1 : 0) +
       (sort != 'desc' ? 1 : 0);
 
@@ -302,16 +311,29 @@ class _LiveOrdersState extends State<LiveOrders> {
     setState(() {
       bucket = 'all';
       status = null;
+      shippingStatus = null;
     });
     load(reset: true);
   }
 
+  /// True when this list is scoped to the carrier vocabulary, so the state
+  /// dropdown offers delivery states instead of internal order statuses.
+  bool get _shippingScope => bucket == 'delivery';
+
+  static String _shippingLabel(String wire) {
+    final parsed = ShippingStatus.parse(wire);
+    return parsed?.label ?? wire;
+  }
+
   Widget _appliedFilterBanner() {
-    if (bucket == 'all' && status == null) return const SizedBox.shrink();
+    if (bucket == 'all' && status == null && shippingStatus == null) {
+      return const SizedBox.shrink();
+    }
     final parts = <String>[
       if (bucket != 'all')
         bucket == 'delivery' ? 'شركات التوصيل' : 'غير المسندة لشركة',
       if (status != null) statusLabels[status] ?? status!,
+      if (shippingStatus != null) _shippingLabel(shippingStatus!),
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
@@ -385,22 +407,49 @@ class _LiveOrdersState extends State<LiveOrders> {
               DropdownMenuItem(value: 'internal', child: Text('غير المسندة')),
             ],
             onChanged: (v) {
-              setState(() => bucket = v ?? 'all');
+              setState(() {
+                bucket = v ?? 'all';
+                // An internal status is meaningless on the carrier facet and
+                // vice versa; switching scope clears the other filter so the
+                // two vocabularies are never mixed in one query.
+                if (bucket == 'delivery') {
+                  status = null;
+                } else {
+                  shippingStatus = null;
+                }
+              });
               load(reset: true);
             },
           );
+          final shipping = _shippingScope;
           final b = DropdownButtonFormField<String>(
             isExpanded: true,
-            initialValue: status ?? 'all',
-            decoration: const InputDecoration(labelText: 'حالة الطلب'),
+            initialValue: (shipping ? shippingStatus : status) ?? 'all',
+            decoration: InputDecoration(
+              labelText: shipping ? 'حالة الشحنة' : 'حالة الطلب',
+            ),
             items: [
-              const DropdownMenuItem(value: 'all', child: Text('جميع الحالات')),
-              ...statusLabels.entries.map(
-                (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+              DropdownMenuItem(
+                value: 'all',
+                child: Text(shipping ? 'جميع حالات الشحنة' : 'جميع الحالات'),
               ),
+              if (shipping)
+                ...ShippingStatus.values.map(
+                  (s) => DropdownMenuItem(value: s.name, child: Text(s.label)),
+                )
+              else
+                ...statusLabels.entries.map(
+                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                ),
             ],
             onChanged: (v) {
-              setState(() => status = v == 'all' ? null : v);
+              setState(() {
+                if (shipping) {
+                  shippingStatus = v == 'all' ? null : v;
+                } else {
+                  status = v == 'all' ? null : v;
+                }
+              });
               load(reset: true);
             },
           );

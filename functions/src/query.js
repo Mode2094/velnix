@@ -1,5 +1,6 @@
 'use strict';
 const {arabicDigits, documentId, STATUSES, ORDER_TYPES, JORDAN_CITIES}=require('./policy');
+const {SHIPPING_STATUSES}=require('./shipping_status');
 function normalizeCustomer(value) {
   return String(value||'').normalize('NFKC').toLocaleLowerCase('ar').trim()
     .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ');
@@ -16,8 +17,13 @@ const DISPATCH_GROUPS = Object.freeze({
 function parseFilters(data={}) {
   const filters={status:data.status||null,bucket:data.bucket||'all',companyId:data.companyId||null,createdBy:data.createdBy||null,
     pageId:data.pageId||null,orderType:data.orderType||null,city:data.city||null,area:data.area||null,
-    dispatch:data.dispatch||null,phone:null,barcode:null,product:null,note:null};
+    dispatch:data.dispatch||null,shippingStatus:data.shippingStatus||null,unshipped:null,phone:null,barcode:null,product:null,note:null};
   if(filters.status&&!STATUSES.includes(filters.status))throw Error('invalid_status');
+  // Delivery-company states are its own vocabulary, never an internal status.
+  if(filters.shippingStatus&&!SHIPPING_STATUSES.includes(filters.shippingStatus))throw Error('invalid_shipping_status');
+  // `unshipped` selects orders assigned to a company whose shipment was never
+  // confirmed as sent (no carrier link / API state): assignment is not sending.
+  if(data.unshipped===true)filters.unshipped=true;
   if(!['all','delivery','internal'].includes(filters.bucket))throw Error('invalid_bucket');
   for(const key of ['companyId','createdBy'])if(filters[key])documentId(filters[key]);
   if(filters.pageId)documentId(filters.pageId);
@@ -62,6 +68,9 @@ function applyFilters(query,filters) {
   if(filters.bucket!=='all')query=query.where('hasDelivery','==',filters.bucket==='delivery');
   if(filters.companyId)query=query.where('companyId','==',filters.companyId);
   if(filters.createdBy)query=query.where('createdBy','==',filters.createdBy);
+  // A delivery-company state is indexed on its own facet so it never narrows
+  // (or is narrowed by) the internal status.
+  if(filters.shippingStatus)query=query.where('shippingStatus','==',filters.shippingStatus);
   // pageId/orderType are pushed down (indexed with createdAt). city/area/amount
   // and the dispatch group are applied in-memory by matchingFilters to avoid an
   // index explosion; they only narrow an already-scoped, bounded page.
@@ -73,6 +82,15 @@ function applyFilters(query,filters) {
 }
 function matchingFilters(order,filters) {
   if(filters.status&&order.status!==filters.status)return false;
+  // Delivery-company state matched separately; an unassigned order has none.
+  if(filters.shippingStatus&&(order.shippingStatus||null)!==filters.shippingStatus)return false;
+  // Assignment is not sending: `unshipped` keeps only assigned orders whose
+  // shipment was never confirmed (no carrier link, tracking or API state).
+  if(filters.unshipped){
+    if(!order.companyId)return false;
+    if(order.shippingStatus||order.clickOrderRef||order.providerOrderId||
+       order.trackingNumber||(order.dispatchState&&order.dispatchState!=='idle'))return false;
+  }
   if(filters.bucket==='delivery'&&!order.companyId)return false;
   if(filters.bucket==='internal'&&order.companyId)return false;
   if(filters.companyId&&order.companyId!==filters.companyId)return false;
