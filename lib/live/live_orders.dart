@@ -45,6 +45,8 @@ class _LiveOrdersState extends State<LiveOrders> {
   final gateway = VelnixGateway.instance;
   final search = TextEditingController();
   final searchFocus = FocusNode();
+  // Scrolls only the results list, so the pinned header stays put.
+  final _listController = ScrollController();
   List<Map<String, dynamic>> rows = [];
   Map<String, dynamic> filters = {};
   String sort = 'desc';
@@ -222,6 +224,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     _debounce?.cancel();
     search.dispose();
     searchFocus.dispose();
+    _listController.dispose();
     super.dispose();
   }
 
@@ -251,6 +254,11 @@ class _LiveOrdersState extends State<LiveOrders> {
         more = true;
       }
     });
+    // A new search/filter starts the results at the top; "load more" (reset
+    // false) keeps the current scroll position.
+    if (reset && _listController.hasClients) {
+      _listController.jumpTo(0);
+    }
     final token = after;
     try {
       final query = appliedQuery;
@@ -847,159 +855,196 @@ class _LiveOrdersState extends State<LiveOrders> {
   Widget build(BuildContext context) {
     final visible = rows;
     final compact = MediaQuery.sizeOf(context).width < 720;
+    // The toolbar/search/filters stay pinned; only the results list scrolls.
+    // A dedicated controller lets a new search/filter reset the results to the
+    // top while "load more" keeps the current position.
     return PopScope(
       // Back exits selection mode first instead of leaving the list.
       canPop: !selectionMode,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && selectionMode) _exitSelection();
       },
-      child: RefreshIndicator(
-        onRefresh: () => load(reset: true, fresh: true),
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: LiveContent(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  runSpacing: 10,
-                  spacing: 10,
-                  children: [
-                    Text(
-                      widget.companyId == null
-                          ? 'إدارة الطلبات'
-                          : 'طلبات شركة التوصيل',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    Wrap(
-                      spacing: 8,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          // Cap the pinned header so it can never crowd out the list on short
+          // viewports (e.g. a landscape phone): the list keeps at least 40% of
+          // the height, and a very tall header scrolls within its own region
+          // instead of pushing the results off-screen.
+          final headerMax = box.maxHeight.isFinite
+              ? box.maxHeight * 0.6
+              : double.infinity;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ---- Pinned header (never scrolls away) ----
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: headerMax),
+                child: SingleChildScrollView(
+                  child: LiveContent(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        IconButton.filledTonal(
-                          tooltip: 'مسح باركود',
-                          onPressed: _openBarcodeScanner,
-                          icon: const Icon(Icons.qr_code_scanner),
-                        ),
-                        IconButton.filledTonal(
-                          tooltip: 'تحديث القائمة',
-                          onPressed: busy
-                              ? null
-                              : () => load(reset: true, fresh: true),
-                          icon: const Icon(Icons.refresh),
-                        ),
-                        FilledButton.icon(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => LiveOrderForm(
-                                policy: widget.policy,
-                                onSaved: (_) {
-                                  Navigator.pop(context);
-                                  load(reset: true);
-                                  // Unified client flow: every successful NEW
-                                  // order returns to the dashboard. The form
-                                  // already showed the order number.
-                                  widget.onCreated?.call();
-                                },
-                              ),
-                            ),
-                          ),
-                          icon: const Icon(Icons.add),
-                          label: const Text('طلب جديد'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                _appliedFilterBanner(),
-                if (selectionMode) _selectionToolbar(),
-                VLivePanel(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (compact)
-                        Row(
+                        Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          runSpacing: 10,
+                          spacing: 10,
                           children: [
-                            Expanded(child: _searchField()),
-                            const SizedBox(width: 8),
-                            Badge(
-                              isLabelVisible: _activeFilterCount > 0,
-                              label: Text('$_activeFilterCount'),
-                              child: IconButton.filledTonal(
-                                tooltip: 'الفلاتر والترتيب',
-                                onPressed: () => _openFilters(context),
-                                icon: const Icon(Icons.tune),
-                              ),
+                            Text(
+                              widget.companyId == null
+                                  ? 'إدارة الطلبات'
+                                  : 'طلبات شركة التوصيل',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                IconButton.filledTonal(
+                                  tooltip: 'مسح باركود',
+                                  onPressed: _openBarcodeScanner,
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                ),
+                                IconButton.filledTonal(
+                                  tooltip: 'تحديث القائمة',
+                                  onPressed: busy
+                                      ? null
+                                      : () => load(reset: true, fresh: true),
+                                  icon: const Icon(Icons.refresh),
+                                ),
+                                FilledButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => LiveOrderForm(
+                                        policy: widget.policy,
+                                        onSaved: (_) {
+                                          Navigator.pop(context);
+                                          load(reset: true);
+                                          // Unified client flow: every successful NEW
+                                          // order returns to the dashboard. The form
+                                          // already showed the order number.
+                                          widget.onCreated?.call();
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('طلب جديد'),
+                                ),
+                              ],
                             ),
                           ],
-                        )
-                      else ...[
-                        _filterControls(),
-                        const SizedBox(height: 10),
-                        _searchField(),
-                      ],
-                      if (search.text.trim().isNotEmpty)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () {
-                              search.clear();
-                              load(reset: true);
-                            },
-                            icon: const Icon(Icons.close),
-                            label: const Text('مسح البحث'),
+                        ),
+                        const SizedBox(height: 15),
+                        _appliedFilterBanner(),
+                        if (selectionMode) _selectionToolbar(),
+                        VLivePanel(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (compact)
+                                Row(
+                                  children: [
+                                    Expanded(child: _searchField()),
+                                    const SizedBox(width: 8),
+                                    Badge(
+                                      isLabelVisible: _activeFilterCount > 0,
+                                      label: Text('$_activeFilterCount'),
+                                      child: IconButton.filledTonal(
+                                        tooltip: 'الفلاتر والترتيب',
+                                        onPressed: () => _openFilters(context),
+                                        icon: const Icon(Icons.tune),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              else ...[
+                                _filterControls(),
+                                const SizedBox(height: 10),
+                                _searchField(),
+                              ],
+                              if (search.text.trim().isNotEmpty)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: () {
+                                      search.clear();
+                                      load(reset: true);
+                                    },
+                                    icon: const Icon(Icons.close),
+                                    label: const Text('مسح البحث'),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                    ],
+                        const SizedBox(height: 14),
+                        if (limited)
+                          const VLivePanel(
+                            child: Text(
+                              'توجد نتائج إضافية؛ حدّد الحالة أو الشركة أو الفترة لتضييق البحث.',
+                            ),
+                          ),
+                        if (limited) const SizedBox(height: 14),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 14),
-                if (limited)
-                  const VLivePanel(
-                    child: Text(
-                      'توجد نتائج إضافية؛ حدّد الحالة أو الشركة أو الفترة لتضييق البحث.',
+              ),
+              // ---- Scrollable results only ----
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: () => load(reset: true, fresh: true),
+                  child: SingleChildScrollView(
+                    controller: _listController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: LiveContent(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (error != null)
+                            VFeedbackPanel(
+                              title: 'تعذر تحميل الطلبات',
+                              message: error,
+                              icon: Icons.error_outline,
+                              onRetry: () => load(reset: true, fresh: true),
+                            ),
+                          if (!busy && error == null && rows.isEmpty)
+                            const VFeedbackPanel(
+                              title: 'لا توجد طلبات مطابقة',
+                              message:
+                                  'جرّب تغيير البحث أو الفلاتر، أو أنشئ طلباً جديداً.',
+                              icon: Icons.receipt_long_outlined,
+                            ),
+                          for (final item in visible)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 9),
+                              child: _orderCard(item),
+                            ),
+                          const SizedBox(height: 9),
+                          if (busy)
+                            const VFeedbackPanel(
+                              title: 'جارٍ تحميل الطلبات',
+                              loading: true,
+                            ),
+                          if (more && !busy)
+                            Center(
+                              child: OutlinedButton.icon(
+                                onPressed: () => load(),
+                                icon: const Icon(Icons.expand_more),
+                                label: const Text('تحميل المزيد'),
+                              ),
+                            ),
+                          const SizedBox(height: 30),
+                        ],
+                      ),
                     ),
                   ),
-                if (error != null)
-                  VFeedbackPanel(
-                    title: 'تعذر تحميل الطلبات',
-                    message: error,
-                    icon: Icons.error_outline,
-                    onRetry: () => load(reset: true, fresh: true),
-                  ),
-                if (!busy && error == null && rows.isEmpty)
-                  const VFeedbackPanel(
-                    title: 'لا توجد طلبات مطابقة',
-                    message:
-                        'جرّب تغيير البحث أو الفلاتر، أو أنشئ طلباً جديداً.',
-                    icon: Icons.receipt_long_outlined,
-                  ),
-                for (final item in visible)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 9),
-                    child: _orderCard(item),
-                  ),
-                const SizedBox(height: 9),
-                if (busy)
-                  const VFeedbackPanel(
-                    title: 'جارٍ تحميل الطلبات',
-                    loading: true,
-                  ),
-                if (more && !busy)
-                  Center(
-                    child: OutlinedButton.icon(
-                      onPressed: () => load(),
-                      icon: const Icon(Icons.expand_more),
-                      label: const Text('تحميل المزيد'),
-                    ),
-                  ),
-                const SizedBox(height: 30),
-              ],
-            ),
-          ),
-        ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

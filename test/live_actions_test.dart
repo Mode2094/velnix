@@ -118,9 +118,13 @@ void main() {
         find.widgetWithText(TextField, 'بحث في كل الطلبات المسموح لك بها'),
         'عميل',
       );
+      // Pump less than the search debounce (320ms) so no automatic search fires
+      // yet; the assertion below is about the list pagination path only.
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.ensureVisible(find.text('تحميل المزيد'));
+      await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('تحميل المزيد'));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 50));
       expect(calls, ['listOrders', 'listOrders']);
       await tester.ensureVisible(find.byTooltip('تنفيذ البحث'));
       await tester.tap(find.byTooltip('تنفيذ البحث'));

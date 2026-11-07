@@ -77,6 +77,15 @@ void main() {
       throw StateError(name);
     });
 
+    // A realistic phone viewport; the pinned header keeps the tools visible
+    // while the results below scroll independently.
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     await tester.pumpWidget(app(LiveOrderSearchPage(policy: gm())));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -97,8 +106,13 @@ void main() {
     expect(searchQueries.contains('VNX-000009'), isTrue);
     expect(find.text('VNX-000009'), findsWidgets);
 
-    // Tapping the result opens the order details.
-    await tester.ensureVisible(find.text('فتح التفاصيل').first);
+    // Tapping the result opens the order details. The results are the only
+    // scrollable region now (the header is pinned), so scroll that list first.
+    await tester.scrollUntilVisible(
+      find.text('فتح التفاصيل').first,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('فتح التفاصيل').first);
     await tester.pumpAndSettle();
