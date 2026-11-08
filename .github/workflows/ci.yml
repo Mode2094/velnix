@@ -103,14 +103,16 @@ jobs:
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
         with:
           timeout_minutes: 25
-          max_attempts: 5
+          max_attempts: 8
+          retry_wait_seconds: 60
           retry_on: error
           command: flutter build apk --debug --dart-define=VELNIX_MODE=demo
       - name: Build live APK (retry transient Gradle 504)
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
         with:
           timeout_minutes: 25
-          max_attempts: 5
+          max_attempts: 8
+          retry_wait_seconds: 60
           retry_on: error
           command: flutter build apk --debug --dart-define=VELNIX_MODE=live
   emulator-ui:
