@@ -15,6 +15,8 @@ providers.requireOperationalProvider=company=>{
 const functions=require('../../src/index');
 const {getFirestore}=require('firebase-admin/firestore'),{getApp,deleteApp}=require('firebase-admin/app');
 const {Timestamp}=require('firebase-admin/firestore');
+const {getAuth}=require('firebase-admin/auth');
+const auth=getAuth();
 const db=getFirestore();let server,local,requests=0;
 const asUser=(name,data)=>functions[name].run({auth:{uid:'any_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
 const dispatch=id=>asUser('sendOrderToDelivery',{id});
