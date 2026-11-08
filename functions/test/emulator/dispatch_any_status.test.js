@@ -14,6 +14,7 @@ providers.requireOperationalProvider=company=>{
 };
 const functions=require('../../src/index');
 const {getFirestore}=require('firebase-admin/firestore'),{getApp,deleteApp}=require('firebase-admin/app');
+const {Timestamp}=require('firebase-admin/firestore');
 const db=getFirestore();let server,local,requests=0;
 const asUser=(name,data)=>functions[name].run({auth:{uid:'any_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
 const dispatch=id=>asUser('sendOrderToDelivery',{id});
@@ -28,7 +29,7 @@ before(async()=>{
 after(async()=>{await new Promise(resolve=>server.close(resolve));await db.terminate();await deleteApp(getApp());});
 async function order(id,status,extra={}){
   const ref=db.doc('orders/'+id);
-  const base={createdBy:'any_gm',status,internalStatus:status,dispatchState:'idle',companyId:'any_fixture',amountMinor:1000,revision:0};
+  const base={createdBy:'any_gm',status,internalStatus:status,dispatchState:'idle',companyId:'any_fixture',amountMinor:1000,revision:0,createdAt:Timestamp.now()};
   const merged={...base,...extra};
   // Mirror production: an order assigned to a company has hasDelivery true.
   if(merged.companyId&&merged.hasDelivery===undefined)merged.hasDelivery=true;
@@ -117,9 +118,57 @@ test('store total is unchanged after dispatch and an uncertain send is not count
 
   // An uncertain send is needs_review, never 'confirmed'.
   const ref2=db.doc('orders/any_uncertain');
-  await ref2.set({createdBy:'any_gm',status:'ready',internalStatus:'ready',dispatchState:'needs_review',companyId:'any_fixture',hasDelivery:true,amountMinor:1000,revision:0});
+  await ref2.set({createdBy:'any_gm',status:'ready',internalStatus:'ready',dispatchState:'needs_review',companyId:'any_fixture',hasDelivery:true,amountMinor:1000,revision:0,createdAt:Timestamp.now()});
   const stats=await asUser('dashboardStats',{});
   assert.equal(stats.counters.operations.needs_review.count>=1,true,'an uncertain send is visible as needs_review');
   // It is not counted as confirmed for this order.
   assert.equal(stats.counters.shipping && Object.values(stats.counters.shipping).reduce((s,v)=>s+v.count,0)>=0,true);
+});
+
+test('an order moves internal -> delivery only on confirmed acceptance; total stays fixed',async()=>{
+  await db.doc('members/queue_gm').set({name:'QGM',role:'generalManager',active:true,permissions:[]});
+  const call=(name,data)=>functions[name].run({auth:{uid:'queue_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
+  const ref=await order('queue_move','preparing');
+  const before=await call('dashboardStats',{});
+  const totalBefore=Object.values(before.counters.all).reduce((s,v)=>s+v.count,0);
+  const internalBefore=(await call('listOrders',{bucket:'internal'})).items.map(o=>o.id);
+  const deliveryBefore=(await call('listOrders',{bucket:'delivery'})).items.map(o=>o.id);
+  assert.ok(internalBefore.includes(ref.id),'pre-send: in the internal queue');
+  assert.equal(deliveryBefore.includes(ref.id),false,'pre-send: not in the delivery queue');
+
+  await dispatch(ref.id);
+
+  const after=await call('dashboardStats',{});
+  const totalAfter=Object.values(after.counters.all).reduce((s,v)=>s+v.count,0);
+  assert.equal(totalAfter,totalBefore,'the store total is unchanged by acceptance');
+  const internalAfter=(await call('listOrders',{bucket:'internal'})).items.map(o=>o.id);
+  const deliveryAfter=(await call('listOrders',{bucket:'delivery'})).items.map(o=>o.id);
+  assert.equal(internalAfter.includes(ref.id),false,'post-send: left the internal queue');
+  assert.ok(deliveryAfter.includes(ref.id),'post-send: entered the delivery queue');
+  // dashboard counters agree with the lists
+  assert.equal(after.counters.internal.preparing.count,before.counters.internal.preparing.count-1);
+  assert.equal(after.counters.delivery.preparing.count,before.counters.delivery.preparing.count+1);
+  assert.equal(after.counters.all.preparing.count,before.counters.all.preparing.count,'all is unchanged');
+});
+
+test('an uncertain send stays in the internal queue and is not counted as accepted',async()=>{
+  const call=(name,data)=>functions[name].run({auth:{uid:'queue_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
+  const ref=await order('queue_uncertain','ready');
+  // Simulate an ambiguous outcome: needs_review with the merchant ref persisted.
+  await ref.update({dispatchState:'needs_review',clickOrderRef:'VNX-'+ref.id,syncError:'غير مؤكد'});
+  const delivery=(await call('listOrders',{bucket:'delivery'})).items.map(o=>o.id);
+  const internal=(await call('listOrders',{bucket:'internal'})).items.map(o=>o.id);
+  assert.equal(delivery.includes(ref.id),false,'an uncertain send is not accepted');
+  assert.ok(internal.includes(ref.id),'an uncertain send stays internal');
+  const stats=await call('dashboardStats',{});
+  assert.equal(stats.counters.operations.needs_review.count>=1,true,'the uncertain send is visible');
+});
+
+test('a legacy accepted order (no dispatchState) lands in the delivery queue',async()=>{
+  const call=(name,data)=>functions[name].run({auth:{uid:'queue_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
+  const ref=db.doc('orders/queue_legacy_accepted');
+  await ref.set({createdBy:'any_gm',status:'ready',companyId:'any_fixture',hasDelivery:true,amountMinor:1000,revision:0,
+    trackingNumber:'OLD-TRK',clickOrderRef:'VNX-legacy',shippingStatusSource:'click_api',createdAt:Timestamp.now()});
+  const delivery=(await call('listOrders',{bucket:'delivery'})).items.map(o=>o.id);
+  assert.ok(delivery.includes(ref.id),'a legacy accepted shipment is in the delivery queue');
 });

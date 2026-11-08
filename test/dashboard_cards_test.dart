@@ -85,11 +85,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(calls, 1);
-    expect(find.text('كل الطلبات'), findsOneWidget);
-    expect(find.text('طلبات شركات التوصيل'), findsOneWidget);
     expect(find.text('جميع طلبات المتجر'), findsOneWidget);
-    // The store card mirrors the reference: the full order book (18), including
-    // orders routed to delivery companies.
+    expect(find.text('الطلبات الداخلية'), findsOneWidget);
+    expect(find.text('طلبات شركة التوصيل'), findsOneWidget);
+    expect(find.text('المتاجر'), findsOneWidget);
+    // The store card is the whole order book (18), never derived from the
+    // delivery facet; the delivery card shows its own count (9).
     expect(find.text('18'), findsWidgets);
     expect(find.text('9'), findsOneWidget);
     expect(find.textContaining('جديد'), findsWidgets);
@@ -125,9 +126,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     for (final entry in {
-      'كل الطلبات': 'all:all',
-      'طلبات شركات التوصيل': 'delivery:all',
       'جميع طلبات المتجر': 'all:all',
+      'الطلبات الداخلية': 'internal:all',
+      'طلبات شركة التوصيل': 'delivery:all',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);
@@ -168,8 +169,9 @@ void main() {
     );
     await tester.pumpAndSettle();
     for (final entry in {
-      'كل الطلبات': 'all',
-      'طلبات شركات التوصيل': 'delivery',
+      'جميع طلبات المتجر': 'all',
+      'الطلبات الداخلية': 'internal',
+      'طلبات شركة التوصيل': 'delivery',
     }.entries) {
       final target = find.text(entry.key);
       await tester.ensureVisible(target);
@@ -235,7 +237,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('طلبات شركات التوصيل'), findsWidgets);
+    expect(find.text('طلبات شركة التوصيل'), findsWidgets);
     // Two clearly separated sections.
     expect(find.text('حالة الإرسال التشغيلية'), findsOneWidget);
     expect(find.text('حالات شركة التوصيل الفعلية'), findsOneWidget);
@@ -277,7 +279,7 @@ void main() {
         app(LiveDashboard(policy: policy(), onNavigate: (_, _) {})),
       );
       await tester.pumpAndSettle();
-      expect(find.text('كل الطلبات'), findsOneWidget);
+      expect(find.text('جميع طلبات المتجر'), findsOneWidget);
       expect(find.text('11106'), findsWidgets);
       expect(tester.takeException(), isNull);
     });

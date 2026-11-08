@@ -227,24 +227,26 @@ class _LiveDashboardState extends State<LiveDashboard> {
 
   Widget _cards(Map<String, dynamic> counters, _ScopeTotals all) {
     final delivery = _scopeTotals(counters['delivery']);
-    final allCard = _allCard(all);
+    final internal = _scopeTotals(counters['internal']);
+    // Three operational queues, each its own scope: the whole store book, the
+    // internal (not-yet-accepted) queue, and the accepted delivery queue. The
+    // «جميع طلبات المتجر» card IS the store-wide order book, so it is not
+    // duplicated by a second card.
+    final storeCard = _allCard(all);
+    final internalCard = _scopeCard(
+      title: 'الطلبات الداخلية',
+      icon: Icons.inventory_2_outlined,
+      data: internal,
+      bucket: 'internal',
+    );
     final deliveryCard = _scopeCard(
-      title: 'طلبات شركات التوصيل',
+      title: 'طلبات شركة التوصيل',
       icon: Icons.local_shipping_outlined,
       data: delivery,
       bucket: 'delivery',
     );
-    final storeCard = _scopeCard(
-      title: 'جميع طلبات المتجر',
-      icon: Icons.storefront_outlined,
-      data: all,
-      bucket: 'all',
-      // The client reference shows the store-wide order book (all delivery
-      // companies and all statuses), not only the unassigned subset.
-      onOpen: () => widget.onNavigate('all', null),
-    );
     final storesCard = _storesCard();
-    final cards = [allCard, deliveryCard, storeCard, storesCard];
+    final cards = [storeCard, internalCard, deliveryCard, storesCard];
     return LayoutBuilder(
       builder: (context, box) {
         final width = box.maxWidth;
@@ -348,7 +350,7 @@ class _LiveDashboardState extends State<LiveDashboard> {
             const SizedBox(width: 7),
             const Expanded(
               child: Text(
-                'كل الطلبات',
+                'جميع طلبات المتجر',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: _cardTitleStyle,

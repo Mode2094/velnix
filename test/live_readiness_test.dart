@@ -92,7 +92,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        final allCard = find.text('كل الطلبات').first;
+        final allCard = find.text('جميع طلبات المتجر').first;
         await tester.ensureVisible(allCard);
         await tester.tap(allCard);
         await tester.pumpAndSettle();

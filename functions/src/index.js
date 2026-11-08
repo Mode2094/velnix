@@ -492,15 +492,22 @@ exports.dashboardStats=callable(async req=>{
   const shippingStates=require('./shipping_status').SHIPPING_STATUSES;
   const showAmount=user.role==='generalManager'||can(user,'viewAmounts');
   const counter={all:{},delivery:{},internal:{},shipping:{}};
-  // Use independent aggregations by state and bucket; avoid scanning client lists.
-  const values=await aggregateGroups(statuses.flatMap(status=>[
-    base.map(query=>query.where('status','==',status).where('hasDelivery','==',true)),
-    base.map(query=>query.where('status','==',status).where('hasDelivery','==',false)),
-  ]),query=>sumOrders(query,showAmount));
+  // The store total per status is the exact count of every order with that
+  // internal status (never split by assignment). The delivery queue is the
+  // subset the carrier CONFIRMED accepting (dispatchState 'sent'); the internal
+  // queue is the exact complement, so delivery + internal === all and every
+  // order is counted exactly once.
+  const allValues=await aggregateGroups(
+    statuses.map(status=>base.map(query=>query.where('status','==',status))),
+    query=>sumOrders(query,showAmount));
+  const deliveryValues=await aggregateGroups(
+    statuses.map(status=>base.map(query=>query.where('status','==',status).where('dispatchState','==','sent'))),
+    query=>sumOrders(query,showAmount));
   for(let i=0;i<statuses.length;i++){
-    const status=statuses[i],delivery=values[i*2],internal=values[i*2+1];
-    counter.delivery[status]=delivery;counter.internal[status]=internal;
-    counter.all[status]={count:delivery.count+internal.count,amountMinor:delivery.amountMinor+internal.amountMinor};
+    const status=statuses[i],all=allValues[i],accepted=deliveryValues[i];
+    counter.all[status]=all;
+    counter.delivery[status]=accepted;
+    counter.internal[status]={count:all.count-accepted.count,amountMinor:all.amountMinor-accepted.amountMinor};
   }
   // Delivery-company states are counted on their own facet, from the shipping
   // vocabulary only. They are NEVER added into `all`: that would double-count a
@@ -517,6 +524,12 @@ exports.dashboardStats=callable(async req=>{
   //   sending      : a send is in flight
   //   needs_review : the send outcome is unresolved (never resent blindly)
   //   unshipped    : assigned but never sent (dispatchState idle or absent)
+  // Operational lifecycle of ASSIGNED orders (hasDelivery true), kept separate
+  // from the acceptance-based delivery queue and from the carrier vocabulary.
+  //   confirmed    : the carrier accepted (dispatchState 'sent')
+  //   sending      : a send is in flight
+  //   needs_review : the send outcome is unresolved (never resent blindly)
+  //   unshipped    : assigned but never sent (dispatchState idle or absent)
   const deliveryBase=base.map(query=>query.where('hasDelivery','==',true));
   const dispatchValues=await aggregateGroups([
     deliveryBase.map(query=>query.where('dispatchState','==','sent')),
@@ -524,8 +537,10 @@ exports.dashboardStats=callable(async req=>{
     deliveryBase.map(query=>query.where('dispatchState','==','needs_review')),
   ],query=>sumOrders(query,showAmount));
   const confirmed=dispatchValues[0],sending=dispatchValues[1],needsReview=dispatchValues[2];
-  const assignedTotal=statuses.reduce((sum,status)=>sum+counter.delivery[status].count,0);
-  const assignedAmount=statuses.reduce((sum,status)=>sum+counter.delivery[status].amountMinor,0);
+  // Assigned total is its own exact aggregate (never derived from acceptance).
+  const assignedValues=await aggregateGroups([deliveryBase],query=>sumOrders(query,showAmount));
+  const assignedTotal=assignedValues[0].count;
+  const assignedAmount=assignedValues[0].amountMinor;
   // "unshipped" is the assignment remainder: neither sent, nor in flight, nor
   // awaiting review. This cannot go negative; a missing dispatchState counts as
   // unshipped, which keeps every legacy assigned order visible exactly once.

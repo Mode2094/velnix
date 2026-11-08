@@ -6,6 +6,22 @@ function normalizeCustomer(value) {
     .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ');
 }
 function searchDigits(value) { return arabicDigits(value).replace(/\D/g,''); }
+// Whether a carrier CONFIRMED accepting the shipment. Acceptance is proven by
+// the dispatch lifecycle reaching 'sent' (dispatchState 'sent'), or — for
+// legacy records written before that field — a carrier marker (a persisted
+// shipping status / tracking / Click reference). Assignment alone is NOT
+// acceptance: an order assigned to a company but never accepted stays internal.
+function deliveryAccepted(order) {
+  if (!order) return false;
+  if (order.dispatchState === 'sent') return true;
+  if (order.dispatchState === 'sending' || order.dispatchState === 'needs_review') return false;
+  // Legacy accepted shipments: an older order may carry a carrier link/state but
+  // no dispatchState. Treat a persisted shipment reference as acceptance.
+  return order.shippingStatusSource === 'click_api' ||
+    (typeof order.clickOrderRef === 'string' && order.clickOrderRef.length > 0) ||
+    (typeof order.providerOrderId !== 'undefined' && order.providerOrderId !== null) ||
+    (typeof order.trackingNumber === 'string' && order.trackingNumber.length > 0);
+}
 // Dispatch-state filter groups exposed to the UI, mapping to concrete
 // `dispatchState` values. Kept in one place so the client and server agree.
 const DISPATCH_GROUPS = Object.freeze({
@@ -65,7 +81,9 @@ function parseFilters(data={}) {
 }
 function applyFilters(query,filters) {
   if(filters.status)query=query.where('status','==',filters.status);
-  if(filters.bucket!=='all')query=query.where('hasDelivery','==',filters.bucket==='delivery');
+  // The bucket is an ACCEPTANCE partition (confirmed carrier acceptance vs not),
+  // which cannot be expressed as a single indexed equality over legacy records,
+  // so it is applied in-memory by matchingFilters over an already-scoped page.
   if(filters.companyId)query=query.where('companyId','==',filters.companyId);
   if(filters.createdBy)query=query.where('createdBy','==',filters.createdBy);
   // A delivery-company state is indexed on its own facet so it never narrows
@@ -91,8 +109,10 @@ function matchingFilters(order,filters) {
     if(order.shippingStatus||order.clickOrderRef||order.providerOrderId||
        order.trackingNumber||(order.dispatchState&&order.dispatchState!=='idle'))return false;
   }
-  if(filters.bucket==='delivery'&&!order.companyId)return false;
-  if(filters.bucket==='internal'&&order.companyId)return false;
+  // Buckets partition by CONFIRMED CARRIER ACCEPTANCE, not by assignment:
+  //   delivery = the carrier accepted the shipment; internal = not yet accepted.
+  if(filters.bucket==='delivery'&&!deliveryAccepted(order))return false;
+  if(filters.bucket==='internal'&&deliveryAccepted(order))return false;
   if(filters.companyId&&order.companyId!==filters.companyId)return false;
   if(filters.createdBy&&order.createdBy!==filters.createdBy)return false;
   if(filters.pageId&&order.pageId!==filters.pageId)return false;
@@ -130,5 +150,5 @@ function matchingFilters(order,filters) {
   }
   return true;
 }
-module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS};
+module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS,deliveryAccepted};
 

@@ -84,22 +84,29 @@ test('separation journey: one count per order, assignment is not sending, Click 
   await invoke('changeOrderStatus', 'gm', {id: created.id, status: 'ready'});
 
   // 3) Assigning a company without sending does NOT mean "with the carrier":
-  //    still zero carrier states, and the order is not a confirmed shipment.
+  //    the order stays in the INTERNAL queue (not yet accepted), the delivery
+  //    queue is empty, and no carrier state exists.
   await invoke('assignCompany', 'gm', {id: created.id, companyId: clickId});
   const assigned = await invoke('dashboardStats', 'gm', {});
   assert.equal(grandTotal(assigned), 1);
-  assert.equal(assigned.counters.delivery.ready.count, 1);
+  assert.equal(assigned.counters.delivery.ready.count, 0, 'assignment is not acceptance');
+  assert.equal(assigned.counters.internal.ready.count, 1, 'an assigned-but-unsent order stays internal');
   assert.equal(Object.values(assigned.counters.shipping).reduce((s, v) => s + v.count, 0), 0);
   const doc = (await db.doc('orders/' + created.id).get()).data();
   assert.equal(doc.companyId, clickId);
   assert.equal(doc.shippingStatus, undefined);
   assert.equal(doc.clickOrderRef, undefined);
-  // The unshipped filter surfaces exactly this assigned-but-unsent order.
-  const unshipped = await invoke('listOrders', 'gm', {bucket: 'delivery', unshipped: true});
+  // The delivery queue excludes it; the internal queue includes it.
+  const inDeliveryBefore = await invoke('listOrders', 'gm', {bucket: 'delivery'});
+  assert.equal(inDeliveryBefore.items.some((o) => o.id === created.id), false);
+  const inInternalBefore = await invoke('listOrders', 'gm', {bucket: 'internal'});
+  assert.equal(inInternalBefore.items.some((o) => o.id === created.id), true);
+  // The unshipped operational filter surfaces exactly this assigned-but-unsent order.
+  const unshipped = await invoke('listOrders', 'gm', {bucket: 'all', unshipped: true});
   assert.deepEqual(unshipped.items.map((o) => o.id), [created.id]);
 
-  // 4) A confirmed carrier state appears on the shipping facet only, without
-  //    touching the internal status.
+  // 4) A confirmed carrier acceptance moves the order into the delivery queue,
+  //    on the shipping facet only, without touching the internal status.
   await invoke('reconcileClickShipment', 'gm', {
     id: created.id, clickOrderId: '90000001', clickOrderRef: 'VNX-SEP-1',
     shippingStatus: 'deferred', reason: 'تأجيل مؤكد من بوابة الشريك',
@@ -107,9 +114,12 @@ test('separation journey: one count per order, assignment is not sending, Click 
   const deferred = await invoke('dashboardStats', 'gm', {});
   assert.equal(grandTotal(deferred), 1, 'the grand total must not double-count a shipped order');
   assert.equal(deferred.counters.shipping.deferred.count, 1);
+  assert.equal(deferred.counters.delivery.ready.count, 1, 'after acceptance the order is in the delivery queue');
+  assert.equal(deferred.counters.internal.ready.count, 0, 'and no longer in the internal queue');
   const afterReconcile = (await db.doc('orders/' + created.id).get()).data();
-  // Internal status advanced by the link, but the carrier facet carries the
-  // deferral; the two are independently readable.
+  // Internal status is preserved by the carrier link; the carrier facet carries
+  // the deferral; the two are independently readable.
+  assert.equal(afterReconcile.status, 'ready');
   assert.equal(afterReconcile.shippingStatus, 'deferred');
   assert.equal(afterReconcile.shippingStatusSource, 'manual');
 
@@ -219,7 +229,7 @@ test('operational categories separate assigned-but-unsent from real carrier stat
   assert.equal(ops.unshipped.count + ops.confirmed.count + ops.sending.count + ops.needs_review.count, 2);
 
   // The operational filter surfaces exactly the unsent order.
-  const unshipped = await invoke('listOrders', 'gm', {bucket: 'delivery', dispatch: 'idle'});
+  const unshipped = await invoke('listOrders', 'gm', {bucket: 'all', dispatch: 'idle'});
   assert.deepEqual(unshipped.items.map((o) => o.id), [unsent]);
   // And the carrier filter surfaces only the confirmed order.
   const byCarrier = await invoke('listOrders', 'gm', {bucket: 'delivery', shippingStatus: 'outForDelivery'});
@@ -241,7 +251,7 @@ test('legacy orders with no dispatchState stay visible and counted once', async 
   const stats = await invoke('dashboardStats', 'gm', {});
   assert.equal(grandTotal(stats), 1, 'a legacy order is counted exactly once');
   assert.equal(stats.counters.operations.unshipped.count, 1, 'a missing dispatchState counts as unshipped');
-  const list = await invoke('listOrders', 'gm', {bucket: 'delivery', dispatch: 'idle'});
+  const list = await invoke('listOrders', 'gm', {bucket: 'all', dispatch: 'idle'});
   assert.deepEqual(list.items.map((o) => o.id), ['legacy_order_1']);
 });
 
@@ -266,6 +276,6 @@ test('every role sees the operational facet and permissions gate the lists', asy
   // A member without updateOrderStatus cannot change state.
   await assert.rejects(invoke('changeOrderStatus', 'sales1', {id: r.id, status: 'cancelled'}));
   // And cannot read the order list beyond their scope.
-  const salesList = await invoke('listOrders', 'sales1', {bucket: 'delivery', dispatch: 'idle'});
+  const salesList = await invoke('listOrders', 'sales1', {bucket: 'all', dispatch: 'idle'});
   assert.equal(salesList.items.length, 0);
 });
