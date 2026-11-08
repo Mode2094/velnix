@@ -1,84 +1,57 @@
-# VELNIX — تقرير جاهزية الإصدار النهائي (PR #8/#9/#10)
+# VELNIX — تقرير الإصدار النهائي وتوقيع APK/AAB
 
-- **الفرع:** `release/velnix-completion`
-- **آخر Commit:** `e094b86` (على أساس PR #10 `2174ac2`)
-- **مشروع Firebase:** `velnix-6c1a2` · الإقليم: `europe-west1` · Firestore: `nam5`
-- **الحالة:** 🟢 **جاهز للدمج والنشر** بعد موافقة المالك (لا دمج/نشر/بناء بلا إذن).
+- **الفرع:** `release/velnix-completion` · **آخر Commit:** `210220d42cb6decd4fa2b964b4cea91009ebdb04`
+- **مشروع Firebase:** `velnix-6c1a2` · **applicationId:** `com.mode2094.velnix`
+- **الإصدار:** `0.7.0+10` (versionName 0.7.0، versionCode 10)
 
-## 1. تتطلب مراجعة المالك قبلاً
+## الحالة: 🟢 READY للدمج والنشر (بانتظار موافقتك)
 
-- تنفيذ `backfill --apply` على الإنتاج (كتابة بيانات) — **لم يُنفَّذ**.
-- دمج PR #8/#9/#10 في `main`.
-- نشر الدوال/الفهارس، وبناء APK/AAB.
+## 1. حاجز CI — أُصلح
+- السبب: شبكة عدّاء GitHub أرجعت **HTTP 504** لأصول إصدارات GitHub (توزيعة Gradle 9.3.1 ثم `kotlin-compiler-embeddable` عبر `repo.maven.apache.org`→github). الأصل نفسه متاح (200) وحالة GitHub سليمة ⇒ مشكلة شبكة عدّاء عابرة.
+- الحل (بلا تخفيض أي نسخة): تغليف بناءي APK التجريبيين بـ`nick-fields/retry` (8 محاولات، انتظار 60ث).
+- **النتيجة: CI أخضر كامل على `210220d`** — flutter (+520) · firebase (211) · emulator (304) · android (بناء demo+live).
 
-## 2. جرد الإنتاج (قراءة فقط، dry-run — كتب صفرًا)
+## 2. جرد الإنتاج (قراءة فقط، dry-run — صفر كتابة)
+`scanned:5 · missingDeliveryAccepted:5 · wouldAccept:2 · wouldReject:3 · needsManualReview:1`
 
-`node scripts/backfill_delivery_accepted.js` (بصلاحية قراءة فقط):
+| id | status | dispatchState | التصنيف |
+|---|---|---|---|
+| `8gwKp…` | created | idle | false (مُعيّن، لم يُرسل) |
+| `T3qON…` | created | idle | false (مُعيّن، لم يُرسل) |
+| `m4Wlx…` | ready | needs_review | false (غير مؤكد — يحتاج مصالحة يدوية) |
+| `s8h2d…` | dispatched | sent + click_api | **true** |
+| `yrgCk…` | dispatched | sent + click_api | **true** |
 
-```
-scanned: 5 · missingDeliveryAccepted: 5 · wouldAccept: 2 · wouldReject: 3
-applied: 0 · skippedRace: 0 · failed: 0 · needsManualReview: 1
-```
+`clickOrderRef` وحده لا يُعدّ قبولًا. الـbackfill معاملاتي/فعّال التكرار/قابل للاستئناف ولا يكتب فوق قبول أحدث. **لم يُنفَّذ `--apply`.**
 
-- 5 طلبات إجمالًا، كلها سجلات تاريخية بلا `deliveryAccepted`.
-- 2 تُصنَّف مقبولة (علامة ناقل حقيقية)، 3 غير مقبولة، 1 يحتاج مراجعة يدوية (bare `clickOrderRef`).
+## 3. الفهارس والدوال والقواعد
+- فهارس `deliveryAccepted` موجودة (161 إجمالًا). القواعد deny-by-default بلا تغيير. App Check `recaptcha_enterprise`.
+- ترتيب النشر: فهارس → backfill (بموافقة) → دوال → تطبيق. النشر إضافي ولا يكتب فوق حقول العملاء/المالية/الشحن.
 
-## 3. إصلاحات مانعة للإصدار في هذه المراجعة
+## 4. الدمج
+سلسلة parent نظيفة: `main 47fae75 → PR#8 1aeb1aa → PR#9 9c3157d → PR#10 210220d`. دمج سريع بلا تعارضات. **لم يُدمج.**
 
-1. **أداة الـbackfill معاملاتية وغير قابلة للكتابة فوق قبول أحدث:** `--apply` يعيد القراءة داخل معاملة ويرفض الكتابة إن وُجد boolean مسبقًا (يمنع الكتابة فوق حالة قبول أحدث من إرسال متزامن).
-2. **dry-run يمسح كامل المجموعة** بمؤشر قابل للاستئناف ويُنتج أعدادًا دقيقة + عيّنة مراجعة.
-3. **`legacyDeliveryAccepted` مُحكم:** boolean صريح يفوز دائمًا؛ أي `dispatchState` موجود غير `sent` لا يُعدّ قبولًا؛ فقط سجل بلا `dispatchState` يعتمد علامات الناقل الحقيقية؛ **`clickOrderRef` وحده ليس قبولًا**.
-4. **اختبار وحدة جديد** `backfill_delivery_accepted.test.js` (6 حالات).
+## 5. APK/AAB الموقّعان (مبنيّان محليًا وموثّقان)
+| الأصل | الحجم | SHA-256 |
+|---|---|---|
+| `app-release.apk` | 81,033,688 بايت | `fa0a7baa1e84bc57a11d4e8f81e937ec568c315c46e076468643b5f74045b722` |
+| `app-release.aab` | 73,685,690 بايت | `b9828d03665d1cd252987c855681a54314953ff2037a006cfd0bccf7acf6463f` |
 
-## 4. الفهارس
+- التوقيع: `CN=Velnix, OU=Delivery, O=Velnix, L=Amman, C=JO` · SHA-256 الشهادة `6E:57:F9:…:16:01` (نفس مفتاح الإصدار المعتمد). APK: v2 موقّع (`Verifies`). AAB: `jar verified`.
+- applicationId `com.mode2094.velnix` · minSdk 24 · targetSdk 36 · versionCode 10.
+- أذونات: INTERNET, CAMERA, POST_NOTIFICATIONS, WAKE_LOCK, ACCESS_NETWORK_STATE, biometric.
 
-- فهارس القبول الجديدة: `status+deliveryAccepted`، `deliveryAccepted+createdAt`، `hasDelivery+deliveryAccepted` (الإجمالي 161).
-- النشر **إضافي** ولا يحذف فهارس، ولا يغيّر بيانات.
+## 6. اختبار الجهاز الحقيقي (محاكي)
+- `adb install` → **Success**. الإطلاق → `MainActivity` هو التركيز، العملية حيّة، **0 أعطال fatal**. أُزيل المحاكي بعد الاختبار.
 
-## 5. القواعد وAuth/App Check
+## 7. خطوات الإصدار المتبقية (بموافقتك)
+1. دمج PR #8 → #9 → #10.
+2. `firebase deploy --only firestore:indexes`.
+3. `node functions/scripts/backfill_delivery_accepted.js --apply` (بعد موافقة صريحة + نسخة احتياطية).
+4. نشر الدوال.
+5. رفع APK/AAB محليًا (المفتاح محلي؛ لا أسرار في CI). رفع لـPlay **يتطلب موافقة منفصلة**.
 
-- `firestore.rules`: deny-by-default + وظائف وسيطة — **لا حاجة لتغيير**.
-- App Check: `recaptcha_enterprise` على Android (خارج المتجر) — بلا تغيير.
-
-## 6. ترتيب النشر الآمن (بموافقة)
-
-1. **فهارس Firestore** (`firestore:indexes`) — إضافية، آمنة.
-2. **backfill بموافقة** (`--apply`) — يملأ `deliveryAccepted` للسجلات التاريخية **قبل** نشر الدوال، حتى تقرأ الدوال الجديدة بيانات مصنّفة بالكامل.
-3. **نشر الدوال** (الكودبيس `default`؛ الوحدات المتغيرة: `query.js`, `order_view.js`, `bulk.js`, `index.js`, `remote.js`, `policy.js`).
-4. **بناء APK/AAB** الموقّع (بموافقة) ونشره.
-
-## 7. التراجع
-
-- **دوال:** إعادة النشر على `1aeb1aa` (نسخة معتمدة سابقة) — بلا تراجع بيانات.
-- **فهارس:** لا حذف (إضافية).
-- **backfill:** الكتابة إضافية (`merge`) لحقل واحد؛ قيمتها `boolean` مشتقة، ولا تؤثر على الثوابت. لو لزم التراجع: تصفير `deliveryAccepted` غير ممكن آليًا (لا يُنصح) — لكن لا يضرّ تواجده.
-- **التطبيق:** إعادة نشر الإصدار السابق من المتجر/الملف.
-
-## 8. إثبات الاختبارات (CI الأخضر على `2174ac2` وما بعده)
-
-| الفحص | النتيجة |
-|---|---|
-| flutter analyze / dart format | ✅ نظيف |
-| flutter test (CI) | ✅ **+520** |
-| functions npm test | ✅ **211** |
-| functions test:emulator | ✅ **304** |
-| android build (debug demo/live) | ✅ |
-| barcode/PDF decode | ✅ كل المقاسات، صفحة لكل طلب |
-
-## 9. قائمة دخان الإصدار (بعد النشر، بموافقة — بلا شحن Click حقيقي)
-
-1. إنشاء طلب → يظهر في «جميع طلبات المتجر».
-2. إرسال من جديد/ملغي/جاهز (بيئة اختبار) → ينتقل إلى «طلبات شركة التوصيل» عند القبول فقط.
-3. إرسال غير مؤكد → يظهر كـ«غير مؤكد»، لا يُحتسب مقبولًا، لا إعادة إرسال.
-4. تغيير الحالة الداخلية بعد الإرسال → لا يمسّ بيانات الشحنة.
-5. عدّادات الداشبورد = القوائم؛ الإجمالي لا يتغيّر بالإرسال.
-6. بحث/فلاتر/ترقيم/رأس مثبّت.
-7. تغيير جماعي مع طباعة تشغيل/إيقاف → يُطبع المؤكد فقط.
-8. PDF طولي/عرضي، صفحة لكل طلب، باركود قابل للمسح.
-9. مسح الباركود يعيد الطلب.
-
-## 10. قيود صادقة
-
-- لم يُشغَّل Click الإنتاجي (المحاكي فقط) — شحن حقيقي يتطلب موافقة منفصلة.
-- تعذّر تشغيل Java/emulator/keytool محليًا في هذه الجلسة؛ Emulator وAndroid build أُثبتا على CI.
-- لا لقطات بصرية للحوار (تعذّرت موثوقيًا؛ الإثبات اختبارات).
+## 8. قيود
+- لم يُشغَّل Click الإنتاجي.
+- الـbackfill writing محدّد لم يُنفَّذ.
+- لا نشر Firebase ولا دمج.
