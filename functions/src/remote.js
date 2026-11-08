@@ -22,7 +22,7 @@ return async function processRemote(companyId, payload, eventId, source) {
       if(source==='poll'&&sameStatus)tx.update(orderRef,syncSuccess);
       return {ignored:'duplicate'};
     }
-    if(order.exists&&order.data().companyId===companyId&&order.data().status==='ready'&&['sending','needs_review'].includes(order.data().dispatchState))return {deferred:'awaiting_dispatch_confirmation'};
+    if(order.exists&&order.data().companyId===companyId&&['sending','needs_review'].includes(order.data().dispatchState))return {deferred:'awaiting_dispatch_confirmation'};
     tx.create(eventRef,{companyId,orderId,raw,source,receivedAt:FieldValue.serverTimestamp()});
     if(!order.exists||order.data().companyId!==companyId)return {ignored:'unmatched_order'};
     if(!remoteCanAdvance(order.data().status,mapped))return {ignored:'out_of_order'};

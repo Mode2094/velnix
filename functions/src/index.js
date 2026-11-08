@@ -225,7 +225,7 @@ async function applyCompanyAssignment(ref,user,id){
     if(!order.exists)fail('not-found','الطلب غير موجود');
     if(!canSeeOrder(user,{...order.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
     if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
-    if(!['created','review','preparing','ready'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
+    if(internalStatusOf(order.data())===null&&!['dispatched','inTransit'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
     tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
     const action=id?'company_assigned':'company_unassigned';
     await addEvent(ref.id,action,user,{companyId:id},tx);

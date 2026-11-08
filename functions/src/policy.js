@@ -198,8 +198,10 @@ function internalStatusOf(order) {
   return null;
 }
 function canResolveDispatch(order, now=Date.now()) {
-  return order?.status==='ready' && (order.dispatchState==='needs_review' ||
-    (order.dispatchState==='sending' && Number.isFinite(order.dispatchLockUntil?.toMillis?.()) && order.dispatchLockUntil.toMillis()<=now));
+  // Dispatch may start from ANY internal status, so an uncertain/in-flight send
+  // is resolvable regardless of the internal status (no 'ready' requirement).
+  return (order?.dispatchState==='needs_review' ||
+    (order?.dispatchState==='sending' && Number.isFinite(order.dispatchLockUntil?.toMillis?.()) && order.dispatchLockUntil.toMillis()<=now));
 }
 function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
