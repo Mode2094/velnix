@@ -54,10 +54,10 @@ test('Arabic and Persian phone search matches saved ASCII digits',()=>{
 });
 test('date, creator, company and status filters apply together with exclusive end',()=>{
   const filters=parseFilters({from:'2026-10-01T00:00:00Z',to:'2026-10-15T00:00:00Z',createdBy:'entry',companyId:'company',status:'ready',bucket:'delivery'});
-  // The delivery bucket is CONFIRMED carrier acceptance, not assignment.
-  const order={createdAt:new Date('2026-10-14'),createdBy:'entry',companyId:'company',status:'ready',dispatchState:'sent'};
+  // The delivery bucket is CONFIRMED carrier acceptance (deliveryAccepted).
+  const order={createdAt:new Date('2026-10-14'),createdBy:'entry',companyId:'company',status:'ready',deliveryAccepted:true};
   assert.equal(matchingFilters(order,filters),true);
-  for(const change of [{status:'review'},{companyId:null},{createdBy:'other'},{createdAt:new Date('2026-10-15')},{dispatchState:'idle'}])
+  for(const change of [{status:'review'},{companyId:null},{createdBy:'other'},{createdAt:new Date('2026-10-15')},{deliveryAccepted:false}])
     assert.equal(matchingFilters({...order,...change},filters),false);
   assert.throws(()=>parseFilters({from:'garbage'}));
   assert.throws(()=>parseFilters({from:'2026-10-15T00:00:00Z',to:'2026-10-01T00:00:00Z'}));

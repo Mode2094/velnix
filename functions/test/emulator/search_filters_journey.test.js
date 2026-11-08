@@ -52,7 +52,10 @@ test('search and filters journey: number, name, phone, click ref and combined', 
   }
   const [firstId] = created;
   const first = (await db.doc('orders/' + firstId).get()).data();
+  // Simulate a confirmed carrier acceptance: the durable boolean plus the
+  // carrier reference. A bare clickOrderRef alone is NOT acceptance.
   await db.doc('orders/' + firstId).update({
+    deliveryAccepted: true,
     clickOrderRef: 'CLICKREF-9001',
     trackingNumber: 'TRK-123456',
   });

@@ -6,19 +6,30 @@ function normalizeCustomer(value) {
     .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ');
 }
 function searchDigits(value) { return arabicDigits(value).replace(/\D/g,''); }
-// Whether a carrier CONFIRMED accepting the shipment. Acceptance is proven by
-// the dispatch lifecycle reaching 'sent' (dispatchState 'sent'), or — for
-// legacy records written before that field — a carrier marker (a persisted
-// shipping status / tracking / Click reference). Assignment alone is NOT
-// acceptance: an order assigned to a company but never accepted stays internal.
+// Whether a carrier CONFIRMED accepting the shipment. This is the SINGLE source
+// of truth used by listOrders, searchOrders and dashboardStats so the queues and
+// their counters always agree.
+//
+// The durable, indexable proof is the boolean `deliveryAccepted`, written by
+// every real acceptance transition (dispatch success, manager resolution,
+// reconcile, an API-confirmed sync) and set false at creation. Assignment alone
+// is NOT acceptance. A bare `clickOrderRef` is NOT acceptance on its own: it is
+// persisted BEFORE the vendor call and may accompany an unconfirmed attempt, so
+// it never counts here.
 function deliveryAccepted(order) {
+  return !!(order && order.deliveryAccepted === true);
+}
+// A best-effort classification for LEGACY records written before the boolean
+// existed, used ONLY by the backfill tool (never by the live queues, so the
+// dashboard aggregate and the lists can never disagree). A legacy shipment is
+// accepted only when a genuine carrier marker proves it: a confirmed Click API
+// read, a real policy id assigned on acceptance, or a carrier tracking number.
+function legacyDeliveryAccepted(order) {
   if (!order) return false;
   if (order.dispatchState === 'sent') return true;
   if (order.dispatchState === 'sending' || order.dispatchState === 'needs_review') return false;
-  // Legacy accepted shipments: an older order may carry a carrier link/state but
-  // no dispatchState. Treat a persisted shipment reference as acceptance.
+  if (typeof order.deliveryAccepted === 'boolean') return order.deliveryAccepted;
   return order.shippingStatusSource === 'click_api' ||
-    (typeof order.clickOrderRef === 'string' && order.clickOrderRef.length > 0) ||
     (typeof order.providerOrderId !== 'undefined' && order.providerOrderId !== null) ||
     (typeof order.trackingNumber === 'string' && order.trackingNumber.length > 0);
 }
@@ -150,5 +161,5 @@ function matchingFilters(order,filters) {
   }
   return true;
 }
-module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS,deliveryAccepted};
+module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS,deliveryAccepted,legacyDeliveryAccepted};
 
