@@ -93,13 +93,14 @@ jobs:
           flutter-version: '3.47.7'
           cache: true
       - run: flutter pub get --enforce-lockfile
-      # Cache the Gradle distribution + dependency caches and retry transient
-      # downloads. The wrapper fetches gradle-<v>-all.zip from
-      # github.com/gradle/gradle-distributions, whose CDN can intermittently
-      # return HTTP 504; setup-gradle retries and reuses a cached distribution
-      # without downgrading Gradle, the Android SDK or any dependency.
+      # Install Gradle 9.3.1 directly (setup-gradle downloads it and puts it on
+      # PATH) and cache the distribution + dependency caches. This bypasses the
+      # wrapper's fetch from github.com/gradle/gradle-distributions, whose CDN
+      # can intermittently return HTTP 504. Gradle, Flutter, the Android SDK and
+      # all dependencies are unchanged.
       - uses: gradle/actions/setup-gradle@c8a326d85724fce2ae59a38810306f4a058f26a4
         with:
+          gradle-version: '9.3.1'
           cache-read-only: false
       - name: Build demo APK (retry on transient network failure)
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
