@@ -175,10 +175,14 @@ test('a legacy accepted order (no dispatchState) lands in the delivery queue',as
 
 test('acceptance partition covers legacy/new/sending/needs_review/cancelled/completed',async()=>{
   const call=(name,data)=>functions[name].run({auth:{uid:'queue_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
-  const mk=async(id,status,extra={})=>{const r=await order(id,status,extra);return r.id;};
+  // Scope the whole test to a unique pageId so the counts are exact and
+  // independent of other test files sharing the emulator.
+  const page='partpage';
+  await db.doc('pages/'+page).set({name:'part',nameLower:'part',active:true,archived:false,status:'active'});
+  const mk=async(id,status,extra={})=>{const r=await order(id,status,{pageId:page,...extra});return r.id;};
   // 1) legacy accepted (no deliveryAccepted boolean, real carrier marker).
   const legacyAccepted=db.doc('orders/part_legacy_accepted');
-  await legacyAccepted.set({createdBy:'any_gm',status:'ready',companyId:'any_fixture',hasDelivery:true,trackingNumber:'LT-1',createdAt:Timestamp.now(),revision:0});
+  await legacyAccepted.set({createdBy:'any_gm',status:'ready',companyId:'any_fixture',hasDelivery:true,trackingNumber:'LT-1',pageId:page,createdAt:Timestamp.now(),revision:0});
   // NOTE: without the durable boolean this legacy order is treated as internal
   // until the backfill tool runs (consistent across queues and counters).
   // 2) new confirmed
@@ -192,32 +196,30 @@ test('acceptance partition covers legacy/new/sending/needs_review/cancelled/comp
   const cancelled=await mk('part_cancelled','cancelled');
   const completed=await mk('part_completed','delivered');
 
-  const stats=await call('dashboardStats',{});
-  const deliveryList=(await call('listOrders',{bucket:'delivery'})).items.map(o=>o.id);
-  const internalList=(await call('listOrders',{bucket:'internal'})).items.map(o=>o.id);
-  const allList=(await call('listOrders',{bucket:'all'})).items.map(o=>o.id);
+  const f={pageId:page,pageSize:50};
+  const stats=await call('dashboardStats',{pageId:page});
+  const deliveryList=(await call('listOrders',{...f,bucket:'delivery'})).items.map(o=>o.id);
+  const internalList=(await call('listOrders',{...f,bucket:'internal'})).items.map(o=>o.id);
+  const allList=(await call('listOrders',{...f,bucket:'all'})).items.map(o=>o.id);
 
-  // The confirmed order is in the delivery queue and its counter; every other
-  // order is in the internal queue.
-  assert.ok(deliveryList.includes(confirmed),'confirmed -> delivery');
-  for(const id of [sending,review,cancelled,completed])assert.equal(deliveryList.includes(id),false,`${id} not accepted`);
-  for(const id of [confirmed,sending,review,cancelled,completed])assert.ok(allList.includes(id),`${id} always in the store book`);
-  for(const id of [sending,review,cancelled,completed])assert.ok(internalList.includes(id),`${id} -> internal`);
+  // The confirmed order is in the delivery queue; every other order is internal.
+  assert.deepEqual(deliveryList,[confirmed],'only the confirmed order is accepted');
+  for(const id of [sending,review,cancelled,completed,legacyAccepted.id])assert.equal(deliveryList.includes(id),false,`${id} not accepted`);
+  for(const id of [confirmed,sending,review,cancelled,completed,legacyAccepted.id])assert.ok(allList.includes(id),`${id} always in the store book`);
+  for(const id of [sending,review,cancelled,completed,legacyAccepted.id])assert.ok(internalList.includes(id),`${id} -> internal`);
 
-  // The dashboard delivery counter matches the delivery LIST exactly.
+  // dashboard delivery counter == delivery LIST; all == delivery + internal.
   const deliveryCounterTotal=Object.values(stats.counters.delivery).reduce((s,v)=>s+v.count,0);
   assert.equal(deliveryCounterTotal,deliveryList.length,'dashboard delivery == list delivery');
-  // all === delivery + internal (every order counted once, disjoint).
   const allTotal=Object.values(stats.counters.all).reduce((s,v)=>s+v.count,0);
   const internalTotal=Object.values(stats.counters.internal).reduce((s,v)=>s+v.count,0);
   assert.equal(allTotal,deliveryCounterTotal+internalTotal,'all = delivery + internal');
   assert.equal(allList.length,allTotal,'list all == dashboard all');
+  assert.equal(deliveryList.length+internalList.length,allList.length,'disjoint queues partition the store book');
 
-  // Each ASSIGNED order is in exactly ONE operational partition, and the four
-  // partitions sum to the assigned total (never double-counted).
+  // Each assigned order is in exactly ONE operational partition (sums to assigned).
   const ops=stats.counters.operations;
   const assigned=ops.confirmed.count+ops.sending.count+ops.needs_review.count+ops.unshipped.count;
-  // Every order assigned to a company in this fixture (all of them are).
   assert.equal(assigned,6,'six assigned orders partition into exactly one operation each');
-  assert.equal(ops.confirmed.count>=1,true,'the confirmed order is counted exactly once');
+  assert.equal(ops.confirmed.count,1,'the confirmed order is counted exactly once');
 });
