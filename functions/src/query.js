@@ -26,9 +26,15 @@ function deliveryAccepted(order) {
 // read, a real policy id assigned on acceptance, or a carrier tracking number.
 function legacyDeliveryAccepted(order) {
   if (!order) return false;
-  if (order.dispatchState === 'sent') return true;
-  if (order.dispatchState === 'sending' || order.dispatchState === 'needs_review') return false;
+  // An explicit durable value always wins over every heuristic.
   if (typeof order.deliveryAccepted === 'boolean') return order.deliveryAccepted;
+  // When the dispatch lifecycle is known, only a confirmed 'sent' is accepted;
+  // sending/needs_review/idle (or an empty string) are never acceptance, even
+  // with a persisted reference that may predate acceptance.
+  if (order.dispatchState === 'sent') return true;
+  if (typeof order.dispatchState === 'string') return false;
+  // True legacy records (no dispatchState key at all) rely on a genuine carrier
+  // marker only.
   return order.shippingStatusSource === 'click_api' ||
     (typeof order.providerOrderId !== 'undefined' && order.providerOrderId !== null) ||
     (typeof order.trackingNumber === 'string' && order.trackingNumber.length > 0);
