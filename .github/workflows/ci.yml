@@ -93,27 +93,24 @@ jobs:
           flutter-version: '3.47.7'
           cache: true
       - run: flutter pub get --enforce-lockfile
-      # Install Gradle 9.3.1 directly (setup-gradle downloads it and puts it on
-      # PATH) and cache the distribution + dependency caches. This bypasses the
-      # wrapper's fetch from github.com/gradle/gradle-distributions, whose CDN
-      # can intermittently return HTTP 504. Gradle, Flutter, the Android SDK and
-      # all dependencies are unchanged.
-      - uses: gradle/actions/setup-gradle@c8a326d85724fce2ae59a38810306f4a058f26a4
-        with:
-          gradle-version: '9.3.1'
-          cache-read-only: false
-      - name: Build demo APK (retry on transient network failure)
+      # The Gradle wrapper fetches gradle-9.3.1-all.zip from
+      # services.gradle.org (redirecting to GitHub release assets), whose CDN
+      # returns intermittent HTTP 504 from the runner network. Retry the build
+      # with backoff so a transient CDN failure does not fail the job; the
+      # wrapper download succeeds on a later attempt and is then cached. No
+      # version change to Gradle, Flutter, the Android SDK or any dependency.
+      - name: Build demo APK (retry transient Gradle 504)
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
         with:
-          timeout_minutes: 20
-          max_attempts: 3
+          timeout_minutes: 25
+          max_attempts: 5
           retry_on: error
           command: flutter build apk --debug --dart-define=VELNIX_MODE=demo
-      - name: Build live APK (retry on transient network failure)
+      - name: Build live APK (retry transient Gradle 504)
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
         with:
-          timeout_minutes: 20
-          max_attempts: 3
+          timeout_minutes: 25
+          max_attempts: 5
           retry_on: error
           command: flutter build apk --debug --dart-define=VELNIX_MODE=live
   emulator-ui:
