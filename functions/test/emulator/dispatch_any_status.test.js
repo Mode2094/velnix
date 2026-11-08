@@ -174,15 +174,17 @@ test('a legacy accepted order (no dispatchState) lands in the delivery queue',as
 });
 
 test('acceptance partition covers legacy/new/sending/needs_review/cancelled/completed',async()=>{
-  const call=(name,data)=>functions[name].run({auth:{uid:'queue_gm',token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
-  // Scope the whole test to a unique pageId so the counts are exact and
-  // independent of other test files sharing the emulator.
-  const page='partpage';
-  await db.doc('pages/'+page).set({name:'part',nameLower:'part',active:true,archived:false,status:'active'});
-  const mk=async(id,status,extra={})=>{const r=await order(id,status,{pageId:page,...extra});return r.id;};
+  // A dedicated owner whose dashboard scope is exactly its own orders, so the
+  // counters and lists are compared over a controlled set (no dependency on the
+  // shared emulator state or on pagination).
+  const owner='partowner';
+  await auth.createUser({uid:owner}).catch(()=>{});
+  await db.doc('members/'+owner).set({name:'Owner',role:'manager',active:true,permissions:['updateOrderStatus','sendToDelivery']});
+  const call=(name,data)=>functions[name].run({auth:{uid:owner,token:{email_verified:true,firebase:{sign_in_provider:'google.com'}}},data});
+  const mk=async(id,status,extra={})=>{const r=await order(id,status,{createdBy:owner,...extra});return r.id;};
   // 1) legacy accepted (no deliveryAccepted boolean, real carrier marker).
   const legacyAccepted=db.doc('orders/part_legacy_accepted');
-  await legacyAccepted.set({createdBy:'any_gm',status:'ready',companyId:'any_fixture',hasDelivery:true,trackingNumber:'LT-1',pageId:page,createdAt:Timestamp.now(),revision:0});
+  await legacyAccepted.set({createdBy:owner,status:'ready',companyId:'any_fixture',hasDelivery:true,trackingNumber:'LT-1',createdAt:Timestamp.now(),revision:0});
   // NOTE: without the durable boolean this legacy order is treated as internal
   // until the backfill tool runs (consistent across queues and counters).
   // 2) new confirmed
@@ -196,8 +198,8 @@ test('acceptance partition covers legacy/new/sending/needs_review/cancelled/comp
   const cancelled=await mk('part_cancelled','cancelled');
   const completed=await mk('part_completed','delivered');
 
-  const f={pageId:page,pageSize:50};
-  const stats=await call('dashboardStats',{pageId:page});
+  const f={pageSize:50};
+  const stats=await call('dashboardStats',{});
   const deliveryList=(await call('listOrders',{...f,bucket:'delivery'})).items.map(o=>o.id);
   const internalList=(await call('listOrders',{...f,bucket:'internal'})).items.map(o=>o.id);
   const allList=(await call('listOrders',{...f,bucket:'all'})).items.map(o=>o.id);
@@ -215,6 +217,10 @@ test('acceptance partition covers legacy/new/sending/needs_review/cancelled/comp
   const internalTotal=Object.values(stats.counters.internal).reduce((s,v)=>s+v.count,0);
   assert.equal(allTotal,deliveryCounterTotal+internalTotal,'all = delivery + internal');
   assert.equal(deliveryList.length+internalList.length,allList.length,'disjoint queues partition the store book');
+  assert.equal(allList.length,6,'all six fixture orders are in the store book');
+  assert.equal(allTotal,6,'the store counter matches the six fixture orders');
+  assert.equal(deliveryCounterTotal,1,'exactly one confirmed delivery');
+  assert.equal(internalTotal,5,'the other five are internal');
 
   // Each assigned order is in exactly ONE operational partition (sums to assigned).
   const ops=stats.counters.operations;
