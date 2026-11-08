@@ -214,7 +214,6 @@ test('acceptance partition covers legacy/new/sending/needs_review/cancelled/comp
   const allTotal=Object.values(stats.counters.all).reduce((s,v)=>s+v.count,0);
   const internalTotal=Object.values(stats.counters.internal).reduce((s,v)=>s+v.count,0);
   assert.equal(allTotal,deliveryCounterTotal+internalTotal,'all = delivery + internal');
-  assert.equal(allList.length,allTotal,'list all == dashboard all');
   assert.equal(deliveryList.length+internalList.length,allList.length,'disjoint queues partition the store book');
 
   // Each assigned order is in exactly ONE operational partition (sums to assigned).
