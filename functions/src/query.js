@@ -6,6 +6,39 @@ function normalizeCustomer(value) {
     .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ');
 }
 function searchDigits(value) { return arabicDigits(value).replace(/\D/g,''); }
+// Whether a carrier CONFIRMED accepting the shipment. This is the SINGLE source
+// of truth used by listOrders, searchOrders and dashboardStats so the queues and
+// their counters always agree.
+//
+// The durable, indexable proof is the boolean `deliveryAccepted`, written by
+// every real acceptance transition (dispatch success, manager resolution,
+// reconcile, an API-confirmed sync) and set false at creation. Assignment alone
+// is NOT acceptance. A bare `clickOrderRef` is NOT acceptance on its own: it is
+// persisted BEFORE the vendor call and may accompany an unconfirmed attempt, so
+// it never counts here.
+function deliveryAccepted(order) {
+  return !!(order && order.deliveryAccepted === true);
+}
+// A best-effort classification for LEGACY records written before the boolean
+// existed, used ONLY by the backfill tool (never by the live queues, so the
+// dashboard aggregate and the lists can never disagree). A legacy shipment is
+// accepted only when a genuine carrier marker proves it: a confirmed Click API
+// read, a real policy id assigned on acceptance, or a carrier tracking number.
+function legacyDeliveryAccepted(order) {
+  if (!order) return false;
+  // An explicit durable value always wins over every heuristic.
+  if (typeof order.deliveryAccepted === 'boolean') return order.deliveryAccepted;
+  // When the dispatch lifecycle is known, only a confirmed 'sent' is accepted;
+  // sending/needs_review/idle (or an empty string) are never acceptance, even
+  // with a persisted reference that may predate acceptance.
+  if (order.dispatchState === 'sent') return true;
+  if (typeof order.dispatchState === 'string') return false;
+  // True legacy records (no dispatchState key at all) rely on a genuine carrier
+  // marker only.
+  return order.shippingStatusSource === 'click_api' ||
+    (typeof order.providerOrderId !== 'undefined' && order.providerOrderId !== null) ||
+    (typeof order.trackingNumber === 'string' && order.trackingNumber.length > 0);
+}
 // Dispatch-state filter groups exposed to the UI, mapping to concrete
 // `dispatchState` values. Kept in one place so the client and server agree.
 const DISPATCH_GROUPS = Object.freeze({
@@ -65,7 +98,9 @@ function parseFilters(data={}) {
 }
 function applyFilters(query,filters) {
   if(filters.status)query=query.where('status','==',filters.status);
-  if(filters.bucket!=='all')query=query.where('hasDelivery','==',filters.bucket==='delivery');
+  // The bucket is an ACCEPTANCE partition (confirmed carrier acceptance vs not),
+  // which cannot be expressed as a single indexed equality over legacy records,
+  // so it is applied in-memory by matchingFilters over an already-scoped page.
   if(filters.companyId)query=query.where('companyId','==',filters.companyId);
   if(filters.createdBy)query=query.where('createdBy','==',filters.createdBy);
   // A delivery-company state is indexed on its own facet so it never narrows
@@ -91,8 +126,10 @@ function matchingFilters(order,filters) {
     if(order.shippingStatus||order.clickOrderRef||order.providerOrderId||
        order.trackingNumber||(order.dispatchState&&order.dispatchState!=='idle'))return false;
   }
-  if(filters.bucket==='delivery'&&!order.companyId)return false;
-  if(filters.bucket==='internal'&&order.companyId)return false;
+  // Buckets partition by CONFIRMED CARRIER ACCEPTANCE, not by assignment:
+  //   delivery = the carrier accepted the shipment; internal = not yet accepted.
+  if(filters.bucket==='delivery'&&!deliveryAccepted(order))return false;
+  if(filters.bucket==='internal'&&deliveryAccepted(order))return false;
   if(filters.companyId&&order.companyId!==filters.companyId)return false;
   if(filters.createdBy&&order.createdBy!==filters.createdBy)return false;
   if(filters.pageId&&order.pageId!==filters.pageId)return false;
@@ -130,5 +167,5 @@ function matchingFilters(order,filters) {
   }
   return true;
 }
-module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS};
+module.exports={normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters,DISPATCH_GROUPS,deliveryAccepted,legacyDeliveryAccepted};
 

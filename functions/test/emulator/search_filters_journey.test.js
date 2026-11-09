@@ -52,7 +52,10 @@ test('search and filters journey: number, name, phone, click ref and combined', 
   }
   const [firstId] = created;
   const first = (await db.doc('orders/' + firstId).get()).data();
+  // Simulate a confirmed carrier acceptance: the durable boolean plus the
+  // carrier reference. A bare clickOrderRef alone is NOT acceptance.
   await db.doc('orders/' + firstId).update({
+    deliveryAccepted: true,
     clickOrderRef: 'CLICKREF-9001',
     trackingNumber: 'TRK-123456',
   });
@@ -93,12 +96,19 @@ test('search and filters journey: number, name, phone, click ref and combined', 
   });
   assert.equal(mismatchedStatus.items.length, 0, 'name + wrong status = none');
 
-  // Combined: query + bucket internal
+  // Combined: query + bucket internal. The first order was given a carrier
+  // reference above, so it is now classified as accepted (delivery); the other
+  // two remain internal.
   const internal = await invoke('searchOrders', 'gm', {
     query: 'عميل مميز',
     bucket: 'internal',
   });
-  assert.equal(internal.items.length, 3, 'name + internal bucket');
+  assert.equal(internal.items.length, 2, 'name + internal bucket (accepted order excluded)');
+  const delivery = await invoke('searchOrders', 'gm', {
+    query: 'عميل مميز',
+    bucket: 'delivery',
+  });
+  assert.equal(delivery.items.length, 1, 'name + delivery bucket (the accepted order only)');
 
   // Combined: query + date range that includes and excludes
   const now = new Date();
@@ -118,11 +128,12 @@ test('search and filters journey: number, name, phone, click ref and combined', 
   });
   assert.equal(outOfRange.items.length, 0, 'name + future window excludes');
 
-  // listOrders with the same combined filters must respect them (pagination)
+  // listOrders with the same combined filters must respect them (pagination).
+  // The accepted order (given a carrier reference) is excluded from internal.
   const list = await invoke('listOrders', 'gm', {
     status: 'created',
     bucket: 'internal',
     pageSize: 30,
   });
-  assert.equal(list.items.length, 3, 'listOrders respects combined filters');
+  assert.equal(list.items.length, 2, 'listOrders respects combined filters');
 });

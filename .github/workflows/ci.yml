@@ -93,8 +93,32 @@ jobs:
           flutter-version: '3.47.7'
           cache: true
       - run: flutter pub get --enforce-lockfile
-      - run: flutter build apk --debug --dart-define=VELNIX_MODE=demo
-      - run: flutter build apk --debug --dart-define=VELNIX_MODE=live
+      # Cache the Gradle dependency + wrapper caches. The runner network can
+      # return intermittent HTTP 504 for GitHub release assets (gradle-9.3.1-all
+      # and kotlin-compiler-embeddable fetched via repo.maven.apache.org->github).
+      # Caching ~/.gradle means a single successful fetch is reused by every later
+      # run, and the build is retried to survive a transient CDN window. No
+      # version change to Gradle, Kotlin, Flutter, the Android SDK or any
+      # dependency; all job checks are preserved.
+      - uses: gradle/actions/setup-gradle@c8a326d85724fce2ae59a38810306f4a058f26a4
+        with:
+          cache-read-only: false
+      - name: Build demo APK (retry transient Gradle 504)
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
+        with:
+          timeout_minutes: 25
+          max_attempts: 8
+          retry_wait_seconds: 60
+          retry_on: error
+          command: flutter build apk --debug --dart-define=VELNIX_MODE=demo
+      - name: Build live APK (retry transient Gradle 504)
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08
+        with:
+          timeout_minutes: 25
+          max_attempts: 8
+          retry_wait_seconds: 60
+          retry_on: error
+          command: flutter build apk --debug --dart-define=VELNIX_MODE=live
   emulator-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 25

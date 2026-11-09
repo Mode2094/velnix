@@ -70,7 +70,7 @@ test('a timeout after potential receipt is recovered by a read-only getorder and
   assert.equal(r.shippingStatus,'awaitingPickup');
   const data=(await ref.get()).data();
   assert.equal(data.dispatchState,'sent','a confirmed read resolves the uncertain send');
-  assert.equal(data.status,'dispatched');
+  assert.equal(data.status,'ready'); // internal status preserved across recovery
   assert.equal(data.shippingStatusSource,'click_api');
   assert.equal(sendCalls,1,'recovery never calls setorder again');
   assert.equal(readCalls,1);

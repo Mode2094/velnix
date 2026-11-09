@@ -376,7 +376,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
     final parts = <String>[
       if (bucket != 'all')
-        bucket == 'delivery' ? 'شركات التوصيل' : 'غير المسندة لشركة',
+        bucket == 'delivery' ? 'شركات التوصيل' : 'الطلبات الداخلية',
       if (status != null) statusLabels[status] ?? status!,
       if (shippingStatus != null) _shippingLabel(shippingStatus!),
       if (_dispatch != null) _dispatchLabel(_dispatch!),
@@ -448,9 +448,15 @@ class _LiveOrdersState extends State<LiveOrders> {
             initialValue: bucket,
             decoration: const InputDecoration(labelText: 'مجموعة الطلبات'),
             items: const [
-              DropdownMenuItem(value: 'all', child: Text('كل الطلبات')),
-              DropdownMenuItem(value: 'delivery', child: Text('شركات التوصيل')),
-              DropdownMenuItem(value: 'internal', child: Text('غير المسندة')),
+              DropdownMenuItem(value: 'all', child: Text('جميع طلبات المتجر')),
+              DropdownMenuItem(
+                value: 'delivery',
+                child: Text('طلبات شركة التوصيل'),
+              ),
+              DropdownMenuItem(
+                value: 'internal',
+                child: Text('الطلبات الداخلية'),
+              ),
             ],
             onChanged: (v) {
               setState(() {
@@ -926,8 +932,9 @@ class _LiveOrdersState extends State<LiveOrders> {
       builder: (ctx) => AlertDialog(
         title: Text('إرسال $count طلب إلى شركة التوصيل'),
         content: Text(
-          'سيؤدي هذا إلى إنشاء شحنات فعلية لدى الشركة للطلبات الجاهزة فقط. '
-          'الطلبات غير الجاهزة أو غير المؤكدة لن تُرسل، ولن يُعاد إرسال أي شحنة.'
+          'سيؤدي هذا إلى إنشاء شحنات فعلية لدى الشركة للطلبات المعيّنة لشركة. '
+          'يمكن إرسال الطلب من أي حالة داخلية (بما فيها الملغي / المكتمل)، ولا تُغيَّر حالته الداخلية عند الإرسال. '
+          'الطلبات قيد الإرسال أو غير المؤكدة لن تُرسل، ولن يُعاد إرسال أي شحنة.'
           '${count > _dispatchChunk ? '\n\nسيُرسل على $batches دفعات (بحد أقصى $_dispatchChunk لكل دفعة) وقد يستغرق وقتاً.' : ''}',
         ),
         actions: [

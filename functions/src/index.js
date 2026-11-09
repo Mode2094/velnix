@@ -12,7 +12,7 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason,INTERNAL_CORRECTION_STATUSES,internalStatusOf}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
@@ -164,7 +164,7 @@ async function applyStatusChange(ref,user,target){
     if(!canSeeOrder(user,{...latest.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
     if(!allowedTransition(user,{...latest.data(),id:ref.id},target))fail('failed-precondition','هذا الانتقال غير مسموح');
     const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
-    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{status:target,internalStatus:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     const detail={status:target,...(target==='delivered'?{completionSource:'internal'}:{})};
     await addEvent(ref.id,'status_changed',user,detail,tx);await audit('order.status_changed',user,ref.id,detail,tx);
   });
@@ -178,6 +178,11 @@ async function applyStatusChange(ref,user,target){
 // cancel, re-send or desync an external shipment, nor change amounts or payment.
 // Setting an order to its current status is an idempotent no-op: no write, no
 // event and no audit are produced. Returns {changed} so the caller can report it.
+// Unrestricted INTERNAL status change used by the bulk and single operations.
+// Any internal status from any other, including after a confirmed dispatch: the
+// internal status is a separate field (internalStatus, mirrored in status) and
+// editing it NEVER touches the carrier lifecycle (dispatchState, shippingStatus,
+// tracking, Click refs, company, hasDelivery). A same-status change is a no-op.
 async function applyInternalStatusChange(ref,user,target){
   return db.runTransaction(async tx=>{
     await currentActor(tx,user);
@@ -187,16 +192,22 @@ async function applyInternalStatusChange(ref,user,target){
     const reason=internalStatusChangeReason(user,o,target);
     if(reason==='permission-denied')fail('permission-denied','لا يمكن الوصول للطلب');
     if(reason==='invalid_status')fail('invalid-argument','حالة غير صالحة');
-    if(reason==='carrier_contract')fail('failed-precondition','طلب مرتبط بشحنة أو إرسال؛ لا يمكن تغيير حالته داخليًا');
+    if(reason==='dispatch_active')fail('failed-precondition','يوجد إرسال قيد التنفيذ أو غير مؤكد؛ أكمل مراجعته أولًا');
+    if(reason==='unknown_internal_status')fail('failed-precondition','حالة الطلب الحالية غير معروفة داخليًا؛ لا يمكن تغييرها');
     if(reason)return {ok:true,changed:false};
-    if(o.status===target)return {ok:true,changed:false};
-    // Preserve the internal-completion provenance when completing; clear it when
-    // the order leaves the completed state so it is never left lying.
-    const completion=target==='delivered'
-      ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
-      : (o.status==='delivered'?{completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()}:{});
-    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    const detail={status:target,previous:o.status,...(target==='delivered'?{completionSource:'internal'}:{})};
+    const currentInternal=internalStatusOf(o);
+    if(currentInternal===target)return {ok:true,changed:false};
+    // A carrier contract means the order has an external shipment: never touch
+    // hasDelivery or completion provenance there. Only an internal-only order
+    // records internal completion provenance the legacy way.
+    const hasCarrier=o.hasDelivery===true||o.trackingNumber||o.clickOrderRef||o.providerOrderId||o.remoteStatus;
+    const completion=hasCarrier
+      ? {}
+      : (target==='delivered'
+          ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
+          : (currentInternal==='delivered'?{completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()}:{}));
+    tx.update(ref,{status:target,internalStatus:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={status:target,previous:currentInternal,...(target==='delivered'&&!hasCarrier?{completionSource:'internal'}:{})};
     await addEvent(ref.id,'status_changed',user,detail,tx);
     await audit('order.status_changed',user,ref.id,detail,tx);
     return {ok:true,changed:true};
@@ -214,7 +225,7 @@ async function applyCompanyAssignment(ref,user,id){
     if(!order.exists)fail('not-found','الطلب غير موجود');
     if(!canSeeOrder(user,{...order.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
     if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
-    if(!['created','review','preparing','ready'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
+    if(internalStatusOf(order.data())===null&&!['dispatched','inTransit'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
     tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
     const action=id?'company_assigned':'company_unassigned';
     await addEvent(ref.id,action,user,{companyId:id},tx);
@@ -481,15 +492,22 @@ exports.dashboardStats=callable(async req=>{
   const shippingStates=require('./shipping_status').SHIPPING_STATUSES;
   const showAmount=user.role==='generalManager'||can(user,'viewAmounts');
   const counter={all:{},delivery:{},internal:{},shipping:{}};
-  // Use independent aggregations by state and bucket; avoid scanning client lists.
-  const values=await aggregateGroups(statuses.flatMap(status=>[
-    base.map(query=>query.where('status','==',status).where('hasDelivery','==',true)),
-    base.map(query=>query.where('status','==',status).where('hasDelivery','==',false)),
-  ]),query=>sumOrders(query,showAmount));
+  // The store total per status is the exact count of every order with that
+  // internal status (never split by assignment). The delivery queue is the
+  // subset the carrier CONFIRMED accepting (deliveryAccepted == true) — the SAME
+  // boolean the lists use — and the internal queue is the exact complement, so
+  // delivery + internal === all and every order is counted exactly once.
+  const allValues=await aggregateGroups(
+    statuses.map(status=>base.map(query=>query.where('status','==',status))),
+    query=>sumOrders(query,showAmount));
+  const deliveryValues=await aggregateGroups(
+    statuses.map(status=>base.map(query=>query.where('status','==',status).where('deliveryAccepted','==',true))),
+    query=>sumOrders(query,showAmount));
   for(let i=0;i<statuses.length;i++){
-    const status=statuses[i],delivery=values[i*2],internal=values[i*2+1];
-    counter.delivery[status]=delivery;counter.internal[status]=internal;
-    counter.all[status]={count:delivery.count+internal.count,amountMinor:delivery.amountMinor+internal.amountMinor};
+    const status=statuses[i],all=allValues[i],accepted=deliveryValues[i];
+    counter.all[status]=all;
+    counter.delivery[status]=accepted;
+    counter.internal[status]={count:all.count-accepted.count,amountMinor:all.amountMinor-accepted.amountMinor};
   }
   // Delivery-company states are counted on their own facet, from the shipping
   // vocabulary only. They are NEVER added into `all`: that would double-count a
@@ -506,15 +524,23 @@ exports.dashboardStats=callable(async req=>{
   //   sending      : a send is in flight
   //   needs_review : the send outcome is unresolved (never resent blindly)
   //   unshipped    : assigned but never sent (dispatchState idle or absent)
+  // Operational lifecycle of ASSIGNED orders (hasDelivery true), kept separate
+  // from the acceptance-based delivery queue and from the carrier vocabulary.
+  //   confirmed    : the carrier accepted (deliveryAccepted == true)
+  //   sending      : a send is in flight
+  //   needs_review : the send outcome is unresolved (never resent blindly)
+  //   unshipped    : assigned but never sent (neither of the above)
   const deliveryBase=base.map(query=>query.where('hasDelivery','==',true));
   const dispatchValues=await aggregateGroups([
-    deliveryBase.map(query=>query.where('dispatchState','==','sent')),
+    deliveryBase.map(query=>query.where('deliveryAccepted','==',true)),
     deliveryBase.map(query=>query.where('dispatchState','==','sending')),
     deliveryBase.map(query=>query.where('dispatchState','==','needs_review')),
   ],query=>sumOrders(query,showAmount));
   const confirmed=dispatchValues[0],sending=dispatchValues[1],needsReview=dispatchValues[2];
-  const assignedTotal=statuses.reduce((sum,status)=>sum+counter.delivery[status].count,0);
-  const assignedAmount=statuses.reduce((sum,status)=>sum+counter.delivery[status].amountMinor,0);
+  // Assigned total is its own exact aggregate (never derived from acceptance).
+  const assignedValues=await aggregateGroups([deliveryBase],query=>sumOrders(query,showAmount));
+  const assignedTotal=assignedValues[0].count;
+  const assignedAmount=assignedValues[0].amountMinor;
   // "unshipped" is the assignment remainder: neither sent, nor in flight, nor
   // awaiting review. This cannot go negative; a missing dispatchState counts as
   // unshipped, which keeps every legacy assigned order visible exactly once.
@@ -673,7 +699,7 @@ exports.createOrder=callable(async req=>{
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
       ...pageSnapshot,
       ...buildSearchFields({...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,...pageSnapshot}),
-      companyId:companyId||null,hasDelivery:companyId!=null,revision:0,status:'created',trackingNumber:null,remoteStatus:null,
+      companyId:companyId||null,hasDelivery:companyId!=null,deliveryAccepted:false,revision:0,status:'created',internalStatus:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.create(idemRef,{orderId:ref.id,payloadHash,createdBy:user.id,createdAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'created',user,{},tx);await audit('order.created',user,ref.id,{},tx);
@@ -933,7 +959,13 @@ async function dispatchOrder(ref,user){
     const doc=await tx.get(ref),o=doc.data();
     if(!o)fail('not-found','الطلب غير موجود');
     if(!canSeeOrder(user,{...o,id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
-    if(o.status!=='ready'||!o.companyId)fail('failed-precondition','الطلب غير جاهز للشحن');
+    // Dispatch is allowed from ANY internal status (created/review/preparing/
+    // ready/delivered/cancelled) as long as a delivery company is assigned.
+    // Legacy carrier statuses (dispatched/inTransit) are also accepted so an
+    // older order can still be re-sent through the supported flow.
+    const internal=internalStatusOf(o);
+    if(!INTERNAL_CORRECTION_STATUSES.includes(internal)&&!['dispatched','inTransit'].includes(o.status))fail('failed-precondition','حالة الطلب لا تسمح بالإرسال');
+    if(!o.companyId)fail('failed-precondition','عيّن شركة توصيل قبل الإرسال');
     if(o.dispatchState==='needs_review')fail('failed-precondition','نتيجة الإرسال السابقة غير مؤكدة. تحقق من شركة التوصيل أولاً لمنع شحنة مكررة.');
     if(o.dispatchState==='sent')fail('failed-precondition','الطلب أُرسل بالفعل');
     // A timed-out request may have reached the vendor: never auto-resend it.
@@ -975,8 +1007,13 @@ async function dispatchOrder(ref,user){
     await db.runTransaction(async tx=>{
       const current=await tx.get(ref);
       if(current.data().dispatchLockId!==lockId)fail('aborted','تغيّر قفل الإرسال');
-      tx.update(ref,{revision:FieldValue.increment(1),status:'dispatched',dispatchState:'sent',nextPollAt:Timestamp.now(),trackingNumber:tracking,sentAt:FieldValue.serverTimestamp(),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp(),syncError:null});
-      await addEvent(ref.id,'sent_to_delivery',user,{companyId:snapshot.companyId,tracking},tx);
+      // The internal status is NEVER overwritten by a dispatch: a shipment is
+      // recorded on the dispatch/carrier fields only (dispatchState, tracking,
+      // shipping status). The internalStatus field documents the internal state
+      // at send time for backward-compatible readers; `status` keeps whatever
+      // internal value the order already had.
+      tx.update(ref,{revision:FieldValue.increment(1),dispatchState:'sent',deliveryAccepted:true,internalStatus:internalStatusOf(current.data()),nextPollAt:Timestamp.now(),trackingNumber:tracking,sentAt:FieldValue.serverTimestamp(),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp(),syncError:null});
+      await addEvent(ref.id,'sent_to_delivery',user,{companyId:snapshot.companyId,tracking,internalStatus:internalStatusOf(current.data())},tx);
       await audit('order.sent_to_delivery',user,ref.id,{companyId:snapshot.companyId},tx);
     });return {ok:true,trackingNumber:tracking};
   }catch(e){
@@ -1025,7 +1062,7 @@ exports.resolveDispatchException=callable(async req=>{
     const doc=await tx.get(ref),o=doc.data();
     if(!o)fail('not-found','الطلب غير موجود');
     if(!canResolveDispatch(o))fail('failed-precondition','الطلب لا يحتاج هذه المراجعة');
-    const change=outcome==='shipment_exists'?{status:'dispatched',trackingNumber:tracking,dispatchState:'sent',nextPollAt:Timestamp.now(),sentAt:FieldValue.serverTimestamp()}
+    const change=outcome==='shipment_exists'?{internalStatus:internalStatusOf(o),deliveryAccepted:true,trackingNumber:tracking,dispatchState:'sent',nextPollAt:Timestamp.now(),sentAt:FieldValue.serverTimestamp()}
       :{dispatchState:'idle',trackingNumber:null};
     tx.update(ref,{...change,revision:FieldValue.increment(1),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'dispatch_exception_resolved',user,{outcome,trackingNumber:tracking,reason},tx);
@@ -1074,9 +1111,11 @@ exports.reconcileClickShipment=callable(async req=>{
       return;
     }
     if(o.providerOrderId===clickOrderId&&o.clickOrderRef===clickOrderRef&&o.shippingStatus===state&&o.shippingStatusSource==='manual')return;
-    if(!['ready','dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
-    tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',sentAt:o.sentAt||FieldValue.serverTimestamp(),
-      status:o.status==='ready'?'dispatched':o.status,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    // Linking an existing shipment is independent of the internal status, so it
+    // is allowed from any internal status; it never overwrites `status`.
+    if(internalStatusOf(o)===null&&!['dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
+    tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',deliveryAccepted:true,sentAt:o.sentAt||FieldValue.serverTimestamp(),
+      internalStatus:internalStatusOf(o)||o.internalStatus,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'click_reconciled',user,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
     await audit('order.click_reconciled',user,ref.id,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
   });
@@ -1179,11 +1218,13 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
     const resolvingReview=o.dispatchState==='needs_review';
     if(resolvingReview){
       patch.dispatchState='sent';
+      patch.deliveryAccepted=true;
       patch.sentAt=o.sentAt||now;
       patch.dispatchLockId=FieldValue.delete();
       patch.dispatchLockUntil=FieldValue.delete();
       patch.syncError=null;
-      if(o.status==='ready')patch.status='dispatched';
+      // Preserve the internal status; only the carrier lifecycle is resolved.
+      patch.internalStatus=internalStatusOf(o)||o.internalStatus;
     }
     if(!unchanged||resolvingReview){patch.revision=FieldValue.increment(1);applied=true;}
     tx.update(ref,patch);
@@ -1234,7 +1275,7 @@ async function recoverStuckDispatch(ref,actor,{source='scheduled'}={}){
             const isTerminal=['delivered','cancelled'].includes(parsed.shippingStatus);
             await db.runTransaction(async tx=>{
               const cur=await tx.get(ref);if(cur.data()?.dispatchState!=='sending')return;
-              tx.update(ref,{dispatchState:'sent',status:o.status==='ready'?'dispatched':o.status,revision:FieldValue.increment(1),
+              tx.update(ref,{dispatchState:'sent',deliveryAccepted:true,internalStatus:internalStatusOf(cur.data())||cur.data().internalStatus,revision:FieldValue.increment(1),
                 shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',shippingStatusUpdatedAt:Timestamp.now(),
                 clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,
                 clickStatusVerified:isApiConfirmed(parsed.shippingStatus),nextClickSyncAt:isTerminal?null:pollNext,nextPollAt:Timestamp.now(),

@@ -18,9 +18,9 @@ const statusIcons = <String, IconData>{
 /// Arabic titles for the three order buckets shared by the dashboard cards and
 /// the per-bucket status grid.
 const bucketTitles = <String, String>{
-  'all': 'كل الطلبات',
-  'delivery': 'طلبات شركات التوصيل',
-  'internal': 'الطلبات غير المسندة لشركة توصيل',
+  'all': 'جميع طلبات المتجر',
+  'delivery': 'طلبات شركة التوصيل',
+  'internal': 'الطلبات الداخلية',
 };
 
 /// Whether a bucket shows delivery-company states (the carrier vocabulary) or

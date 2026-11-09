@@ -125,7 +125,7 @@ test('a needs_review order is resolved by a read-only getorder and never re-send
   assert.equal(r.shippingStatus,'awaitingPickup');
   const d=(await ref.get()).data();
   assert.equal(d.dispatchState,'sent','the confirmed read resolves the review state');
-  assert.equal(d.status,'dispatched');
+  assert.equal(d.status,'ready'); // internal status preserved across resolution
   assert.equal(sendCalls,sendsAfterFail,'recovery never calls setorder again');
   sendError=null;
 });

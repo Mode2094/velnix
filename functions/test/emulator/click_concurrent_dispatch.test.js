@@ -62,7 +62,8 @@ test('two concurrent direct dispatches of the same order reach Click exactly onc
 
   const data=(await ref.get()).data();
   assert.equal(data.dispatchState,'sent');
-  assert.equal(data.status,'dispatched');
+  // Internal status is preserved across a send.
+  assert.equal(data.status,'ready');
   assert.equal(sendCalls,1,'no duplicate shipment was created');
   assert.equal((await ref.collection('events').where('action','==','sent_to_delivery').get()).size,1);
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.sent_to_delivery').get()).size,1);

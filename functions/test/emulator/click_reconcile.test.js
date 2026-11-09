@@ -119,7 +119,9 @@ test('a confirmed read auto-resolves an uncertain dispatch without creating a sh
   // The shipment demonstrably exists (the read used our unique reference), so the
   // uncertain dispatch is resolved to sent — and no shipment was created here.
   assert.equal(data.dispatchState,'sent');
-  assert.equal(data.status,'dispatched');
+  // The internal status is preserved: a send never overwrites it.
+  assert.equal(data.status,'ready');
+  assert.equal(data.internalStatus,'ready');
   assert.equal(data.syncError,null);
   assert.equal(data.shippingStatusSource,'click_api');
   assert.equal(clickSendCalls,0,'auto-resolution never creates a shipment');
@@ -160,7 +162,7 @@ test('reconciling the existing Click shipment keeps the policy number and mercha
   assert.equal(data.shippingStatus,'awaitingPickup');
   assert.equal(data.shippingStatusSource,'manual');
   assert.equal(data.dispatchState,'sent');
-  assert.equal(data.status,'dispatched');
+  assert.equal(data.status,'ready');
   assert.equal(data.trackingNumber ?? null,null,'the Click order id is not copied into the carrier tracking field');
   assert.equal(data.nextPollAt ?? null,null,'no automatic Click poll is scheduled while its contract is unconfirmed');
   assert.equal((await ref.collection('events').where('action','==','click_reconciled').get()).size,1);
@@ -208,7 +210,7 @@ test('a successful mock create stores the tracking id once and blocks a second d
   const result=await dispatch(ref.id);
   assert.equal(result.trackingNumber,'LOCAL-1');
   const data=(await ref.get()).data();
-  assert.equal(data.dispatchState,'sent');assert.equal(data.status,'dispatched');assert.equal(data.trackingNumber,'LOCAL-1');
+  assert.equal(data.dispatchState,'sent');assert.equal(data.status,'ready');assert.equal(data.internalStatus,'ready');assert.equal(data.trackingNumber,'LOCAL-1');
   await assert.rejects(dispatch(ref.id),{code:'failed-precondition'});
   assert.equal((await db.collection('auditEvents').where('entityId','==',ref.id).where('action','==','order.sent_to_delivery').get()).size,1);
 });
