@@ -58,3 +58,6 @@ delivery/
 
 # Production data exports / local backups — never commit
 backups/
+
+# Signed Android release artifacts (large binaries; distributed out of band)
+release/
