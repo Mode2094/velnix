@@ -135,12 +135,15 @@ test('bulk status change reports per-order results and honors policy',async()=>{
 
 test('bulk operation rejects per-order failures without aborting the batch',async()=>{
   const allowed=await invoke('createOrder','gm',{...base,customer:'مسموح',phone:'0774000001',requestKey:'p2_bulk_mix_1xxx'});
-  // A disallowed transition (created -> delivered) must fail only for that order.
-  const disallowed=await invoke('createOrder','gm',{...base,customer:'ممنوع',phone:'0774000002',requestKey:'p2_bulk_mix_2xxx'});
-  // Put the disallowed order into a state where 'delivered' is not reachable, then bulk to 'delivered'.
-  const res=await invoke('bulkChangeStatus','gm',{ids:[allowed.id,disallowed.id],status:'delivered'});
-  assert.ok(res.results.some(r=>r.id===disallowed.id&&r.ok===false),'disallowed order reported failed');
-  assert.equal(res.results.find(r=>r.id===disallowed.id).ok,false);
+  // An order that entered a carrier contract is refused by the internal bulk
+  // path (its status is driven by the carrier, never a manual edit), and it must
+  // fail only for that order while the valid one still changes.
+  const carrier=await invoke('createOrder','gm',{...base,customer:'مرتبط بشحنة',phone:'0774000002',requestKey:'p2_bulk_mix_2xxx'});
+  await db.doc('orders/'+carrier.id).update({companyId:'c1',hasDelivery:true,dispatchState:'sending'});
+  const res=await invoke('bulkChangeStatus','gm',{ids:[allowed.id,carrier.id],status:'delivered'});
+  assert.equal(res.succeeded,1,'the internal order is changed');
+  assert.ok(res.results.some(r=>r.id===carrier.id&&r.ok===false),'the carrier-contract order is reported failed');
+  assert.equal(res.results.find(r=>r.id===carrier.id).ok,false);
 });
 
 test('bulk assign company assigns only appropriate orders and never sends',async()=>{

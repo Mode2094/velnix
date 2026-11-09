@@ -108,6 +108,22 @@ extension OrderStatusUI on OrderStatus {
       this == OrderStatus.cancelled;
 }
 
+/// The internal store statuses a bulk change may target, in canonical order.
+/// This mirrors the backend contract (policy.js INTERNAL_CORRECTION_STATUSES):
+/// every valid internal status, forward or backward, including reopening a
+/// cancelled order. The carrier/dispatch states (dispatched, inTransit,
+/// returned) are intentionally excluded — they are driven by the delivery flow,
+/// never by a manual internal edit. This is the single source of truth for the
+/// bulk status dropdown; do not duplicate it elsewhere.
+const List<OrderStatus> internalChangeableStatuses = [
+  OrderStatus.created,
+  OrderStatus.review,
+  OrderStatus.preparing,
+  OrderStatus.ready,
+  OrderStatus.delivered,
+  OrderStatus.cancelled,
+];
+
 class OrderEvent {
   OrderEvent({
     required this.title,

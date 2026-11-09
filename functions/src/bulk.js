@@ -1,6 +1,10 @@
 'use strict';
 const crypto=require('node:crypto');
 const {documentId,canSeeOrder,STATUSES,ORDER_TYPES}=require('./policy');
+// The internal statuses a bulk change may target. Carrier/dispatch states are
+// intentionally excluded: they are driven by the delivery flow, never a manual
+// bulk edit.
+const {INTERNAL_CORRECTION_STATUSES:INTERNAL_TARGETS}=require('./policy');
 const {foldDigits}=require('./search');
 
 // Bounded bulk operations. Each order is validated independently against the
@@ -17,7 +21,7 @@ const MAX_BULK = 50;
 //  - "<docId>"           : raw Firestore document id
 // It never derives one kind from another beyond the explicit VNX- prefixes that
 // the project itself uses. Returns {id} or throws not-found.
-module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch,orderForUser}) => {
+module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyInternalStatusChange,applyCompanyAssignment,runDispatch,orderForUser}) => {
   function idList(raw){
     if(!Array.isArray(raw)||raw.length===0)fail('invalid-argument','حدّد طلباً واحداً على الأقل');
     if(raw.length>MAX_BULK)fail('invalid-argument',`الحد الأقصى ${MAX_BULK} طلباً في العملية الواحدة`);
@@ -101,18 +105,24 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     const user=await requireAuth(req);
     const ids=idList(req.data?.ids);
     const target=typeof req.data?.status==='string'?req.data.status.trim():'';
-    if(!STATUSES.includes(target))fail('invalid-argument','حالة غير صالحة');
+    // Only the internal vocabulary is accepted here. Carrier/dispatch states are
+    // never a bulk internal target (they are driven by the delivery flow).
+    if(!INTERNAL_TARGETS.includes(target))fail('invalid-argument','حالة غير صالحة');
     const results=[];
     for(const id of ids){
       try{
         const ref=await loadVisible(user,id);
         if(!ref){results.push({id,ok:false,code:'permission-denied'});continue;}
-        await applyStatusChange(ref,user,target);
+        // Unrestricted internal transition: any internal status from any other.
+        // Same-status is an idempotent no-op, reported as unchanged.
+        const outcome=await applyInternalStatusChange(ref,user,target);
+        if(outcome&&outcome.changed===false){results.push({id,ok:true,unchanged:true});continue;}
         results.push({id,ok:true});
       }catch(e){results.push({id,ok:false,code:e?.code||'failed-precondition',message:typeof e?.message==='string'?e.message.slice(0,200):''});}
     }
     const succeeded=results.filter(r=>r.ok).length;
-    return {results,succeeded,failed:results.length-succeeded};
+    const unchanged=results.filter(r=>r.ok&&r.unchanged===true).length;
+    return {results,succeeded,unchanged,failed:results.length-succeeded};
   }
 
   async function bulkAssignCompany(req){

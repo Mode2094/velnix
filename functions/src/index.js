@@ -12,7 +12,7 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
@@ -170,6 +170,38 @@ async function applyStatusChange(ref,user,target){
   });
   return {ok:true};
 }
+// Unrestricted INTERNAL status change used by the bulk operation. Any valid
+// internal status may be set from any other one (forward, backward, reopening a
+// cancelled order, moving a completed order). It never touches a carrier
+// contract: orders with a shipment, tracking, remote state or an in-flight /
+// undetermined dispatch are refused by policy, so this can never dispatch,
+// cancel, re-send or desync an external shipment, nor change amounts or payment.
+// Setting an order to its current status is an idempotent no-op: no write, no
+// event and no audit are produced. Returns {changed} so the caller can report it.
+async function applyInternalStatusChange(ref,user,target){
+  return db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const latest=await tx.get(ref);
+    if(!latest.exists)fail('not-found','الطلب غير موجود');
+    const o={...latest.data(),id:ref.id};
+    const reason=internalStatusChangeReason(user,o,target);
+    if(reason==='permission-denied')fail('permission-denied','لا يمكن الوصول للطلب');
+    if(reason==='invalid_status')fail('invalid-argument','حالة غير صالحة');
+    if(reason==='carrier_contract')fail('failed-precondition','طلب مرتبط بشحنة أو إرسال؛ لا يمكن تغيير حالته داخليًا');
+    if(reason)return {ok:true,changed:false};
+    if(o.status===target)return {ok:true,changed:false};
+    // Preserve the internal-completion provenance when completing; clear it when
+    // the order leaves the completed state so it is never left lying.
+    const completion=target==='delivered'
+      ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
+      : (o.status==='delivered'?{completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()}:{});
+    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={status:target,previous:o.status,...(target==='delivered'?{completionSource:'internal'}:{})};
+    await addEvent(ref.id,'status_changed',user,detail,tx);
+    await audit('order.status_changed',user,ref.id,detail,tx);
+    return {ok:true,changed:true};
+  });
+}
 // Single-order, permission-checked company assignment. Shared by
 // assignCompany and the bulk assignment operation. It enforces sendToDelivery
 // itself so no caller (present or future) can reach it without the permission.
@@ -209,7 +241,7 @@ for(const [name,handler] of Object.entries(joins))exports[name]=callable(handler
 const pages=require('./pages')({db,FieldValue,FieldPath,requireAuth,currentActor,audit,fail});
 for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler);
 
-const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
+const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyInternalStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
 for(const [name,handler] of Object.entries(bulk))if(typeof handler==='function')exports[name]=callable(handler);
 
 exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,allowedPageIds:user.allowedPageIds||[],email:user.email||''};});
