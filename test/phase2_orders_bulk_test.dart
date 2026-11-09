@@ -5,6 +5,7 @@ import 'package:velnix/core/theme.dart';
 import 'package:velnix/live/gateway.dart';
 import 'package:velnix/live/live_app.dart';
 import 'package:velnix/models/entities.dart';
+import 'package:velnix/printing/bulk_printing.dart';
 
 Widget app(Widget child) => MaterialApp(
   theme: velnixTheme(),
@@ -603,4 +604,424 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // ---- Optional printing after a bulk internal status change ----------------
+
+  /// Drives: select all visible, open the change dialog, choose [statusLabel],
+  /// optionally tick print, confirm. Returns the recorded call names in order.
+  Future<List<String>> runBulkChange(
+    WidgetTester tester, {
+    required String statusLabel,
+    required bool print,
+  }) async {
+    final calls = <String>[];
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الحالة الجديدة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(statusLabel).last);
+    await tester.pumpAndSettle();
+    if (print) {
+      await tester.tap(find.text('طباعة الطلبات بعد تغيير الحالة'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.textContaining('تطبيق الحالة على 2 طلب'));
+    // The print preview keeps animating, so settle is unsafe; pump frames.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    return calls;
+  }
+
+  void commonFake(
+    dynamic Function(String, Map<String, dynamic>) onCall, {
+    int itemCount = 2,
+    Map<String, dynamic>? bulkResult,
+  }) {
+    VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+      if (name == 'listOrders') {
+        return {
+          'items': [for (var i = 1; i <= itemCount; i++) order('$i')],
+          'nextAfterId': null,
+        };
+      }
+      if (name == 'listCompanies' ||
+          name == 'listAllowedPages' ||
+          name == 'listOrderCreators') {
+        return {'items': <dynamic>[]};
+      }
+      return onCall(name, Map<String, dynamic>.from(data));
+    });
+  }
+
+  testWidgets('print checkbox is present, unchecked by default and RTL', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    commonFake((name, data) => throw StateError('Unexpected $name'));
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    expect(find.text('طباعة الطلبات بعد تغيير الحالة'), findsOneWidget);
+    // The dialog's own checkbox (order rows have their own checkboxes too).
+    final tile = tester.widget<CheckboxListTile>(
+      find.ancestor(
+        of: find.text('طباعة الطلبات بعد تغيير الحالة'),
+        matching: find.byType(CheckboxListTile),
+      ),
+    );
+    expect(
+      tile.value,
+      false,
+      reason: 'the print checkbox defaults to unchecked',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'printing unchecked: changes status and never opens the preview',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final calls = <String>[];
+      commonFake((name, data) {
+        calls.add(name);
+        if (name == 'bulkChangeStatus') {
+          final ids = (data['ids'] as List).cast<String>();
+          return {
+            'succeeded': ids.length,
+            'unchanged': 0,
+            'failed': 0,
+            'results': [
+              for (final id in ids) {'id': id, 'ok': true},
+            ],
+          };
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await runBulkChange(tester, statusLabel: 'ملغي', print: false);
+      expect(calls, contains('bulkChangeStatus'));
+      expect(calls, isNot(contains('getOrdersByIds')));
+      expect(find.text('طباعة الطلبات المحددة'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('printing checked: changes first, then prints only ok orders', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final calls = <String>[];
+    List<String>? printedIds;
+    commonFake((name, data) {
+      calls.add(name);
+      if (name == 'bulkChangeStatus') {
+        // One succeeds, one fails: only the ok id may be printed.
+        return {
+          'succeeded': 1,
+          'unchanged': 0,
+          'failed': 1,
+          'results': [
+            {'id': '1', 'ok': true},
+            {'id': '2', 'ok': false, 'code': 'failed-precondition'},
+          ],
+        };
+      }
+      if (name == 'getOrdersByIds') {
+        printedIds = (data['ids'] as List).cast<String>();
+        return {
+          'items': [order('1')],
+        };
+      }
+      if (name == 'getSettings') {
+        return {'organizationName': 'Velnix', 'receiptFooter': ''};
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await runBulkChange(tester, statusLabel: 'قيد التجهيز', print: true);
+    // The change happened before printing, and only the ok order was fetched.
+    expect(
+      calls.indexOf('bulkChangeStatus'),
+      lessThan(calls.indexOf('getOrdersByIds')),
+    );
+    expect(printedIds, ['1']);
+    expect(find.text('طباعة الطلبات المحددة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'printing checked with no confirmed order does not open the preview',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final calls = <String>[];
+      commonFake((name, data) {
+        calls.add(name);
+        if (name == 'bulkChangeStatus') {
+          // Every order failed: nothing is printable.
+          return {
+            'succeeded': 0,
+            'unchanged': 0,
+            'failed': 2,
+            'results': [
+              {'id': '1', 'ok': false, 'code': 'failed-precondition'},
+              {'id': '2', 'ok': false, 'code': 'failed-precondition'},
+            ],
+          };
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await runBulkChange(tester, statusLabel: 'ملغي', print: true);
+      expect(calls, isNot(contains('getOrdersByIds')));
+      expect(find.text('طباعة الطلبات المحددة'), findsNothing);
+      expect(
+        find.textContaining('لم تُحدَّث أي طلبات قابلة للطباعة'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'partial status success prints only the confirmed orders (single order)',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      List<String>? printedIds;
+      // Single order selected.
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        switch (name) {
+          case 'listOrders':
+            return {
+              'items': [order('1')],
+              'nextAfterId': null,
+            };
+          case 'listCompanies':
+          case 'listAllowedPages':
+          case 'listOrderCreators':
+            return {'items': <dynamic>[]};
+          case 'bulkChangeStatus':
+            return {
+              'succeeded': 1,
+              'unchanged': 0,
+              'failed': 0,
+              'results': [
+                {'id': '1', 'ok': true},
+              ],
+            };
+          case 'getOrdersByIds':
+            printedIds = (data['ids'] as List).cast<String>();
+            return {
+              'items': [order('1')],
+            };
+          case 'getSettings':
+            return {'organizationName': 'Velnix', 'receiptFooter': ''};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('عميل 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد الظاهر'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تغيير الحالة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('الحالة الجديدة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('جاهز للتسليم').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('طباعة الطلبات بعد تغيير الحالة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('تطبيق الحالة على 1 طلب'));
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 200));
+      }
+      expect(printedIds, ['1']);
+      expect(find.text('طباعة الطلبات المحددة'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('unchanged orders (same status) are still printable when ok', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    List<String>? printedIds;
+    commonFake((name, data) {
+      switch (name) {
+        case 'bulkChangeStatus':
+          return {
+            'succeeded': 2,
+            'unchanged': 2,
+            'failed': 0,
+            'results': [
+              {'id': '1', 'ok': true, 'unchanged': true},
+              {'id': '2', 'ok': true, 'unchanged': true},
+            ],
+          };
+        case 'getOrdersByIds':
+          printedIds = (data['ids'] as List).cast<String>();
+          return {
+            'items': [order('1'), order('2')],
+          };
+        case 'getSettings':
+          return {'organizationName': 'Velnix', 'receiptFooter': ''};
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await runBulkChange(tester, statusLabel: 'جديد', print: true);
+    expect(printedIds, unorderedEquals(['1', '2']));
+    expect(find.text('طباعة الطلبات المحددة'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'a print failure after a successful change does not re-run the change',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      var changeCalls = 0;
+      commonFake((name, data) {
+        switch (name) {
+          case 'bulkChangeStatus':
+            changeCalls++;
+            return {
+              'succeeded': 2,
+              'unchanged': 0,
+              'failed': 0,
+              'results': [
+                {'id': '1', 'ok': true},
+                {'id': '2', 'ok': true},
+              ],
+            };
+          case 'getOrdersByIds':
+            // The print data fetch fails (printer/data unavailable).
+            throw StateError('print data unavailable');
+          case 'getSettings':
+            return {'organizationName': 'Velnix', 'receiptFooter': ''};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm())));
+      await tester.pumpAndSettle();
+      await runBulkChange(tester, statusLabel: 'ملغي', print: true);
+      // The change ran exactly once; the print failure never re-ran it.
+      expect(changeCalls, 1);
+      expect(find.text('طباعة الطلبات المحددة'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('all internal statuses are offered as print-after targets', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    commonFake((name, data) => throw StateError('Unexpected $name'));
+    await tester.pumpWidget(app(LiveOrders(policy: gm())));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الحالة الجديدة'));
+    await tester.pumpAndSettle();
+    // Backward targets included: ملغي and قيد التجهيز are offered.
+    expect(find.text('ملغي').hitTestable(), findsWidgets);
+    expect(find.text('قيد التجهيز').hitTestable(), findsWidgets);
+    expect(find.text('جديد').hitTestable(), findsWidgets);
+    expect(find.text('جاهز للتسليم').hitTestable(), findsWidgets);
+    expect(internalChangeableStatuses.length, 6);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bulk print preview offers portrait and landscape', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1000, 900);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: velnixTheme(),
+        home: BulkPrintScreen(orders: [order('1'), order('2')]),
+      ),
+    );
+    // PdfPreview animates forever; use bounded pumps.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('الاتجاه'), findsOneWidget);
+    expect(find.text('عمودي'), findsOneWidget);
+    await tester.tap(find.text('عمودي'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.text('أفقي'), findsWidgets);
+    await tester.tap(find.text('أفقي').last);
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    // The preview rebuilt for the landscape format (key includes the state).
+    expect(find.text('أفقي'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
 }
