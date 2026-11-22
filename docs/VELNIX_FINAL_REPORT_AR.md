@@ -3,7 +3,8 @@
 - **المشروع:** `Mode2094/velnix` (عام) · **Firebase:** `velnix-6c1a2`
 - **الإصدار النهائي:** `0.7.0+12` (versionName `0.7.0` · versionCode `12`)
 - **applicationId:** `com.mode2094.velnix`
-- **الفرع:** `main` · **HEAD النهائي:** `583ea9764f8d5a58fbf908b511dcda7d4b90005c`
+- **الفرع:** `main` · **وسم الإصدار (tag):** `v0.7.0+12`
+- **commit الإصدار المُوقَّع:** `583ea9764f8d5a58fbf908b511dcda7d4b90005c` (هو الـcommit الذي بُني منه الـAPK/الـAAB والموقَّع، وCI أخضر عليه)
 - **التاريخ:** 2026-11-22
 - **مبدأ التقرير:** لا يُقبل «وجود الكود» ولا نجاح CI دليلًا؛ كل بند أدناه له **ملف+سطر** و**اختبار يثبت السلوك** و**دليل من واجهة التطبيق المُشغَّل فعليًا**.
 
@@ -26,8 +27,9 @@
 
 ## القائمة النهائية المطلوبة (١٢ بندًا)
 
-1. **الـcommit النهائي:** `583ea9764f8d5a58fbf908b511dcda7d4b90005c` على `main`
+1. **commit الإصدار النهائي (tag `v0.7.0+12`):** `583ea9764f8d5a58fbf908b511dcda7d4b90005c` على `main`
    («fix(dispatch): individual send from any internal status + audit release 0.7.0+12»).
+   - يليه commit توثيقي على `main` يضيف هذا التقرير وتدقيق الأرقام (لا تغيير في الكود أو الملفات الموقّعة).
 2. **الإصدار المُثبَّت والمُختبَر:** `0.7.0+12` (versionCode 12).
    - مُثبَّت كترقية على محاكي Android 14 **فوق** `0.7.0+11` ⇒ `Success`، والحزمة تُقرأ `versionCode=12` مع بقاء `firstInstallTime` (لا فقدان بيانات).
    - `apksigner verify -v` ⇒ **Verifies** (APK Signature Scheme v2)، الموقّع `CN=Velnix, OU=Delivery, O=Velnix, L=Amman, C=JO`، بصمة الشهادة `6e57f935…1601` (نفس مفتاح الإصدار).
