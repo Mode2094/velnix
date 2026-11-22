@@ -37,8 +37,17 @@ class _LiveDashboardState extends State<LiveDashboard> {
     reload();
   }
 
+  // The dashboard is a basic-filter surface (date range; company/creator when
+  // carried from the orders list). Page/type are list-only dimensions and are
+  // never sent here, so the aggregate queries stay on the indexed filter set.
+  static const _dashboardKeys = {'from', 'to', 'companyId', 'createdBy'};
+  Map<String, dynamic> get _queryFilters => {
+    for (final e in filters.entries)
+      if (_dashboardKeys.contains(e.key)) e.key: e.value,
+  };
+
   void reload({bool fresh = false}) =>
-      request = VelnixGateway.instance.dashboard(filters, fresh);
+      request = VelnixGateway.instance.dashboard(_queryFilters, fresh);
   void refresh() {
     setState(() => reload(fresh: true));
   }

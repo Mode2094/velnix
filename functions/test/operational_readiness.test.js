@@ -70,7 +70,14 @@ test('project IAM read uses the pinned official human session and redacts unrela
  const calls=[],s=createGcloudSession({env:{},expectedAccount:owner,run:args=>{calls.push(args);return args[0]==='projects'?'{}':args[0]==='config'?'(unset)':owner;}});assert.deepEqual(s.readProjectIam(),{});const args=calls.at(-1);assert.equal(args[1],'get-iam-policy');assert.ok(args.includes('--account='+owner));assert.ok(args.includes('--billing-project='+project));
 });
 test('source manifest includes all 56 exports, existing schedulers, and deny-by-default rules; index normalization preserves real filters',()=>{
- assert.equal(plan.functions.length,56);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,160);assert.equal(plan.bootstrapForbidden,true);
+ assert.equal(plan.functions.length,56);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,204);assert.equal(plan.bootstrapForbidden,true);
+  // Dashboard/company aggregates sum amountMinor, so every facet needs the
+  // aggregated field indexed. These are the six unfiltered facet shapes.
+  const facetFields=[['status'],['status','deliveryAccepted'],['shippingStatus'],['hasDelivery'],['hasDelivery','deliveryAccepted'],['hasDelivery','dispatchState']];
+  for(const facet of facetFields){
+    const normalized=[...facet,'amountMinor'].sort().join(',');
+    assert.ok(plan.indexes.some(i=>i.collectionGroup==='orders'&&(i.fields||[]).map(f=>f.fieldPath).sort().join(',')===normalized),'missing aggregate index for '+normalized);
+  }
  assert.notEqual(indexKey(plan.indexes[0]),indexKey({...plan.indexes[0],queryScope:'COLLECTION_GROUP'}));
  assert.notEqual(indexKey(plan.indexes[0]),indexKey({...plan.indexes[0],fields:[...plan.indexes[0].fields,{fieldPath:'__name__',order:'DESCENDING'}]}));
 });

@@ -1,5 +1,9 @@
 # VELNIX — FINAL CLIENT HANDOVER
 
+> ⚠️ **ملاحظة (2026-11-22):** هذا المستند لقطة تاريخية (0.7.0+9). للاطلاع على أحدث حالة
+> (الإصدار `0.7.0+11`، 56 وظيفة، 204 فهارس، حزمة `VELNIX_FINAL_CLIENT_HANDOVER.zip`)
+> راجع `handover/README_AR.md` و`docs/VELNIX_FINAL_DEPLOYMENT_RESULT_AR.md`.
+
 **التاريخ:** 2026-10-26
 **المشروع:** `velnix-6c1a2` — https://velnix-6c1a2.web.app
 
