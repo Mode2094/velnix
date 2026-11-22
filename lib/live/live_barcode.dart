@@ -411,7 +411,9 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
       builder: (ctx) => AlertDialog(
         title: Text('إرسال ${selected.length} طلب إلى شركة التوصيل'),
         content: const Text(
-          'سيؤدي هذا إلى إنشاء شحنات فعلية للطلبات الجاهزة فقط، ولن يُعاد إرسال أي شحنة.',
+          'سيؤدي هذا إلى إنشاء شحنات فعلية لدى شركة التوصيل للطلبات المعيّنة لشركة. '
+          'يمكن إرسال الطلب من أي حالة داخلية، ولا تُغيَّر حالته الداخلية عند الإرسال. '
+          'لن يُعاد إرسال أي شحنة.',
         ),
         actions: [
           TextButton(

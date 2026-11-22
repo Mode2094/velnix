@@ -167,13 +167,88 @@ void main() {
     expect(find.text('حالة الشحنة'), findsOneWidget);
     expect(find.text('قيد انتظار الموافقة'), findsWidgets);
     expect(find.text('مزامنة الحالة'), findsOneWidget);
-    // Dispatch now happens inside the guided journey, not on the card.
+    // Req 1: an eligible order (carrier assigned, no send in flight) offers an
+    // INDIVIDUAL send from the card as well as inside the guided journey.
     expect(
-      find.widgetWithText(FilledButton, 'متابعة وتجهيز الطلب'),
+      find.widgetWithText(OutlinedButton, 'إرسال إلى شركة التوصيل'),
       findsOneWidget,
     );
     expect(find.text('إرسال إلى Click'), findsNothing);
     expect(find.text('تفاصيل تقنية'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'req 1: a NEW order with an assigned carrier offers individual send '
+    'from its current status (no «ready» prerequisite)',
+    (tester) async {
+      final brandNew = Map<String, dynamic>.from(order)
+        ..['status'] = 'created'
+        ..['dispatchState'] = 'idle'
+        ..['companyId'] = 'click'
+        ..['companyName'] = 'Click Delivery'
+        ..['companyProvider'] = 'click_delivery_v1'
+        ..['actions'] = {
+          'edit': true,
+          'assign': true,
+          // The server offers dispatch from ANY internal status.
+          'dispatch': true,
+          'resolve': false,
+          'statuses': ['review', 'cancelled'],
+        };
+      VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+        if (name != 'getOrder') throw StateError(name);
+        return {'order': brandNew, 'events': <dynamic>[]};
+      });
+      await tester.pumpWidget(
+        app(LiveOrderDetail(id: order['id'] as String, policy: gm())),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('جديد'), findsWidgets);
+      // The individual send action is present even though the status is
+      // 'created' (not 'ready').
+      final send = find.widgetWithText(
+        OutlinedButton,
+        'إرسال إلى شركة التوصيل',
+      );
+      expect(send, findsOneWidget);
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+      // Tapping opens the send confirmation, not a real shipment.
+      expect(find.text('تأكيد الإرسال'), findsOneWidget);
+      expect(find.textContaining('من حالته الداخلية'), findsOneWidget);
+      await tester.tap(find.text('رجوع'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('an order without a carrier hides the individual send action', (
+    tester,
+  ) async {
+    final noCarrier = Map<String, dynamic>.from(order)
+      ..['status'] = 'created'
+      ..['companyId'] = null
+      ..['companyName'] = null
+      ..['actions'] = {
+        'edit': true,
+        'assign': true,
+        'dispatch': false,
+        'resolve': false,
+        'statuses': ['review', 'cancelled'],
+      };
+    VelnixGateway.instance = VelnixGateway.forTesting((name, _) async {
+      if (name != 'getOrder') throw StateError(name);
+      return {'order': noCarrier, 'events': <dynamic>[]};
+    });
+    await tester.pumpWidget(
+      app(LiveOrderDetail(id: order['id'] as String, policy: gm())),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.widgetWithText(OutlinedButton, 'إرسال إلى شركة التوصيل'),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 

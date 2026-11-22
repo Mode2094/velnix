@@ -2583,8 +2583,24 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         final stage = _stageInfo(o, state, dispatchState, actions);
 
         // One guided primary action; everything else is secondary or in the
-        // "اجراءات اخرى" menu. Assign/dispatch happen inside the journey.
+        // "اجراءات اخرى" menu. The guided journey also offers assign/dispatch.
+        //
+        // Req 1: sending to the carrier is offered INDIVIDUALLY from ANY
+        // internal status. The server exposes actions.dispatch whenever a
+        // carrier is assigned and no send is in flight / undetermined; it is
+        // NOT limited to 'ready'. The guided journey additionally surfaces it
+        // at the 'ready' step, while bulk send lives in the orders list.
         final secondary = <Widget>[];
+        if (actions['dispatch'] == true) {
+          final companyLabel = o['companyName']?.toString() ?? 'شركة التوصيل';
+          secondary.add(
+            _secondaryButton(
+              icon: Icons.send_outlined,
+              label: 'إرسال إلى شركة التوصيل',
+              onPressed: () => _dispatchOrder(companyLabel),
+            ),
+          );
+        }
         if (actions['edit'] == true) {
           secondary.add(
             _secondaryButton(
@@ -3438,6 +3454,34 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
         revision: revision,
       ),
     );
+  }
+
+  /// Sends ONE eligible order to its assigned carrier from its current
+  /// internal status (req 1 — individual send, no 'ready' prerequisite).
+  /// The server keeps the internal status untouched and guards duplicates.
+  Future<void> _dispatchOrder(String companyLabel) async {
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأكيد الإرسال'),
+        content: Text(
+          'سيتم إرسال هذا الطلب فعليًا إلى $companyLabel من حالته الداخلية '
+          'الحالية دون تغييرها. لا تُعد الإرسال إذا كان الطلب قيد المعالجة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('تأكيد'),
+          ),
+        ],
+      ),
+    );
+    if (approved != true) return;
+    await action(() => VelnixGateway.instance.dispatch(widget.id));
   }
 
   Future<void> _changeStatus(String target) async {
