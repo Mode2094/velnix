@@ -11,9 +11,17 @@ import 'order_printing.dart';
 /// server already included them for the signed-in user, so a bulk print can
 /// never leak a hidden amount.
 class BulkPrintScreen extends StatefulWidget {
-  const BulkPrintScreen({super.key, required this.orders, this.title});
+  const BulkPrintScreen({
+    super.key,
+    required this.orders,
+    this.title,
+    this.printedBy = '',
+  });
   final List<Map<String, dynamic>> orders;
   final String? title;
+
+  /// Name of the signed-in operator, printed as «تمت الطباعة بواسطة».
+  final String printedBy;
 
   /// Hard cap so a very large selection cannot exhaust memory. The caller warns
   /// the user when the selection exceeds this.
@@ -137,6 +145,7 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                             orders: orders,
                             format: format,
                             template: template,
+                            printedBy: widget.printedBy,
                           ),
                         );
                       }),
@@ -152,6 +161,7 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
                           orders: orders,
                           format: format,
                           template: template,
+                          printedBy: widget.printedBy,
                         );
                         await Printing.sharePdf(bytes: bytes, filename: name);
                       }),
@@ -174,6 +184,7 @@ class _BulkPrintScreenState extends State<BulkPrintScreen> {
         orders: orders,
         format: format,
         template: template,
+        printedBy: widget.printedBy,
       ),
       pdfFileName: name,
       onError: (context, error) => Center(

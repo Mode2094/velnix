@@ -1061,7 +1061,10 @@ class _LiveOrdersState extends State<LiveOrders> {
         await Navigator.push(
           context,
           MaterialPageRoute<void>(
-            builder: (_) => BulkPrintScreen(orders: merged),
+            builder: (_) => BulkPrintScreen(
+              orders: merged,
+              printedBy: widget.policy.name,
+            ),
           ),
         );
       }
@@ -3187,7 +3190,10 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                 Navigator.push(
                   context,
                   MaterialPageRoute<void>(
-                    builder: (_) => OrderPrintScreen(order: order),
+                    builder: (_) => OrderPrintScreen(
+                      order: order,
+                      printedBy: widget.policy.name,
+                    ),
                   ),
                 );
               } catch (e) {

@@ -123,6 +123,9 @@ class _PrintManagerScreenState extends State<PrintManagerScreen> {
   bool busy = false;
   String? error;
 
+  /// Display name of the signed-in operator, printed as «تمت الطباعة بواسطة».
+  String _printedBy = '';
+
   /// The batch currently shown. Starts as the one this window was opened for and
   /// changes when the operator switches to another incomplete batch in-place.
   late String _batchId;
@@ -189,8 +192,15 @@ class _PrintManagerScreenState extends State<PrintManagerScreen> {
             .where((id) => id != b.id)
             .toList();
       } catch (_) {}
+      // The operator who is printing this copy: printed on every voucher.
+      String printedBy = _printedBy;
+      try {
+        final member = await gateway.me();
+        printedBy = member['name']?.toString() ?? printedBy;
+      } catch (_) {}
       setState(() {
         batch = b;
+        _printedBy = printedBy;
         _ordersById
           ..clear()
           ..addEntries(fetched.map((o) => MapEntry(o['id'].toString(), o)));
@@ -278,6 +288,7 @@ class _PrintManagerScreenState extends State<PrintManagerScreen> {
           orders: orders,
           format: format,
           template: template,
+          printedBy: _printedBy,
         ),
       );
       // The dialog closing is NOT proof paper came out: record that the range
@@ -432,6 +443,7 @@ class _PrintManagerScreenState extends State<PrintManagerScreen> {
           orders: orders,
           format: format,
           template: template,
+          printedBy: _printedBy,
         ),
       );
       final res = await gateway.updatePrintBatch(

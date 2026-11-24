@@ -850,6 +850,7 @@ class OrderDetailScreen extends StatelessWidget {
                         context,
                         MaterialPageRoute<void>(
                           builder: (_) => OrderPrintScreen(
+                            printedBy: store.me.name,
                             order: {
                               'id': order.id,
                               'barcodeValue': 'VNX-${order.id}',
@@ -865,6 +866,7 @@ class OrderDetailScreen extends StatelessWidget {
                               'note': order.note,
                               'status': order.status.name,
                               'trackingNumber': order.trackingNumber,
+                              'createdByName': order.createdByName,
                               if (store.canSeeAmount(order))
                                 'amount': order.amount,
                             },

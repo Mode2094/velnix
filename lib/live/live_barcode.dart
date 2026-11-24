@@ -344,7 +344,10 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute<void>(
-          builder: (_) => BulkPrintScreen(orders: merged),
+          builder: (_) => BulkPrintScreen(
+            orders: merged,
+            printedBy: widget.policy.name,
+          ),
         ),
       );
     } catch (e) {

@@ -140,6 +140,30 @@ extension OrderTemplateFormat on OrderTemplate {
   };
 }
 
+/// One label/value pair printed on a voucher. Building the voucher from an
+/// ordered list of these keeps portrait and landscape copies identical — the
+/// root cause of missing fields when the page was laid out differently per
+/// orientation.
+@immutable
+class InvoiceField {
+  const InvoiceField(
+    this.label,
+    this.value, {
+    this.flow = false,
+    this.thermalMax = 0,
+    this.normalMax = 0,
+  });
+
+  final String label;
+  final String value;
+
+  /// Free text: bounded (with an explicit ellipsis) rather than dropped, so a
+  /// very long value can never push the layout past the page edge.
+  final bool flow;
+  final int thermalMax;
+  final int normalMax;
+}
+
 class OrderInvoicePdf {
   OrderInvoicePdf._();
 
@@ -147,6 +171,7 @@ class OrderInvoicePdf {
     required Map<String, dynamic> order,
     required PdfPageFormat format,
     OrderTemplate template = OrderTemplate.professional,
+    String printedBy = '',
   }) async {
     final font = pw.Font.ttf(
       await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
@@ -159,7 +184,7 @@ class OrderInvoicePdf {
       author: 'Velnix Smart Order Management',
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
-    pdf.addPage(_orderPage(order, font, bold, format, template));
+    pdf.addPage(_orderPage(order, font, bold, format, template, printedBy));
     return pdf.save();
   }
 
@@ -172,6 +197,7 @@ class OrderInvoicePdf {
     required PdfPageFormat format,
     OrderTemplate template = OrderTemplate.professional,
     int maxOrders = 100,
+    String printedBy = '',
   }) async {
     if (orders.isEmpty) throw const FormatException('لا توجد طلبات للطباعة');
     final limited = orders.take(maxOrders).toList();
@@ -187,7 +213,7 @@ class OrderInvoicePdf {
       theme: pw.ThemeData.withFont(base: font, bold: bold),
     );
     for (final order in limited) {
-      pdf.addPage(_orderPage(order, font, bold, format, template));
+      pdf.addPage(_orderPage(order, font, bold, format, template, printedBy));
     }
     return pdf.save();
   }
@@ -206,20 +232,152 @@ class OrderInvoicePdf {
     }
   }
 
-  static pw.Page _orderPage(
-    Map<String, dynamic> order,
-    pw.Font font,
-    pw.Font bold,
+  /// The label/value pairs printed on a voucher, in the exact order they appear.
+  /// This is the single source of truth for the voucher content, so a portrait
+  /// and a landscape copy always carry EXACTLY the same fields — switching the
+  /// orientation can never drop, reorder or clip information.
+  @visibleForTesting
+  static List<InvoiceField> recipientFields(Map<String, dynamic> order) => [
+    InvoiceField('المستلم', _text(order['customer'])),
+    InvoiceField('الهاتف', _text(order['phone'])),
+    if (_text(order['extraPhone']).isNotEmpty)
+      InvoiceField('هاتف إضافي', _text(order['extraPhone'])),
+    InvoiceField('المحافظة', _text(order['city'])),
+    InvoiceField('المنطقة', _text(order['area'])),
+    if (_text(order['address']).isNotEmpty)
+      InvoiceField(
+        'العنوان',
+        _text(order['address']),
+        flow: true,
+        thermalMax: 160,
+        normalMax: 320,
+      ),
+  ];
+
+  /// The contents / financial block. The amount is present only when the server
+  /// already released it for this user, so a print can never leak a hidden one.
+  @visibleForTesting
+  static List<InvoiceField> contentFields(Map<String, dynamic> order) {
+    final amount = order['amount'];
+    return [
+      InvoiceField(
+        'وصف المحتويات',
+        _text(order['description']),
+        flow: true,
+        thermalMax: 320,
+        normalMax: 900,
+      ),
+      InvoiceField('الكمية', _text(order['quantity'])),
+      InvoiceField('طريقة الدفع', _text(order['paymentMethod'])),
+      if (_text(order['companyName']).isNotEmpty)
+        InvoiceField('شركة التوصيل', _text(order['companyName'])),
+      if (amount is num)
+        InvoiceField('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
+      if (_text(order['trackingNumber']).isNotEmpty)
+        InvoiceField('رقم تتبع الشحنة', _text(order['trackingNumber'])),
+      if (_text(order['clickOrderRef']).isNotEmpty)
+        InvoiceField('مرجع الشحنة', _text(order['clickOrderRef'])),
+      if (_text(order['note']).isNotEmpty)
+        InvoiceField(
+          'ملاحظات',
+          _text(order['note']),
+          flow: true,
+          thermalMax: 220,
+          normalMax: 600,
+        ),
+    ];
+  }
+
+  /// Creator and the operator who printed THIS copy — official voucher data,
+  /// always printed (never only shown in the UI).
+  @visibleForTesting
+  static List<InvoiceField> metaFields(
+    Map<String, dynamic> order, {
+    String printedBy = '',
+  }) {
+    final creator = _text(order['createdByName']).isNotEmpty
+        ? _text(order['createdByName'])
+        : _text(order['createdBy']);
+    return [
+      InvoiceField('المنشئ', creator),
+      InvoiceField('تمت الطباعة بواسطة', printedBy),
+    ];
+  }
+
+  static String _text(dynamic value) => value?.toString().trim() ?? '';
+
+  /// Builds the single voucher page object for [order]. Exposed so tests can
+  /// measure that the content really fits the printable box in both
+  /// orientations, without going through the platform `Printing` channel.
+  @visibleForTesting
+  static Future<pw.Page> buildPage({
+    required Map<String, dynamic> order,
+    required PdfPageFormat format,
+    OrderTemplate template = OrderTemplate.professional,
+    String printedBy = '',
+  }) async {
+    final font = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
+    );
+    final bold = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
+    );
+    return _orderPage(order, font, bold, format, template, printedBy);
+  }
+
+  /// Loads the Cairo fonts and returns the raw [voucherBody], so a test can lay
+  /// it out under the printable constraints and measure its height.
+  @visibleForTesting
+  static Future<pw.Widget> buildBody({
+    required Map<String, dynamic> order,
+    required PdfPageFormat format,
+    OrderTemplate template = OrderTemplate.professional,
+    String printedBy = '',
+  }) async {
+    final font = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
+    );
+    final bold = pw.Font.ttf(
+      await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
+    );
+    return voucherBody(
+      order: order,
+      font: font,
+      bold: bold,
+      format: format,
+      template: template,
+      printedBy: printedBy,
+    );
+  }
+
+  /// Printer margins for [format] under [template] (also used by tests).
+  @visibleForTesting
+  static ({double horizontal, double vertical}) marginsFor(
     PdfPageFormat format,
     OrderTemplate template,
-  ) {
+  ) => _marginsFor(format, template);
+
+  /// The voucher content for ONE order, without the page frame.
+  ///
+  /// Portrait and landscape both build from the same ordered field lists
+  /// ([recipientFields], [contentFields], [metaFields]), so switching the
+  /// orientation can never drop, reorder or duplicate a field. Exposed so a
+  /// test can lay it out and prove it fits the printable box in both
+  /// orientations, which is exactly what used to fail.
+  @visibleForTesting
+  static pw.Widget voucherBody({
+    required Map<String, dynamic> order,
+    required pw.Font font,
+    required pw.Font bold,
+    required PdfPageFormat format,
+    OrderTemplate template = OrderTemplate.professional,
+    String printedBy = '',
+  }) {
     final narrow = format.width < 100 * PdfPageFormat.mm;
     final thermal = template == OrderTemplate.thermal || narrow;
-    final horizontalMargin = (thermal ? 3 : 12) * PdfPageFormat.mm;
-    final verticalMargin = (thermal ? 3 : 11) * PdfPageFormat.mm;
+    final horizontalMargin = _marginsFor(format, template).horizontal;
     final id = order['id']?.toString() ?? '';
     final barcode = orderBarcode(order);
-    final amount = order['amount']; // absent/null means server hid this field.
     final timestamp = DateTime.tryParse(order['createdAt']?.toString() ?? '');
     final created = timestamp == null ? null : businessTime(timestamp);
     final date = created == null
@@ -424,70 +582,139 @@ class OrderInvoicePdf {
       ),
     );
 
-    // Exactly ONE physical page per order: a single Page (never MultiPage), so
-    // a batch of N orders always yields N pages, independent of content length.
-    // The content is NOT scaled: instead the few free-text fields are bounded to
-    // their printable line budget (with a clear ellipsis when exceeded), so all
-    // critical fields and the barcode keep their full, scannable size.
+    // ---- Field widgets, driven by the shared field list ----
+    // `field` renders one label/value pair; the exact same ordered fields are
+    // used in every orientation, so portrait <-> landscape can never drop or
+    // reorder information.
+    pw.Widget field(InvoiceField f) => f.flow
+        ? flowRow(
+            f.label,
+            _bounded(f.value, thermal ? f.thermalMax : f.normalMax),
+          )
+        : row(f.label, f.value);
+    final recipientBlock = recipientFields(order).map(field).toList();
+    final contentBlock = contentFields(order).map(field).toList();
+    final metaBlock = metaFields(order, printedBy: printedBy).map(field).toList();
+
+    // Landscape pages are SHORTER but wider, so the same single column would run
+    // past the bottom edge. Using the extra width for two columns keeps every
+    // field at full size instead of being clipped.
+    final twoColumn = !thermal && format.width > format.height;
+    final fields = twoColumn
+        ? pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: recipientBlock,
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                  mainAxisSize: pw.MainAxisSize.min,
+                  children: contentBlock,
+                ),
+              ),
+            ],
+          )
+        : pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            mainAxisSize: pw.MainAxisSize.min,
+            children: [
+              ...recipientBlock,
+              pw.SizedBox(height: thermal ? 4 : 8),
+              pw.Divider(color: PdfColors.grey400),
+              ...contentBlock,
+            ],
+          );
+
+    final body = pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        header,
+        pw.SizedBox(height: thermal ? 5 : 9),
+        fields,
+        pw.SizedBox(height: thermal ? 6 : 10),
+        // ---- Creator / operator: official voucher data, always printed ----
+        ...metaBlock,
+        pw.SizedBox(height: thermal ? 6 : 10),
+        // ---- Footer ----
+        if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
+          flowRow(
+            'معلومات المؤسسة',
+            _bounded(order['receiptFooter'], thermal ? 160 : 400),
+          ),
+        pw.Text(
+          'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
+          style: pw.TextStyle(
+            font: font,
+            fontSize: thermal ? 5.5 : 7,
+            color: PdfColors.grey700,
+          ),
+          textAlign: pw.TextAlign.center,
+        ),
+      ],
+    );
+
+    return body;
+  }
+
+  /// Printer margins for [format] under [template]: thermal (or narrow) paper
+  /// uses a tight margin, full-size paper a comfortable one.
+  static ({double horizontal, double vertical}) _marginsFor(
+    PdfPageFormat format,
+    OrderTemplate template,
+  ) {
+    final narrow = format.width < 100 * PdfPageFormat.mm;
+    final thermal = template == OrderTemplate.thermal || narrow;
+    return (
+      horizontal: (thermal ? 3 : 12) * PdfPageFormat.mm,
+      vertical: (thermal ? 3 : 11) * PdfPageFormat.mm,
+    );
+  }
+
+  /// Wraps [voucherBody] in the single physical page. Exactly ONE page per
+  /// order — and never a clipped one: the voucher is uniformly scaled down by
+  /// the smallest amount needed to fit the printable box (a no-op when it
+  /// already fits), so no field can fall outside the page edge in either
+  /// orientation. A batch of N orders still yields N pages.
+  static pw.Page _orderPage(
+    Map<String, dynamic> order,
+    pw.Font font,
+    pw.Font bold,
+    PdfPageFormat format,
+    OrderTemplate template,
+    String printedBy,
+  ) {
+    final margins = _marginsFor(format, template);
+    final printedWidth = format.width - margins.horizontal * 2;
     return pw.Page(
       pageFormat: format,
       margin: pw.EdgeInsets.fromLTRB(
-        horizontalMargin,
-        verticalMargin,
-        horizontalMargin,
-        verticalMargin,
+        margins.horizontal,
+        margins.vertical,
+        margins.horizontal,
+        margins.vertical,
       ),
       textDirection: pw.TextDirection.rtl,
-      build: (_) => pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        mainAxisSize: pw.MainAxisSize.min,
-        children: [
-          header,
-          pw.SizedBox(height: thermal ? 5 : 9),
-          // ---- Recipient / destination ----
-          row('المستلم', order['customer']),
-          row('الهاتف', order['phone']),
-          if ((order['extraPhone']?.toString() ?? '').isNotEmpty)
-            row('هاتف إضافي', order['extraPhone']),
-          row('المحافظة', order['city']),
-          row('المنطقة', order['area']),
-          if ((order['address']?.toString() ?? '').isNotEmpty)
-            flowRow('العنوان', _bounded(order['address'], thermal ? 160 : 320)),
-          pw.SizedBox(height: thermal ? 4 : 8),
-          pw.Divider(color: PdfColors.grey400),
-          // ---- Contents / financial ----
-          flowRow(
-            'وصف المحتويات',
-            _bounded(order['description'], thermal ? 320 : 900),
+      build: (_) => pw.FittedBox(
+        fit: pw.BoxFit.scaleDown,
+        child: pw.SizedBox(
+          width: printedWidth,
+          child: voucherBody(
+            order: order,
+            font: font,
+            bold: bold,
+            format: format,
+            template: template,
+            printedBy: printedBy,
           ),
-          row('الكمية', order['quantity']),
-          row('طريقة الدفع', order['paymentMethod']),
-          if ((order['companyName']?.toString() ?? '').isNotEmpty)
-            row('شركة التوصيل', order['companyName']),
-          if (amount is num) row('المبلغ', '${amount.toStringAsFixed(3)} د.أ'),
-          if ((order['trackingNumber']?.toString() ?? '').isNotEmpty)
-            row('رقم تتبع الشحنة', order['trackingNumber']),
-          if ((order['clickOrderRef']?.toString() ?? '').isNotEmpty)
-            row('مرجع الشحنة', order['clickOrderRef']),
-          if ((order['note']?.toString() ?? '').isNotEmpty)
-            flowRow('ملاحظات', _bounded(order['note'], thermal ? 220 : 600)),
-          pw.SizedBox(height: thermal ? 6 : 10),
-          // ---- Footer ----
-          if ((order['receiptFooter']?.toString() ?? '').isNotEmpty)
-            flowRow(
-              'معلومات المؤسسة',
-              _bounded(order['receiptFooter'], thermal ? 160 : 400),
-            ),
-          pw.Text(
-            'هذا المستند سجل طلب ولا يُعد فاتورة ضريبية ما لم تُستوفَ متطلبات الفوترة المعمول بها.',
-            style: pw.TextStyle(
-              font: font,
-              fontSize: thermal ? 5.5 : 7,
-              color: PdfColors.grey700,
-            ),
-            textAlign: pw.TextAlign.center,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -505,8 +732,16 @@ class OrderInvoicePdf {
 /// Works in Android, iOS, web and desktop printing supported by `printing`.
 /// A preview remains available even if a printer is not installed.
 class OrderPrintScreen extends StatefulWidget {
-  const OrderPrintScreen({super.key, required this.order});
+  const OrderPrintScreen({
+    super.key,
+    required this.order,
+    this.printedBy = '',
+  });
   final Map<String, dynamic> order;
+
+  /// Name of the signed-in operator, printed as «تمت الطباعة بواسطة».
+  final String printedBy;
+
   @override
   State<OrderPrintScreen> createState() => _OrderPrintScreenState();
 }
@@ -666,6 +901,7 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
                                 order: order,
                                 format: format,
                                 template: template,
+                                printedBy: widget.printedBy,
                               ),
                             );
                           }),
@@ -681,6 +917,7 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
                               order: order,
                               format: currentFormat,
                               template: template,
+                              printedBy: widget.printedBy,
                             );
                             await Printing.sharePdf(
                               bytes: bytes,
@@ -708,6 +945,7 @@ class _OrderPrintScreenState extends State<OrderPrintScreen> {
                 order: order,
                 format: format,
                 template: template,
+                printedBy: widget.printedBy,
               ),
               pdfFileName: 'Velnix-$id.pdf',
               onError: (context, error) => Center(
