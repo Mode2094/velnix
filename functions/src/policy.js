@@ -197,6 +197,33 @@ function internalStatusOf(order) {
   if (INTERNAL_CORRECTION_STATUSES.includes(order.status)) return order.status;
   return null;
 }
+// Manual internal delivery confirmation (the accounting step). «تم التسليم»
+// is an internal, accounting decision taken by a human after reviewing the
+// delivery company's statement; it is NEVER derived from a carrier status
+// change. These bounds guard the optional statement reference, note and
+// financial difference an operator may attach. Every field is optional, and a
+// missing/invalid value is rejected rather than silently dropped.
+const DELIVERY_CONFIRMATION_SOURCE = 'internal_review';
+const MAX_STATEMENT_REF = 80;
+const MAX_CONFIRMATION_NOTE = 300;
+// Money is stored in thousandths (order_view exposes amountMinor/1000). The
+// difference is bounded so a typo can never store an absurd number.
+const MAX_DIFFERENCE_MINOR = 1e11;
+function validateDeliveryConfirmation(meta) {
+  const source = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  const statementRef = typeof source.statementRef === 'string' ? source.statementRef.trim() : '';
+  if (statementRef.length > MAX_STATEMENT_REF) throw new Error('invalid_statement_ref');
+  const note = typeof source.note === 'string' ? source.note.trim() : '';
+  if (note.length > MAX_CONFIRMATION_NOTE) throw new Error('invalid_confirmation_note');
+  let differenceMinor = null;
+  const raw = source.differenceMinor;
+  if (raw !== undefined && raw !== null && raw !== '') {
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isSafeInteger(n) || Math.abs(n) > MAX_DIFFERENCE_MINOR) throw new Error('invalid_difference');
+    differenceMinor = n;
+  }
+  return {statementRef, note, differenceMinor};
+}
 function canResolveDispatch(order, now=Date.now()) {
   // Dispatch may start from ANY internal status, so an uncertain/in-flight send
   // is resolvable regardless of the internal status (no 'ready' requirement).
@@ -207,4 +234,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus,internalStatusOf};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus,internalStatusOf,DELIVERY_CONFIRMATION_SOURCE,validateDeliveryConfirmation,MAX_STATEMENT_REF,MAX_CONFIRMATION_NOTE,MAX_DIFFERENCE_MINOR};

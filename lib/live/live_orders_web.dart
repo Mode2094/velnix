@@ -425,6 +425,18 @@ class _WebOrdersView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               OutlinedButton.icon(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => _CarrierReconciliationDialog(
+                    rows: state.rows,
+                    companyNames: state.webCompanyNames,
+                  ),
+                ),
+                icon: const Icon(Icons.rule_folder_outlined, size: 18),
+                label: const Text('مطابقة كشوف الشركة'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
                 onPressed: state.busy
                     ? null
                     : () => state.load(reset: true, fresh: true),
@@ -748,6 +760,14 @@ class _WebOrdersView extends StatelessWidget {
                   : state._bulkChangeStatus,
               icon: const Icon(Icons.sync_alt, size: 18),
               label: const Text('تغيير الحالة'),
+            ),
+          if (canManage)
+            FilledButton.tonalIcon(
+              onPressed: state.selected.isEmpty || state.bulkBusy
+                  ? null
+                  : state._confirmDelivery,
+              icon: const Icon(Icons.verified_outlined, size: 18),
+              label: const Text('تأكيد التسليم (محاسبي)'),
             ),
           if (canSend)
             OutlinedButton.icon(
@@ -1177,5 +1197,253 @@ class _WebPeriodDialogState extends State<_WebPeriodDialog> {
         child: const Text('تطبيق'),
       ),
     ],
+  );
+}
+
+/// Web-only statement-review confirmation for «تم التسليم». Collects the optional
+/// statement reference, note and financial difference (in JOD); the server adds
+/// the confirmer and time. Returns null when cancelled.
+class _DeliveryConfirmationDialog extends StatefulWidget {
+  const _DeliveryConfirmationDialog({required this.count});
+  final int count;
+  @override
+  State<_DeliveryConfirmationDialog> createState() =>
+      _DeliveryConfirmationDialogState();
+}
+
+class _DeliveryConfirmationDialogState
+    extends State<_DeliveryConfirmationDialog> {
+  final _statementRef = TextEditingController();
+  final _note = TextEditingController();
+  final _difference = TextEditingController();
+
+  @override
+  void dispose() {
+    _statementRef.dispose();
+    _note.dispose();
+    _difference.dispose();
+    super.dispose();
+  }
+
+  int? _differenceMinor() {
+    final raw = _difference.text.trim().replaceAll(',', '');
+    if (raw.isEmpty) return null;
+    final value = double.tryParse(raw);
+    if (value == null || !value.isFinite) return null;
+    return (value * 1000).round();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('تأكيد تسليم ${widget.count} طلب محاسبيًا'),
+    content: SizedBox(
+      width: 460,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'تأكيد داخلي محاسبي: استلمتَ كشف شركة التوصيل وراجعته. لا يُغيَّر '
+              'أي حالة شحنة أو إرسال، ولا يعني تلقائيًا قبض المبلغ؛ القبض '
+              'يُعتمد فقط إن أكّدته صراحةً. الحقول التالية اختيارية ويُسجَّل '
+              'مَن أكّد ومتى.',
+              style: TextStyle(fontSize: 12.5, color: VColors.muted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _statementRef,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                labelText: 'مرجع كشف الشركة (اختياري)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _note,
+              maxLength: 300,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظة (اختياري)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _difference,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+                signed: true,
+              ),
+              decoration: const InputDecoration(
+                labelText:
+                    'فرق مالي عن الكشف (اختياري، بالدينار؛ قد يكون سالباً)',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('إلغاء'),
+      ),
+      FilledButton.icon(
+        onPressed: () => Navigator.pop(context, <String, dynamic>{
+          if (_statementRef.text.trim().isNotEmpty)
+            'statementRef': _statementRef.text.trim(),
+          if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
+          if (_differenceMinor() != null) 'differenceMinor': _differenceMinor(),
+        }),
+        icon: const Icon(Icons.verified, size: 18),
+        label: const Text('تأكيد التسليم'),
+      ),
+    ],
+  );
+}
+
+/// Web-only, read-only carrier-statement reconciliation over the currently loaded
+/// orders. It compares the carrier's own confirmed state against the internal
+/// accounting confirmation using ONLY existing fields, and never treats a
+/// shipping-status change as settlement or proof of cash.
+class _CarrierReconciliationDialog extends StatelessWidget {
+  const _CarrierReconciliationDialog({
+    required this.rows,
+    required this.companyNames,
+  });
+  final List<Map<String, dynamic>> rows;
+  final Map<String, String> companyNames;
+
+  static const _carrierDelivered = {'delivered', 'partiallyDelivered'};
+
+  static bool _carrierSaysDelivered(Map<String, dynamic> o) =>
+      _carrierDelivered.contains(o['shippingStatus']?.toString());
+
+  static bool _internallyConfirmed(Map<String, dynamic> o) =>
+      (o['internalStatus'] ?? o['status'])?.toString() == 'delivered';
+
+  static double _amount(Map<String, dynamic> o) {
+    final a = o['amount'];
+    return a is num ? a.toDouble() : 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final carrier = rows.where(_carrierSaysDelivered).toList();
+    final matched = carrier.where(_internallyConfirmed).toList();
+    final unmatched = carrier.where((o) => !_internallyConfirmed(o)).toList();
+    final needsReview = rows
+        .where((o) => o['dispatchState']?.toString() == 'needs_review')
+        .toList();
+    final due = carrier.fold<double>(0, (acc, o) => acc + _amount(o));
+    final confirmedAmount = matched.fold<double>(
+      0,
+      (acc, o) => acc + _amount(o),
+    );
+    var differenceTotal = 0.0;
+    var differenceKnown = false;
+    for (final o in rows) {
+      final c = o['internalCompletion'];
+      if (c is Map && c['differenceMinor'] is int) {
+        differenceTotal += (c['differenceMinor'] as int) / 1000;
+        differenceKnown = true;
+      }
+    }
+    return AlertDialog(
+      title: const Text('مطابقة كشوف شركة التوصيل'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'مقارنة بين ما أكّدته شركة التوصيل وما تم تأكيده محاسبيًا داخل '
+                'Velnix. تغيير حالة الشحنة وحده لا يُعتبر تسوية ولا إثبات قبض؛ '
+                'التأكيد المحاسبي إجراء بشري منفصل.',
+                style: TextStyle(fontSize: 12.5, color: VColors.muted),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'يشمل ${rows.length} طلباً محمّلاً حالياً حسب الفلاتر المطبّقة.',
+                style: const TextStyle(fontSize: 11.5, color: VColors.muted),
+              ),
+              const SizedBox(height: 14),
+              _row(
+                'مؤكدة من الشركة (تم التسليم/تسليم جزئي)',
+                '${carrier.length}',
+              ),
+              _row('منها مؤكدة محاسبيًا داخليًا', '${matched.length}'),
+              _row(
+                'غير مطابقة — بحاجة تأكيد محاسبي',
+                '${unmatched.length}',
+                strong: unmatched.isNotEmpty,
+              ),
+              _row(
+                'قيد مراجعة الإرسال (نتيجة غير مؤكدة)',
+                '${needsReview.length}',
+              ),
+              const Divider(height: 22),
+              _row('إجمالي المستحق حسب الشركة (المبالغ المتاحة)', _money(due)),
+              _row('إجمالي المؤكد محاسبيًا', _money(confirmedAmount)),
+              _row(
+                'مجموع الفروقات المسجلة (تأكيد محاسبي)',
+                differenceKnown ? _money(differenceTotal) : '—',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'المبالغ تظهر فقط لمن لديه صلاحية عرض المبالغ؛ وإن كانت مخفية '
+                'تبقى العدّادات صحيحة.',
+                style: TextStyle(fontSize: 11, color: VColors.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إغلاق'),
+        ),
+      ],
+    );
+  }
+
+  static String _money(double v) {
+    final s = v.toStringAsFixed(3);
+    return s.endsWith('.000') ? s.substring(0, s.length - 4) : s;
+  }
+
+  Widget _row(String label, String value, {bool strong = false}) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
+              color: strong ? const Color(0xFFB52B3F) : VColors.ink,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: strong ? const Color(0xFFB52B3F) : VColors.ink,
+          ),
+        ),
+      ],
+    ),
   );
 }

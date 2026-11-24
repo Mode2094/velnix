@@ -108,6 +108,9 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     // Only the internal vocabulary is accepted here. Carrier/dispatch states are
     // never a bulk internal target (they are driven by the delivery flow).
     if(!INTERNAL_TARGETS.includes(target))fail('invalid-argument','حالة غير صالحة');
+    // Optional accounting confirmation for «تم التسليم» (validated in the shared
+    // internal-status flow; ignored for any other target).
+    const confirmation=req.data?.confirmation;
     const results=[];
     for(const id of ids){
       try{
@@ -115,7 +118,7 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
         if(!ref){results.push({id,ok:false,code:'permission-denied'});continue;}
         // Unrestricted internal transition: any internal status from any other.
         // Same-status is an idempotent no-op, reported as unchanged.
-        const outcome=await applyInternalStatusChange(ref,user,target);
+        const outcome=await applyInternalStatusChange(ref,user,target,confirmation);
         if(outcome&&outcome.changed===false){results.push({id,ok:true,unchanged:true});continue;}
         results.push({id,ok:true});
       }catch(e){results.push({id,ok:false,code:e?.code||'failed-precondition',message:typeof e?.message==='string'?e.message.slice(0,200):''});}

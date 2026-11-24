@@ -12,7 +12,7 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason,INTERNAL_CORRECTION_STATUSES,internalStatusOf}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason,INTERNAL_CORRECTION_STATUSES,internalStatusOf,validateDeliveryConfirmation,DELIVERY_CONFIRMATION_SOURCE}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
 const {providerFor,requireOperationalProvider}=require('./providers');
@@ -183,7 +183,15 @@ async function applyStatusChange(ref,user,target){
 // internal status is a separate field (internalStatus, mirrored in status) and
 // editing it NEVER touches the carrier lifecycle (dispatchState, shippingStatus,
 // tracking, Click refs, company, hasDelivery). A same-status change is a no-op.
-async function applyInternalStatusChange(ref,user,target){
+async function applyInternalStatusChange(ref,user,target,meta){
+  // The optional accounting confirmation (statement reference / note / financial
+  // difference) is validated BEFORE the transaction so a malformed value fails
+  // the whole call without writing a half-confirmed order. It is only meaningful
+  // for «تم التسليم» (delivered); every other target ignores it.
+  let confirmation=null;
+  if(target==='delivered'){
+    try{confirmation=validateDeliveryConfirmation(meta);}catch(e){firebaseError(e);}
+  }
   return db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);
@@ -206,10 +214,29 @@ async function applyInternalStatusChange(ref,user,target){
       : (target==='delivered'
           ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
           : (currentInternal==='delivered'?{completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()}:{}));
-    tx.update(ref,{status:target,internalStatus:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    const detail={status:target,previous:currentInternal,...(target==='delivered'&&!hasCarrier?{completionSource:'internal'}:{})};
-    await addEvent(ref.id,'status_changed',user,detail,tx);
-    await audit('order.status_changed',user,ref.id,detail,tx);
+    // `internalCompletion` is the durable, audited proof of the MANUAL accounting
+    // confirmation. It is written only by a human internal status change and is
+    // never touched by any carrier/dispatch path, so a carrier update can never
+    // auto-confirm «تم التسليم». Reopening the order removes it; history stays in
+    // the events/audit subcollections.
+    const reconciliation=target==='delivered'
+      ? {internalCompletion:{source:DELIVERY_CONFIRMATION_SOURCE,confirmedBy:user.id,confirmedByName:user.name||'',confirmedAt:FieldValue.serverTimestamp(),
+          ...(confirmation.statementRef?{statementRef:confirmation.statementRef}:{}),
+          ...(confirmation.note?{note:confirmation.note}:{}),
+          ...(confirmation.differenceMinor!==null?{differenceMinor:confirmation.differenceMinor}:{})}}
+      : (currentInternal==='delivered'?{internalCompletion:FieldValue.delete()}:{});
+    tx.update(ref,{status:target,internalStatus:target,...completion,...reconciliation,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    const detail={status:target,previous:currentInternal};
+    if(target==='delivered'){
+      detail.confirmedBy=user.id;
+      if(confirmation.statementRef)detail.statementRef=confirmation.statementRef;
+      if(confirmation.note)detail.note=confirmation.note;
+      if(confirmation.differenceMinor!==null)detail.differenceMinor=confirmation.differenceMinor;
+      if(!hasCarrier)detail.completionSource='internal';
+    }
+    const action=target==='delivered'?'internal_delivery_confirmed':'status_changed';
+    await addEvent(ref.id,action,user,detail,tx);
+    await audit('order.'+action,user,ref.id,detail,tx);
     return {ok:true,changed:true};
   });
 }
@@ -235,7 +262,7 @@ async function applyCompanyAssignment(ref,user,id){
 }
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_shipping_status:'اختر حالة شحنة صحيحة من حالات شركة التوصيل',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_shipping_status:'اختر حالة شحنة صحيحة من حالات شركة التوصيل',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_statement_ref:'مرجع كشف الشركة طويل جداً (الحد 80 حرفاً)',invalid_confirmation_note:'ملاحظة التأكيد المحاسبي طويلة جداً (الحد 300 حرف)',invalid_difference:'الفرق المالي غير صالح',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -786,6 +813,17 @@ exports.correctOrderStatus=callable(async req=>{
     await audit('order.status_corrected',user,ref.id,detail,tx);
   });
   return {ok:true};
+});
+// Manual internal «تم التسليم» confirmation (accounting). It is the same
+// internal-status change flow as the bulk operation, so it can never touch a
+// carrier shipment; it additionally records the optional statement reference,
+// note and financial difference and an audit entry naming the confirmer. It is
+// offered from «جميع طلبات المتجر» و«طلبات شركة التوصيل» without mixing with any
+// shipping status.
+exports.confirmOrderDelivery=callable(async req=>{
+  const user=await requireAuth(req);
+  const {ref}=await oneOrder(user,req.data?.id);
+  return applyInternalStatusChange(ref,user,'delivered',req.data?.confirmation);
 });
 exports.assignCompany=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'sendToDelivery');const {ref}=await oneOrder(user,req.data?.id);

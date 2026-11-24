@@ -13,13 +13,25 @@ function publicOrder(d) {
     clickOrderRef:o.clickOrderRef||null,clickClientSerial:o.clickClientSerial||null,clickStatusRaw:o.clickStatusRaw||null,clickStatusDate:o.clickStatusDate||null,
     clickStatusNote:o.clickStatusNote||null,clickAmounts:o.clickAmounts||null,shippingStatus:shippingStatus(o.shippingStatus),shippingStatusSource:o.shippingStatusSource||null,shippingStatusUpdatedAt:safeDate(o.shippingStatusUpdatedAt),
     clickStatusVerified:o.clickStatusVerified===true||isApiConfirmed(o.shippingStatus),shippingStatusIsException:isExceptionStatus(o.shippingStatus),completionSource:o.completionSource||null,
+    // Manual accounting confirmation of «تم التسليم» (who/when + optional
+    // statement reference, note and financial difference). Never derived from a
+    // carrier status; null when the order was not manually confirmed.
+    internalCompletion:o.internalCompletion&&typeof o.internalCompletion==='object'
+      ? {source:o.internalCompletion.source||'internal_review',confirmedBy:o.internalCompletion.confirmedBy||null,
+        confirmedByName:o.internalCompletion.confirmedByName||'',confirmedAt:safeDate(o.internalCompletion.confirmedAt),
+        statementRef:o.internalCompletion.statementRef||null,note:o.internalCompletion.note||null,
+        differenceMinor:Number.isSafeInteger(o.internalCompletion.differenceMinor)?o.internalCompletion.differenceMinor:null}
+      : null,
     syncError:o.syncError||null,lastSyncAt:safeDate(o.lastSyncAt),lastSyncAttemptAt:safeDate(o.lastSyncAttemptAt),dispatchState:o.dispatchState||'idle',revision:o.revision||0,
     createdAt:safeDate(o.createdAt),updatedAt:safeDate(o.updatedAt)};
 }
 function orderForUser(user,d) {
   const source=d.data();
   const data=publicOrder(d);
-  if(!can(user,'viewAmounts') && source.createdBy!==user.id){delete data.amount;delete data.clickAmounts;}
+  if(!can(user,'viewAmounts') && source.createdBy!==user.id){delete data.amount;delete data.clickAmounts;
+    // The recorded financial difference is an amount too: hide it for callers
+    // who may not see amounts, keeping the statement reference/note visible.
+    if(data.internalCompletion)delete data.internalCompletion.differenceMinor;}
   const internal=require('./policy').internalStatusOf(source);
   // Dispatch is offered from ANY internal status once a company is assigned and
   // no send is in flight/undetermined. It is not limited to 'ready'.

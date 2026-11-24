@@ -178,14 +178,37 @@ class VelnixGateway {
 
   Future<Map<String, dynamic>> bulkChangeStatus(
     List<String> ids,
-    String status,
-  ) async {
+    String status, {
+    Map<String, dynamic>? confirmation,
+  }) async {
     final result = await call('bulkChangeStatus', {
       'ids': ids,
       'status': status,
+      'confirmation': ?confirmation,
     });
     _invalidateOrderData();
     return result;
+  }
+
+  /// Manual internal «تم التسليم» confirmation (accounting). Records who/when and
+  /// the optional statement reference, note and financial difference (in
+  /// thousandths, like `amountMinor`). It never touches the carrier shipment:
+  /// shipping status, dispatchState and deliveryAccepted stay independent.
+  Future<void> confirmOrderDelivery(
+    String id, {
+    String? statementRef,
+    String? note,
+    int? differenceMinor,
+  }) async {
+    await call('confirmOrderDelivery', {
+      'id': id,
+      'confirmation': {
+        'statementRef': ?statementRef,
+        'note': ?note,
+        'differenceMinor': ?differenceMinor,
+      },
+    });
+    _invalidateOrderData();
   }
 
   Future<Map<String, dynamic>> bulkAssignCompany(

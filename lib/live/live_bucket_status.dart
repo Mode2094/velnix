@@ -159,8 +159,22 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
     final bucket = Map<String, dynamic>.from(
       counters[widget.bucket] as Map? ?? {},
     );
+    // Web-only: the internal section shows ONLY the internal accounting statuses.
+    // The carrier/dispatch states «تم الإرسال» (dispatched) and «قيد التوصيل»
+    // (inTransit) are driven by the delivery flow, so they belong to the delivery
+    // section and its status filters and are never mixed into the internal grid.
+    // Android keeps the legacy nine-card grid untouched.
+    final internalWebFilter = kIsWeb && widget.bucket == 'internal';
+    final statuses = internalWebFilter
+        ? OrderStatus.values
+              .where(
+                (s) =>
+                    s != OrderStatus.dispatched && s != OrderStatus.inTransit,
+              )
+              .toList()
+        : OrderStatus.values;
     return [
-      for (final status in OrderStatus.values)
+      for (final status in statuses)
         _StatusTile(
           wire: status.name,
           label: status.label,
@@ -168,6 +182,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
           color: status.color,
           count: (bucket[status.name] as Map?)?['count'] as int? ?? 0,
           facet: 'status',
+          note: internalWebFilter && status == OrderStatus.delivered
+              ? 'تأكيد محاسبي يدوي بعد مطابقة كشف الشركة'
+              : null,
         ),
     ];
   }
@@ -287,6 +304,8 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               Text(
                 shipping
                     ? 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة'
+                    : kIsWeb && widget.bucket == 'internal'
+                    ? 'حالات داخلية فقط. «تم التسليم» تأكيد محاسبي يدوي بعد مطابقة كشف شركة التوصيل، ولا يتغيّر تلقائياً مع حالة الشحنة.'
                     : 'اختر حالة داخلية لعرض الطلبات المطابقة',
                 style: const TextStyle(color: VColors.muted),
               ),
