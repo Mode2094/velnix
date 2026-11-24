@@ -43,6 +43,7 @@ class _StatusTile {
     required this.count,
     required this.facet,
     this.note,
+    this.enabled,
   });
   final String wire;
   final String label;
@@ -51,6 +52,10 @@ class _StatusTile {
   final int count;
   final String facet;
   final String? note;
+
+  /// Overrides the default "enabled when count > 0". Used by the reminder-only
+  /// control tile so it stays reachable while the count is still zero.
+  final bool? enabled;
 }
 
 /// Pushed intermediate screen: shows one coloured card per real order status
@@ -183,7 +188,7 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               )
               .toList()
         : OrderStatus.values;
-    return [
+    final tiles = [
       for (final status in statuses)
         _StatusTile(
           wire: status.name,
@@ -197,6 +202,31 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               : null,
         ),
     ];
+    // Web-only control tile: the orders whose shipment was CONFIRMED deleted at
+    // the delivery company. It is a separate monitoring view, so it is added to
+    // the internal section without joining the internal status total, and it
+    // never changes the order, its amounts or `deliveryAccepted`. Suspicions
+    // (needs_review) are shown as a reminder and are never counted as deletions.
+    if (internalWebFilter) {
+      final control = Map<String, dynamic>.from(
+        counters['carrierDeletion'] as Map? ?? {},
+      );
+      final confirmed = (control['confirmed'] as Map?)?['count'] as int? ?? 0;
+      final review = (control['needs_review'] as Map?)?['count'] as int? ?? 0;
+      tiles.add(
+        _StatusTile(
+          wire: confirmed > 0 ? 'confirmed' : 'needs_review',
+          label: 'المحذوف',
+          icon: Icons.delete_sweep_outlined,
+          color: const Color(0xFF8A1F2B),
+          count: confirmed,
+          facet: 'deleted',
+          note: review > 0 ? '$review تحتاج تحقق' : 'حذف مؤكد من شركة التوصيل',
+          enabled: confirmed > 0 || review > 0,
+        ),
+      );
+    }
+    return tiles;
   }
 
   static IconData _shippingIcon(ShippingStatus status) => switch (status) {
@@ -316,7 +346,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               : tiles
                     .where((t) => t.facet == 'dispatch')
                     .fold<int>(0, (acc, t) => acc + t.count))
-        : tiles.fold<int>(0, (acc, tile) => acc + tile.count);
+        : tiles
+              .where((t) => t.facet != 'deleted')
+              .fold<int>(0, (acc, tile) => acc + tile.count);
     return RefreshIndicator(
       onRefresh: () async {
         refresh();
@@ -344,7 +376,7 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 18),
-              if (total == 0)
+              if (total == 0 && !tiles.any((t) => t.facet == 'deleted'))
                 const VFeedbackPanel(
                   title: 'لا توجد طلبات في هذا القسم',
                   message: 'ستظهر الحالات هنا فور وجود طلبات في هذا النطاق.',
@@ -353,7 +385,7 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               else if (shipping)
                 _sectionedGrid(tiles)
               else
-                _statusGrid(tiles),
+                _internalGrid(tiles),
             ],
           ),
         ),
@@ -399,6 +431,32 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
     ),
   );
 
+  /// Internal bucket: the internal accounting statuses, plus (on the web only)
+  /// the separate carrier-deletion control tile. The control tile is kept in its
+  /// own labelled group and out of the status total, so an order still shows once
+  /// in its real status and is only additionally listed as a monitoring view.
+  Widget _internalGrid(List<_StatusTile> tiles) {
+    final controls = tiles.where((t) => t.facet == 'deleted').toList();
+    final statuses = tiles.where((t) => t.facet != 'deleted').toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _statusGrid(statuses),
+        if (controls.isNotEmpty) ...[
+          const SizedBox(height: 26),
+          _sectionHeader('رقابة حذف الشحنات لدى شركة التوصيل'),
+          const SizedBox(height: 6),
+          const Text(
+            'عرض رقابي مستقل: يوضّح الطلبات المحذوفة لدى الشركة دون تغيير حالة الطلب أو تصنيف القبول أو حذفه من Velnix.',
+            style: TextStyle(fontSize: 11.5, color: VColors.muted),
+          ),
+          const SizedBox(height: 10),
+          _statusGrid(controls),
+        ],
+      ],
+    );
+  }
+
   Widget _statusGrid(List<_StatusTile> tiles) {
     return LayoutBuilder(
       builder: (context, box) {
@@ -424,7 +482,7 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
 
   Widget _statusCard(_StatusTile tile) {
     final color = tile.color;
-    final enabled = tile.count > 0;
+    final enabled = tile.enabled ?? (tile.count > 0);
     return Semantics(
       button: true,
       enabled: enabled,
@@ -526,12 +584,18 @@ class LiveOrdersPage extends StatelessWidget {
     this.status,
     this.shippingStatus,
     this.dispatch,
+    this.deletion,
   });
   final SessionPolicy policy;
   final String bucket;
   final String? status;
   final String? shippingStatus;
   final String? dispatch;
+
+  /// Carrier-deletion monitoring scope ('confirmed' or 'needs_review'), opening
+  /// the control list from the internal section's «المحذوف» tile. Null keeps the
+  /// ordinary order list.
+  final String? deletion;
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('قائمة الطلبات')),
@@ -541,6 +605,7 @@ class LiveOrdersPage extends StatelessWidget {
       status: status,
       shippingStatus: shippingStatus,
       dispatch: dispatch,
+      deletion: deletion,
     ),
   );
 }

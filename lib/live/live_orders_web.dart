@@ -43,8 +43,44 @@ class _WebOrdersView extends StatelessWidget {
     _WebCol(key: 'createdAt', label: 'تاريخ الطلب', width: 122, ltr: true),
   ];
 
-  static double get _totalWidth =>
-      _columns.fold<double>(0, (acc, c) => acc + c.width);
+  /// The visible columns: the standard grid plus, in the carrier-deletion
+  /// monitoring view, the audit columns the control list must show (last known
+  /// carrier state, detection date, tracking number and shipment reference).
+  List<_WebCol> get _activeColumns => state._deletion == null
+      ? _columns
+      : [
+          for (final c in _columns)
+            if (c.key == 'status') ...[
+              c,
+              const _WebCol(
+                key: 'carrierState',
+                label: 'آخر حالة معروفة',
+                width: 118,
+              ),
+              const _WebCol(
+                key: 'deletionDetected',
+                label: 'تاريخ اكتشاف الحذف',
+                width: 128,
+                ltr: true,
+              ),
+              const _WebCol(
+                key: 'tracking',
+                label: 'رقم التتبع',
+                width: 104,
+                ltr: true,
+              ),
+              const _WebCol(
+                key: 'shipmentRef',
+                label: 'مرجع الشحنة',
+                width: 104,
+                ltr: true,
+              ),
+            ] else
+              c,
+        ];
+
+  double get _activeWidth =>
+      _activeColumns.fold<double>(0, (acc, c) => acc + c.width);
 
   // ---------------------------------------------------------------- helpers
 
@@ -62,8 +98,33 @@ class _WebOrdersView extends StatelessWidget {
     'note' => o['note']?.toString() ?? '—',
     'amount' => displayAmount(o['amount']),
     'createdAt' => _dateTime(o['createdAt']),
+    // Carrier-deletion monitoring columns (control list only).
+    'carrierState' => _carrierStateLabel(o),
+    'deletionDetected' => _dateTime(_deletionField(o, 'detectedAt')),
+    'tracking' => _deletionField(o, 'trackingNumber')?.toString() ?? '—',
+    'shipmentRef' => _deletionField(o, 'shipmentReference')?.toString() ?? '—',
     _ => '—',
   };
+
+  /// The order's carrier-deletion record, or null. Read-only.
+  static Map<String, dynamic>? _deletionRecord(Map<String, dynamic> o) {
+    final raw = o['carrierDeletion'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  static dynamic _deletionField(Map<String, dynamic> o, String key) =>
+      _deletionRecord(o)?[key];
+
+  /// The last known carrier state snapshotted at detection, in Arabic when it
+  /// matches a known [ShippingStatus], otherwise the raw value.
+  static String _carrierStateLabel(Map<String, dynamic> o) {
+    final raw = _deletionField(o, 'lastKnownShippingStatus')?.toString();
+    if (raw == null || raw.isEmpty) return '—';
+    for (final s in ShippingStatus.values) {
+      if (s.name == raw) return s.label;
+    }
+    return raw;
+  }
 
   String _companyName(Map<String, dynamic> o) {
     final id = o['companyId']?.toString();
@@ -181,6 +242,7 @@ class _WebOrdersView extends StatelessWidget {
         _topBar(context),
         if (state.widget.sectionMode) _countersStrip(context),
         _toolbar(context),
+        if (state._deletion != null) state._deletionBanner(),
         if (state.selectionMode) _selectionBar(context),
         Expanded(child: _table(context)),
       ],
@@ -802,9 +864,9 @@ class _WebOrdersView extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: LayoutBuilder(
           builder: (context, box) {
-            final width = _totalWidth < box.maxWidth
+            final width = _activeWidth < box.maxWidth
                 ? box.maxWidth
-                : _totalWidth;
+                : _activeWidth;
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: SizedBox(
@@ -839,7 +901,7 @@ class _WebOrdersView extends StatelessWidget {
       ),
       child: Row(
         children: [
-          for (final c in _columns) _headerCell(context, c, allSelected),
+          for (final c in _activeColumns) _headerCell(context, c, allSelected),
         ],
       ),
     );
@@ -978,6 +1040,11 @@ class _WebOrdersView extends StatelessWidget {
     final id = o['id'].toString();
     final selected = state.selected.contains(id);
     final hovered = state.webHover == serial;
+    // A deleted shipment is flagged on its row so the control list reads at a
+    // glance, while the order itself keeps its normal status and amounts.
+    final deletion = _deletionRecord(o)?['state']?.toString();
+    final deleted = deletion == 'confirmed';
+    final suspected = deletion == 'needs_review';
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => state.webSetState(() => state.webHover = serial),
@@ -993,14 +1060,26 @@ class _WebOrdersView extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? VColors.softBlue
-                : (hovered ? const Color(0xFFF2F6FC) : Colors.white),
-            border: const Border(
-              bottom: BorderSide(color: _cellLine, width: .7),
+                : (hovered
+                      ? const Color(0xFFF2F6FC)
+                      : (deleted
+                            ? const Color(0xFFFDECEE)
+                            : (suspected
+                                  ? const Color(0xFFFFF8E6)
+                                  : Colors.white))),
+            border: Border(
+              bottom: const BorderSide(color: _cellLine, width: .7),
+              right: deleted
+                  ? const BorderSide(color: Color(0xFF8A1F2B), width: 3)
+                  : suspected
+                  ? const BorderSide(color: Color(0xFFB26A00), width: 3)
+                  : BorderSide.none,
             ),
           ),
           child: Row(
             children: [
-              for (final c in _columns) _bodyCell(context, c, o, serial, id),
+              for (final c in _activeColumns)
+                _bodyCell(context, c, o, serial, id),
             ],
           ),
         ),

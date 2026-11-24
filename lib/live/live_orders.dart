@@ -1,5 +1,16 @@
 part of 'live_app.dart';
 
+/// `YYYY-MM-DD HH:mm` in the store's business timezone, or `—`.
+String _formatDateTime(dynamic value) {
+  final parsed = value is DateTime
+      ? value
+      : DateTime.tryParse(value?.toString() ?? '');
+  if (parsed == null) return '—';
+  final d = businessTime(parsed);
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+}
+
 class LiveOrders extends StatefulWidget {
   const LiveOrders({
     super.key,
@@ -8,6 +19,7 @@ class LiveOrders extends StatefulWidget {
     this.status,
     this.shippingStatus,
     this.dispatch,
+    this.deletion,
     this.companyId,
     this.initialFilters = const {},
     this.onFiltersChanged,
@@ -27,6 +39,12 @@ class LiveOrders extends StatefulWidget {
   /// Operational dispatch lifecycle within the delivery bucket: 'unshipped',
   /// 'sending', 'review' or 'sent'. Kept separate from [shippingStatus].
   final String? dispatch;
+
+  /// Carrier-deletion monitoring scope ('confirmed' or 'needs_review'). Set only
+  /// by the internal section's «المحذوف» control tile; it is orthogonal to the
+  /// bucket/status filters and never mixes their vocabulary. Null keeps the
+  /// ordinary order list.
+  final String? deletion;
   final String? companyId;
   final Map<String, dynamic> initialFilters;
   final ValueChanged<Map<String, dynamic>>? onFiltersChanged;
@@ -66,6 +84,8 @@ class _LiveOrdersState extends State<LiveOrders> {
   String? after, status, shippingStatus;
   // Active operational dispatch group (idle/sending/sent/review), if any.
   String? _dispatch;
+  // Active carrier-deletion monitoring scope (confirmed/needs_review), if any.
+  String? _deletion;
   // Cursor for search pagination (keyword search), separate from list `after`.
   String? searchCursor;
   late String bucket;
@@ -296,6 +316,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                 bucket: bucket,
                 companyId: widget.companyId,
                 filters: filters,
+                deletion: _deletion,
                 pageSize: 50,
                 cursor: searchPageCursor,
               )
@@ -308,6 +329,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                 bucket: bucket,
                 companyId: widget.companyId,
                 filters: filters,
+                deletion: _deletion,
                 fresh: true,
               );
         final list = gateway.listResult(result);
@@ -358,6 +380,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     } else {
       _dispatch = filters['dispatch'] as String?;
     }
+    _deletion = widget.deletion;
     bucket = widget.bucket;
     load(reset: true);
     if (kIsWeb) _loadWebMeta();
@@ -424,6 +447,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
+              deletion: _deletion,
               pageSize: 30,
               cursor: searchCursor,
             )
@@ -435,6 +459,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
+              deletion: _deletion,
               pageSize: kIsWeb ? webPageSize : 30,
               fresh: fresh,
             );
@@ -596,6 +621,76 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     ),
   );
+
+  /// Carrier-deletion monitoring banner. It carries the accounting warning the
+  /// control list requires, states plainly that nothing was deleted from Velnix,
+  /// and offers a one-tap switch between the confirmed deletions and the orders
+  /// still awaiting verification. It never appears for a normal order list.
+  Widget _deletionBanner() {
+    const ink = Color(0xFF8A1F2B);
+    final confirmed = _deletion == 'confirmed';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: const Color(0xFFFDECEE),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.report_gmailerrorred_outlined, color: ink),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      confirmed
+                          ? 'شحنات حُذفت لدى شركة التوصيل — تحتاج مراجعة ومطابقة مع كشف حساب الشركة.'
+                          : 'إشارات حذف غير مؤكدة — تحتاج تحققًا قبل اعتبارها محذوفة.',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'لا تُحذف هذه الطلبات من Velnix، ولا تتغيّر حالتها أو مبالغها أو تصنيف قبولها؛ العرض رقابي مستقل.',
+                style: TextStyle(fontSize: 12, color: VColors.muted),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  onPressed: busy
+                      ? null
+                      : () {
+                          setState(
+                            () => _deletion = confirmed
+                                ? 'needs_review'
+                                : 'confirmed',
+                          );
+                          load(reset: true);
+                        },
+                  icon: Icon(
+                    confirmed ? Icons.help_outline : Icons.check_circle_outline,
+                    size: 18,
+                  ),
+                  label: Text(
+                    confirmed
+                        ? 'عرض الطلبات التي تحتاج تحقق'
+                        : 'العودة إلى المحذوف المؤكد',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _filterControls() => Column(
     children: [
@@ -1285,6 +1380,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                         ),
                         const SizedBox(height: 15),
                         _appliedFilterBanner(),
+                        if (_deletion != null) _deletionBanner(),
                         if (selectionMode) _selectionToolbar(),
                         VLivePanel(
                           padding: const EdgeInsets.all(12),
@@ -2218,6 +2314,94 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
     );
   }
 
+  /// Alert card for an order flagged as deleted at the carrier. It states plainly
+  /// that this is a monitoring record, that the order was NOT deleted from Velnix
+  /// and that its state/amounts/acceptance are unchanged, and asks for a
+  /// reconciliation with the carrier statement. Renders nothing when unflagged.
+  Widget _deletionAlertCard(Map<String, dynamic> o) {
+    final record = o['carrierDeletion'];
+    if (record is! Map) return const SizedBox.shrink();
+    final confirmed = record['state'] == 'confirmed';
+    final color = confirmed ? const Color(0xFF8A1F2B) : const Color(0xFFB26A00);
+    final rawState = record['lastKnownShippingStatus']?.toString();
+    final parsedState = rawState == null
+        ? null
+        : ShippingStatus.parse(rawState);
+    final stateLabel = parsedState?.label ?? rawState;
+    final detected = record['detectedAt'];
+    final detectedText = detected == null ? null : _formatDateTime(detected);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: .30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.report_gmailerrorred_outlined, color: color, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  confirmed
+                      ? 'شحنة محذوفة لدى شركة التوصيل — تحتاج مراجعة ومطابقة'
+                      : 'إشارة حذف غير مؤكدة — تحتاج تحققًا',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'هذا عرض رقابي مستقل: لم يُحذف الطلب من Velnix، ولم تتغيّر حالته الداخلية '
+            'أو مبالغه أو تصنيف قبوله ولا تاريخه. طابِق هذه الشحنة مع كشف حساب الشركة.',
+            style: TextStyle(color: VColors.muted, fontSize: 11.5, height: 1.5),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 14,
+            runSpacing: 4,
+            children: [
+              if (stateLabel != null && stateLabel.isNotEmpty)
+                _deletionMeta('آخر حالة معروفة', stateLabel),
+              if (detectedText != null)
+                _deletionMeta('تاريخ الاكتشاف', detectedText),
+              if (record['trackingNumber'] != null)
+                _deletionMeta('رقم التتبع', '${record['trackingNumber']}'),
+              if (record['shipmentReference'] != null)
+                _deletionMeta('مرجع الشحنة', '${record['shipmentReference']}'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _deletionMeta(String label, String value) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        '$label: ',
+        style: const TextStyle(fontSize: 11.5, color: VColors.muted),
+      ),
+      Text(
+        value,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: VColors.ink,
+        ),
+      ),
+    ],
+  );
+
   /// A single compact, tappable-when-copyable tracking row.
   Widget _trackingRow({
     required IconData icon,
@@ -2906,6 +3090,35 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             ),
           );
         }
+        // Carrier-deletion control actions (authorized roles only). The order is
+        // never deleted or altered; the flag is a monitoring record.
+        if (actions['carrierDeletion'] == true) {
+          final delState = (o['carrierDeletion'] as Map?)?['state']?.toString();
+          if (delState != 'confirmed') {
+            more.add(
+              const PopupMenuItem(
+                value: 'deletion_confirm',
+                child: Text('تأكيد حذف الشحنة لدى الشركة'),
+              ),
+            );
+          }
+          if (delState != 'needs_review') {
+            more.add(
+              const PopupMenuItem(
+                value: 'deletion_review',
+                child: Text('تسجيل إشارة حذف (تحتاج تحقق)'),
+              ),
+            );
+          }
+          if (delState != null) {
+            more.add(
+              const PopupMenuItem(
+                value: 'deletion_clear',
+                child: Text('إلغاء إشارة حذف الشحنة'),
+              ),
+            );
+          }
+        }
         if (isClick &&
             o['providerOrderId'] == null &&
             widget.policy.can('sendToDelivery')) {
@@ -3000,6 +3213,12 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                           onSelected: (value) {
                             if (value == 'resolve') {
                               _resolveDispatch();
+                            } else if (value == 'deletion_confirm') {
+                              _reportCarrierDeletion('confirm');
+                            } else if (value == 'deletion_review') {
+                              _reportCarrierDeletion('review');
+                            } else if (value == 'deletion_clear') {
+                              _reportCarrierDeletion('clear');
                             } else if (value == 'correct') {
                               _correctStatus(
                                 corrections,
@@ -3318,6 +3537,10 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       summary,
+                      if (o['carrierDeletion'] is Map) ...[
+                        const SizedBox(height: 12),
+                        _deletionAlertCard(o),
+                      ],
                       const SizedBox(height: 12),
                       actionsCard,
                       const SizedBox(height: 12),
@@ -3600,6 +3823,95 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
       clickClientSerial.dispose();
       reason.dispose();
     }
+  }
+
+  /// Records a carrier-deletion monitoring flag from the order detail actions.
+  /// `confirm` is the documented human confirmation; `review` records a
+  /// suspicion; `clear` removes a previous flag. It never deletes the order or
+  /// changes its status, amounts, `deliveryAccepted` or history.
+  Future<void> _reportCarrierDeletion(String actionName) async {
+    if (actionName == 'clear') {
+      await action(
+        () => VelnixGateway.instance.reportCarrierDeletion(
+          widget.id,
+          action: 'clear',
+        ),
+      );
+      return;
+    }
+    final confirmed = actionName == 'confirm';
+    final reason = TextEditingController();
+    final note = TextEditingController();
+    final chosen = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          confirmed ? 'تأكيد حذف الشحنة لدى الشركة' : 'تسجيل إشارة حذف',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              confirmed
+                  ? 'يُسجَّل الطلب كمحذوف مؤكد لدى شركة التوصيل بعد مطابقة كشف الحساب. '
+                        'لا يُحذف الطلب من Velnix، ولا تتغيّر حالته أو مبالغه أو تصنيف قبوله.'
+                  : 'يُسجَّل الطلب كإشارة حذف «تحتاج تحققًا» ولا يُحتسب ضمن المحذوف المؤكد. '
+                        'استخدم هذا الخيار عند وجود اشتباه دون تأكيد من الشركة.',
+              style: const TextStyle(fontSize: 12, color: VColors.muted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              autofocus: true,
+              maxLength: 200,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'السبب / المصدر *',
+                hintText: 'مثال: مطابقة كشف حساب الشركة بتاريخ ...',
+              ),
+            ),
+            TextField(
+              controller: note,
+              maxLength: 300,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'ملاحظة (اختياري)',
+                hintText: 'رقم مرجع المطابقة أو تفاصيل إضافية',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = reason.text.trim();
+              if (text.length < 3) {
+                showError(ctx, 'اذكر السبب أو المصدر (3 أحرف على الأقل)');
+                return;
+              }
+              Navigator.pop(ctx, {'reason': text, 'note': note.text.trim()});
+            },
+            child: Text(confirmed ? 'تأكيد الحذف' : 'تسجيل الإشارة'),
+          ),
+        ],
+      ),
+    );
+    reason.dispose();
+    note.dispose();
+    if (chosen == null) return;
+    await action(
+      () => VelnixGateway.instance.reportCarrierDeletion(
+        widget.id,
+        action: actionName,
+        reason: chosen['reason'],
+        note: chosen['note'],
+      ),
+    );
   }
 
   /// Authorized administrative correction (general manager only). The target

@@ -98,6 +98,7 @@ class VelnixGateway {
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
+    String? deletion,
     String sort = 'desc',
     bool fresh = false,
   }) {
@@ -108,6 +109,7 @@ class VelnixGateway {
       'bucket': bucket,
       'status': ?status,
       'shippingStatus': ?shippingStatus,
+      'deletion': ?deletion,
       'afterId': ?afterId,
       'companyId': ?companyId,
     };
@@ -128,6 +130,7 @@ class VelnixGateway {
     String bucket = 'all',
     String? companyId,
     Map<String, dynamic> filters = const {},
+    String? deletion,
     int pageSize = 30,
     String? cursor,
   }) {
@@ -138,6 +141,7 @@ class VelnixGateway {
       'pageSize': pageSize,
       'status': ?status,
       'shippingStatus': ?shippingStatus,
+      'deletion': ?deletion,
       'companyId': ?companyId,
       'cursor': ?cursor,
     };
@@ -368,6 +372,28 @@ class VelnixGateway {
       'clickClientSerial': ?clickClientSerial,
       'shippingStatus': shippingStatus,
       'reason': reason,
+    });
+    _invalidateOrderData();
+  }
+
+  /// Carrier-deletion monitoring (web control view). Records a durable, audited
+  /// flag on the order; it NEVER deletes the order, changes its status/amounts or
+  /// `deliveryAccepted`, or resends anything. [action] is `confirm` (documented
+  /// human confirmation of a carrier deletion), `review`/`flag` (a suspicion that
+  /// needs verification) or `clear` (drop a previous flag).
+  Future<void> reportCarrierDeletion(
+    String id, {
+    required String action,
+    String? reason,
+    String? note,
+    String source = 'manual',
+  }) async {
+    await call('reportCarrierDeletion', {
+      'id': id,
+      'action': action,
+      'source': source,
+      'reason': ?reason,
+      'note': ?note,
     });
     _invalidateOrderData();
   }

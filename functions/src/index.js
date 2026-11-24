@@ -12,9 +12,10 @@ const {getFirestore,AggregateField,FieldValue,Timestamp,FieldPath}=require('fire
 const {onCall,onRequest,HttpsError}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {logger}=require('firebase-functions');
-const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason,INTERNAL_CORRECTION_STATUSES,internalStatusOf,validateDeliveryConfirmation,DELIVERY_CONFIRMATION_SOURCE}=require('./policy');
+const {can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,safeStatusMap,dispatchBlocked,canResolveDispatch,documentId,arabicDigits,canAdministerMember,correctionTargets,canCorrectInternalStatus,internalStatusChangeReason,INTERNAL_CORRECTION_STATUSES,internalStatusOf,validateDeliveryConfirmation,DELIVERY_CONFIRMATION_SOURCE,validateCarrierDeletionSignal,canManageCarrierDeletion}=require('./policy');
 const {allowedUrl,encryptSecret,decryptSecret,vendorRequest,verifyWebhook,remoteCanAdvance}=require('./delivery');
 const {orderForUser}=require('./order_view');
+const {deletionStateFor,carrierSnapshot,shouldRecordReview}=require('./carrier_deletion');
 const {providerFor,requireOperationalProvider}=require('./providers');
 const {CLICK_PROVIDER,readClickOrder,sendClickOrder}=require('./click_delivery');
 const {parseClickOrderResponse}=require('./click_response');
@@ -257,9 +258,26 @@ async function applyCompanyAssignment(ref,user,id){
   });
   return {ok:true};
 }
+// Durable monitoring record for a carrier-deletion signal. It is DISPLAY-ONLY:
+// the order, its status, its amounts and `deliveryAccepted` are never touched,
+// and nothing is ever sent back to the carrier. `detectedAt`/`confirmedAt` are
+// preserved across updates so the audit trail keeps the first detection.
+function carrierDeletionRecord(order,{state,source,reason,note,actor,existing}){
+  const prev=existing&&typeof existing==='object'?existing:null;
+  const confirmed=state==='confirmed';
+  return {
+    state,source,reason,note:note||'',
+    ...carrierSnapshot(order,prev?.detectedAt||null),
+    detectedAt:prev?.detectedAt||FieldValue.serverTimestamp(),
+    updatedAt:FieldValue.serverTimestamp(),
+    confirmedAt:confirmed?(prev?.confirmedAt||FieldValue.serverTimestamp()):null,
+    confirmedBy:confirmed?(actor?.id||prev?.confirmedBy||null):null,
+    confirmedByName:confirmed?(actor?.name||prev?.confirmedByName||''):'',
+  };
+}
 function firebaseError(e){
   if(e instanceof HttpsError)throw e;
-  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_shipping_status:'اختر حالة شحنة صحيحة من حالات شركة التوصيل',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_statement_ref:'مرجع كشف الشركة طويل جداً (الحد 80 حرفاً)',invalid_confirmation_note:'ملاحظة التأكيد المحاسبي طويلة جداً (الحد 300 حرف)',invalid_difference:'الفرق المالي غير صالح',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح'};
+  const messages={invalid_page_size:'اختر حجم صفحة من 1 إلى 100',invalid_search:'أدخل بحثاً حتى 80 حرفاً',invalid_cursor:'تعذر متابعة القائمة؛ حدّثها',invalid_customer:'أدخل اسم مستلم صالحاً حتى 120 حرفاً',invalid_phone:'رقم الهاتف يجب أن يكون 10 أرقام إنجليزية',invalid_quantity:'الكمية يجب أن تكون عدداً صحيحاً من 1 إلى 10000',invalid_amount:'أدخل مبلغاً صالحاً حتى ثلاث منازل عشرية',invalid_city:'اختر محافظة أردنية من القائمة',invalid_area:'المنطقة مطلوبة',invalid_address:'العنوان مطلوب ولا يتجاوز 240 حرفاً',invalid_description:'وصف الطلب مطلوب ولا يتجاوز 500 حرف',invalid_paymentMethod:'اختر طريقة الدفع المتاحة',invalid_status_map:'اربط حالات الشركة بحالات الشحن الداخلية المسموحة',invalid_document_id:'معرف السجل غير صالح',invalid_date:'اختر تاريخاً صحيحاً',invalid_date_range:'نهاية الفترة يجب أن تلي بدايتها',invalid_status:'اختر حالة طلب صحيحة',invalid_shipping_status:'اختر حالة شحنة صحيحة من حالات شركة التوصيل',invalid_bucket:'اختر مجموعة طلبات صحيحة',invalid_order_type:'اختر نوع طلب صحيحاً',invalid_dispatch:'اختر حالة إرسال صحيحة',invalid_amount_range:'نطاق المبلغ غير صالح',invalid_phone_filter:'أدخل 3 أرقام على الأقل لفلتر الهاتف',invalid_barcode_filter:'فلتر الباركود طويل جداً',invalid_product_filter:'فلتر المنتج طويل جداً',invalid_note_filter:'فلتر الملاحظات طويل جداً',invalid_bulk:'العملية الجماعية غير صالحة',invalid_statement_ref:'مرجع كشف الشركة طويل جداً (الحد 80 حرفاً)',invalid_confirmation_note:'ملاحظة التأكيد المحاسبي طويلة جداً (الحد 300 حرف)',invalid_difference:'الفرق المالي غير صالح',invalid_name:'اسم الصفحة مطلوب ولا يتجاوز 120 حرفاً',invalid_page_url:'رابط Facebook يجب أن يبدأ بـ http أو https',invalid_page_phone:'رقم هاتف الصفحة غير صالح',invalid_page_whatsapp:'رقم WhatsApp غير صالح',invalid_logo:'شعار الصفحة غير صالح',invalid_device_token:'تعذر تسجيل الجهاز للإشعارات',invalid_delivery_url:'أدخل رابط API صالحاً باستخدام HTTPS',click_send_disabled:'إرسال Click غير مفعّل لهذه الشركة',click_auth_failed:'فشل اعتماد Click عند الإرسال؛ لم تُعتمد الشحنة',click_send_rejected:'رفض Click طلب الإنشاء؛ راجع بيانات الشحنة',click_response_too_large:'استجابة Click أكبر من الحد المسموح',click_invalid_json:'استجابة Click غير صالحة',click_transport_unavailable:'تعذر الاتصال بـClick',invalid_click_client_serial:'مرجع الشحنة أطول من 25 حرفاً؛ قصّره أو أعد توليده',invalid_click_order_ref:'مرجع شحنة Click غير صالح',invalid_click_user_id:'User_ID الخاص بـClick غير صالح',invalid_deletion_state:'حالة حذف الشحنة غير صالحة',invalid_deletion_source:'مصدر إشارة الحذف غير صالح',invalid_deletion_reason:'اذكر سبب الحذف (حتى 200 حرف)',invalid_deletion_note:'ملاحظة الحذف طويلة جداً (الحد 300 حرف)',integration_requires_manual_confirmation:'إشارة التكامل وحدها لا تؤكد الحذف؛ يلزم تأكيد بشري موثق',invalid_deletion_filter:'فلتر حذف الشحنة غير صالح'};
   if(messages[e?.message])fail('invalid-argument',messages[e.message]);
   if(e?.code==='auth/email-already-exists')fail('already-exists','البريد الإلكتروني مستخدم بالفعل');
   if(e?.code==='auth/user-not-found')fail('unauthenticated','انتهت الجلسة أو الحساب غير موجود؛ سجّل الدخول من جديد');
@@ -508,6 +526,48 @@ async function sumOrders(query,showAmount){
   const result=(await aggregation.get()).data();
   return {count:result.count||0,amountMinor:showAmount?(result.amountMinor||0):0};
 }
+// Carrier-deletion monitoring (web-only control view). It records a durable,
+// audited state on the order and NEVER deletes the order, changes its internal
+// status/amounts or `deliveryAccepted`, resends it, or touches the carrier. Two
+// trusted paths feed it: a documented human confirmation (`confirm`) and an
+// integration observation (`flag`, source `click_integration`) that can only ever
+// be a review candidate. A connection failure or a single missing response is
+// never a signal, and nothing is auto-confirmed without an accountable human.
+exports.reportCarrierDeletion=callable(async req=>{
+  const user=await requireAuth(req);
+  if(!canManageCarrierDeletion(user))fail('permission-denied','لا تملك صلاحية إدارة حذف الشحنات');
+  const id=idValue(req.data?.id);
+  const action=String(req.data?.action||'');
+  if(action!=='clear'&&!deletionStateFor(action))fail('invalid-argument','إجراء غير صالح');
+  let signal=null;
+  if(action!=='clear'){
+    try{signal=validateCarrierDeletionSignal({state:deletionStateFor(action),source:req.data?.source,reason:req.data?.reason,note:req.data?.note});}
+    catch(e){firebaseError(e);}
+  }
+  await db.runTransaction(async tx=>{
+    await currentActor(tx,user);
+    const ref=db.doc('orders/'+id);
+    const latest=await tx.get(ref);
+    if(!latest.exists)fail('not-found','الطلب غير موجود');
+    const o={...latest.data(),id};
+    if(!canSeeOrder(user,o))fail('permission-denied','لا يمكن الوصول للطلب');
+    if(action==='clear'){
+      tx.update(ref,{carrierDeletion:FieldValue.delete(),updatedAt:FieldValue.serverTimestamp()});
+      await audit('order.carrier_deletion_cleared',user,id,{},tx);
+      await addEvent(id,'carrier_deletion_cleared',user,{},tx);
+      return;
+    }
+    // A carrier-deletion record only makes sense for an order that actually had a
+    // carrier shipment; otherwise it is a data-entry error, not a control signal.
+    if(!(o.companyId||o.trackingNumber||o.clickOrderRef||o.providerOrderId))fail('failed-precondition','الطلب غير مرتبط بشحنة شركة توصيل');
+    const record=carrierDeletionRecord(o,{...signal,actor:user,existing:o.carrierDeletion});
+    tx.update(ref,{carrierDeletion:record,updatedAt:FieldValue.serverTimestamp()});
+    const detail={state:signal.state,source:signal.source,reason:signal.reason};
+    await audit(signal.state==='confirmed'?'order.carrier_deletion_confirmed':'order.carrier_deletion_flagged',user,id,detail,tx);
+    await addEvent(id,signal.state==='confirmed'?'carrier_deletion_confirmed':'carrier_deletion_flagged',user,detail,tx);
+  });
+  return {ok:true};
+});
 exports.dashboardStats=callable(async req=>{
   const user=await requireAuth(req);
   let filters;try{filters=parseFilters(req.data);}catch(e){return firebaseError(e);}
@@ -540,6 +600,15 @@ exports.dashboardStats=callable(async req=>{
     shippingStates.map(state=>base.map(query=>query.where('shippingStatus','==',state))),
     query=>sumOrders(query,showAmount));
   shippingStates.forEach((state,i)=>{counter.shipping[state]=shippingValues[i];});
+  // Carrier-deletion monitoring facet, kept fully independent of the acceptance
+  // buckets so a deleted shipment is still counted in its normal status and never
+  // twice. `confirmed` is the accountable deletion; `needs_review` is a suspicion
+  // that is never counted as a deletion. It uses the same scope as every counter.
+  const deletionValues=await aggregateGroups([
+    base.map(query=>query.where('carrierDeletion.state','==','confirmed')),
+    base.map(query=>query.where('carrierDeletion.state','==','needs_review')),
+  ],query=>sumOrders(query,showAmount));
+  counter.carrierDeletion={confirmed:deletionValues[0],needs_review:deletionValues[1]};
   // Operational lifecycle of assigned orders, kept apart from the carrier
   // vocabulary so an order assigned to a company but never sent is never shown
   // as a carrier state. Every assigned order contributes to exactly ONE group,
@@ -1668,7 +1737,19 @@ exports.reconcileDeliveryStatuses=onSchedule({schedule:'every 15 minutes',region
       const rawStatus=optional(data.status,80);
       if(rawStatus)await processRemote(o.companyId,{reference:doc.id,status:rawStatus},crypto.createHash('sha256').update(doc.id+':'+rawStatus).digest('hex'),'poll');
       checked++;
-    }catch(e){errors++;await doc.ref.update({syncError:'تعذر تحديث حالة الشحنة؛ ستعاد المزامنة لاحقاً',lastSyncAttemptAt:FieldValue.serverTimestamp()});logger.warn('reconcile item failed',{id:doc.id,code:e.code||'unknown'});}
+    }catch(e){
+      // An EXPLICIT provider "not found" means the shipment id no longer exists
+      // at the carrier. It is recorded only as an unresolved deletion suspicion;
+      // a timeout, DNS/TLS failure, auth error or any other HTTP status is NOT a
+      // deletion and never reaches this branch. A confirmed record is never
+      // downgraded, and nothing is ever resent or deleted from Velnix.
+      if(e?.message==='vendor_http_404'&&shouldRecordReview(o.carrierDeletion)){
+        try{
+          await doc.ref.set({carrierDeletion:carrierDeletionRecord(o,{state:'needs_review',source:'click_integration',reason:'لم تُعد الشحنة موجودة لدى شركة التوصيل؛ يلزم تأكيد بشري من كشف الحساب',note:'',actor:null,existing:o.carrierDeletion}),updatedAt:FieldValue.serverTimestamp()},{merge:true});
+          logger.warn('carrier deletion suspicion recorded',{id:doc.id});
+        }catch(recordError){logger.warn('carrier deletion record failed',{id:doc.id,code:recordError?.code||'unknown'});}
+      }
+      errors++;await doc.ref.update({syncError:'تعذر تحديث حالة الشحنة؛ ستعاد المزامنة لاحقاً',lastSyncAttemptAt:FieldValue.serverTimestamp()});logger.warn('reconcile item failed',{id:doc.id,code:e.code||'unknown'});}
   }
   logger.info('delivery reconcile',{checked,errors});
 });

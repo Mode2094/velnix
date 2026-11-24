@@ -109,6 +109,9 @@ const eventLabels = {
   'click_status_stale': 'تجاهل حالة Click أقدم',
   'click_status_conflict': 'تعارض حالة Click',
   'click_sync_failed': 'فشل مزامنة Click',
+  'carrier_deletion_confirmed': 'تأكيد حذف الشحنة لدى الشركة',
+  'carrier_deletion_flagged': 'شحنة مشتبه بحذفها (تحتاج تحقق)',
+  'carrier_deletion_cleared': 'إلغاء إشارة حذف الشحنة',
 };
 String eventLabel(dynamic action, [dynamic details]) {
   if (action?.toString() == 'company_assigned' &&
@@ -1361,10 +1364,14 @@ class _LiveShellState extends State<LiveShell> {
               MaterialPageRoute<void>(
                 builder: (_) => LiveOrdersPage(
                   policy: widget.policy,
-                  bucket: b,
+                  // The carrier-deletion control list is orthogonal to the
+                  // acceptance buckets, so it always opens the store-wide scope
+                  // (a deleted shipment may still be a carrier-accepted order).
+                  bucket: facet == 'deleted' ? 'all' : b,
                   status: facet == 'status' ? state : null,
                   shippingStatus: facet == 'shipping' ? state : null,
                   dispatch: facet == 'dispatch' ? state : null,
+                  deletion: facet == 'deleted' ? state : null,
                 ),
               ),
             ),

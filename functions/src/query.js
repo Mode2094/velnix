@@ -1,5 +1,5 @@
 'use strict';
-const {arabicDigits, documentId, STATUSES, ORDER_TYPES, JORDAN_CITIES}=require('./policy');
+const {arabicDigits, documentId, STATUSES, ORDER_TYPES, JORDAN_CITIES, CARRIER_DELETION_STATES}=require('./policy');
 const {SHIPPING_STATUSES}=require('./shipping_status');
 function normalizeCustomer(value) {
   return String(value||'').normalize('NFKC').toLocaleLowerCase('ar').trim()
@@ -50,7 +50,7 @@ const DISPATCH_GROUPS = Object.freeze({
 function parseFilters(data={}) {
   const filters={status:data.status||null,bucket:data.bucket||'all',companyId:data.companyId||null,createdBy:data.createdBy||null,
     pageId:data.pageId||null,orderType:data.orderType||null,city:data.city||null,area:data.area||null,
-    dispatch:data.dispatch||null,shippingStatus:data.shippingStatus||null,unshipped:null,phone:null,barcode:null,product:null,note:null};
+    dispatch:data.dispatch||null,shippingStatus:data.shippingStatus||null,unshipped:null,phone:null,barcode:null,product:null,note:null,deletion:null};
   if(filters.status&&!STATUSES.includes(filters.status))throw Error('invalid_status');
   // Delivery-company states are its own vocabulary, never an internal status.
   if(filters.shippingStatus&&!SHIPPING_STATUSES.includes(filters.shippingStatus))throw Error('invalid_shipping_status');
@@ -64,6 +64,14 @@ function parseFilters(data={}) {
   if(filters.city&&!JORDAN_CITIES.has(filters.city))throw Error('invalid_city');
   if(filters.area){filters.area=String(filters.area).trim().slice(0,120);if(!filters.area)filters.area=null;}
   if(filters.dispatch&&!Object.keys(DISPATCH_GROUPS).includes(filters.dispatch))throw Error('invalid_dispatch');
+  // Carrier-deletion monitoring is an independent control facet, orthogonal to
+  // the acceptance buckets: it narrows to the orders a carrier match flagged as
+  // deleted (`confirmed`), those still awaiting verification (`needs_review`), or
+  // either (`any`). It never changes an order's bucket.
+  if(data.deletion!=null&&data.deletion!==''&&data.deletion!=='all'){
+    if(!['confirmed','needs_review','any'].includes(data.deletion))throw Error('invalid_deletion_filter');
+    filters.deletion=data.deletion;
+  }
   const textFilter=(key,max)=>{
     const raw=data[key];
     if(raw==null||raw==='')return null;
@@ -137,6 +145,14 @@ function matchingFilters(order,filters) {
   if(filters.city&&order.city!==filters.city)return false;
   if(filters.area&&!(String(order.area||'').includes(filters.area)))return false;
   if(filters.dispatch&&!DISPATCH_GROUPS[filters.dispatch].includes(order.dispatchState||'idle'))return false;
+  // Carrier-deletion control facet, applied in memory like the acceptance
+  // buckets so no index is needed and the state can never leak into a normal
+  // list. A missing/legacy record has no state and simply does not match.
+  if(filters.deletion){
+    const state=order.carrierDeletion&&order.carrierDeletion.state;
+    if(filters.deletion==='any'){if(!CARRIER_DELETION_STATES.includes(state))return false;}
+    else if(state!==filters.deletion)return false;
+  }
   if(filters.amountMin!=null&&(Number(order.amountMinor)||0)<filters.amountMin)return false;
   if(filters.amountMax!=null&&(Number(order.amountMinor)||0)>filters.amountMax)return false;
   // Independent free-text conditions (phone digits / barcode / product / note).

@@ -224,6 +224,38 @@ function validateDeliveryConfirmation(meta) {
   }
   return {statementRef, note, differenceMinor};
 }
+// Carrier-deletion monitoring. `confirmed` means the delivery company itself
+// signalled that the shipment no longer exists, or an authorized employee
+// documented it from the company statement; `needs_review` is an unresolved
+// suspicion kept out of the confirmed count. Nothing here is ever derived from a
+// connection failure or from a single empty response.
+const CARRIER_DELETION_STATES = ['needs_review', 'confirmed'];
+const CARRIER_DELETION_SOURCES = ['manual', 'click_integration'];
+const MAX_DELETION_REASON = 200;
+const MAX_DELETION_NOTE = 300;
+function validateCarrierDeletionSignal(meta) {
+  const source = meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+  const state = typeof source.state === 'string' ? source.state.trim() : '';
+  if (!CARRIER_DELETION_STATES.includes(state)) throw new Error('invalid_deletion_state');
+  const origin = typeof source.source === 'string' && source.source.trim() ? source.source.trim() : 'manual';
+  if (!CARRIER_DELETION_SOURCES.includes(origin)) throw new Error('invalid_deletion_source');
+  // An automated integration observation can NEVER confirm a deletion on its own:
+  // one missing response is a suspicion, not proof, and only an accountable human
+  // (or a provider-confirmed deletion) may move it to `confirmed`.
+  if (origin === 'click_integration' && state === 'confirmed') throw new Error('integration_requires_manual_confirmation');
+  const reason = typeof source.reason === 'string' ? source.reason.trim() : '';
+  if (!reason || reason.length > MAX_DELETION_REASON) throw new Error('invalid_deletion_reason');
+  const note = typeof source.note === 'string' ? source.note.trim() : '';
+  if (note.length > MAX_DELETION_NOTE) throw new Error('invalid_deletion_note');
+  return {state, source: origin, reason, note};
+}
+// Who may create/confirm/clear a carrier-deletion record. It is an accounting
+// control, so it is limited to the general manager, managers and the sync
+// monitoring permission — never every list viewer.
+function canManageCarrierDeletion(user) {
+  if (!user) return false;
+  return user.role === 'generalManager' || user.role === 'manager' || can(user, 'viewSync');
+}
 function canResolveDispatch(order, now=Date.now()) {
   // Dispatch may start from ANY internal status, so an uncertain/in-flight send
   // is resolvable regardless of the internal status (no 'ready' requirement).
@@ -234,4 +266,4 @@ function documentId(value) {
   if (typeof value!=='string' || !/^[a-zA-Z0-9_-]{1,140}$/.test(value)) throw new Error('invalid_document_id');
   return value;
 }
-module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus,internalStatusOf,DELIVERY_CONFIRMATION_SOURCE,validateDeliveryConfirmation,MAX_STATEMENT_REF,MAX_CONFIRMATION_NOTE,MAX_DIFFERENCE_MINOR};
+module.exports={ROLES,STATUSES,ORDER_TYPES,PERMISSIONS,ROLE_RANK,CLOSED,REMOTE,TRANSITIONS,JORDAN_CITIES,can,canSeeOrder,canEditOrder,allowedTransition,validRole,validPermissions,validOrderType,validateOrderFields,validatePageFields,safeStatusMap,arabicDigits,dispatchBlocked,canResolveDispatch,documentId,canAdministerMember,canCorrectInternalStatus,correctionTargets,INTERNAL_CORRECTION_STATUSES,internalStatusChangeReason,canChangeInternalStatus,internalStatusOf,DELIVERY_CONFIRMATION_SOURCE,validateDeliveryConfirmation,MAX_STATEMENT_REF,MAX_CONFIRMATION_NOTE,MAX_DIFFERENCE_MINOR,CARRIER_DELETION_STATES,CARRIER_DELETION_SOURCES,validateCarrierDeletionSignal,canManageCarrierDeletion,MAX_DELETION_REASON,MAX_DELETION_NOTE};

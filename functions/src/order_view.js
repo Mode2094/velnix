@@ -1,5 +1,5 @@
 'use strict';
-const {can,canEditOrder,allowedTransition,STATUSES,dispatchBlocked,canResolveDispatch,correctionTargets}=require('./policy');
+const {can,canEditOrder,allowedTransition,STATUSES,dispatchBlocked,canResolveDispatch,correctionTargets,CARRIER_DELETION_STATES,canManageCarrierDeletion}=require('./policy');
 const {shippingStatus,isApiConfirmed,isExceptionStatus}=require('./shipping_status');
 const safeDate=v=>v?.toDate?.()?.toISOString?.() ?? null;
 function publicOrder(d) {
@@ -23,6 +23,16 @@ function publicOrder(d) {
         differenceMinor:Number.isSafeInteger(o.internalCompletion.differenceMinor)?o.internalCompletion.differenceMinor:null}
       : null,
     syncError:o.syncError||null,lastSyncAt:safeDate(o.lastSyncAt),lastSyncAttemptAt:safeDate(o.lastSyncAttemptAt),dispatchState:o.dispatchState||'idle',revision:o.revision||0,
+    // Carrier-deletion monitoring (control view). A snapshot of the carrier facts
+    // kept at detection time; null when the order was never flagged. Display only
+    // — it never changes the order's status, amounts or `deliveryAccepted`.
+    carrierDeletion:o.carrierDeletion&&typeof o.carrierDeletion==='object'&&CARRIER_DELETION_STATES.includes(o.carrierDeletion.state)
+      ? {state:o.carrierDeletion.state,source:o.carrierDeletion.source||'manual',reason:o.carrierDeletion.reason||'',note:o.carrierDeletion.note||'',
+        companyId:o.carrierDeletion.companyId||null,lastKnownShippingStatus:o.carrierDeletion.lastKnownShippingStatus||null,
+        lastKnownShippingStatusAt:safeDate(o.carrierDeletion.lastKnownShippingStatusAt),trackingNumber:o.carrierDeletion.trackingNumber||null,
+        shipmentReference:o.carrierDeletion.shipmentReference||null,detectedAt:safeDate(o.carrierDeletion.detectedAt),
+        confirmedAt:safeDate(o.carrierDeletion.confirmedAt),confirmedBy:o.carrierDeletion.confirmedBy||null,confirmedByName:o.carrierDeletion.confirmedByName||''}
+      : null,
     createdAt:safeDate(o.createdAt),updatedAt:safeDate(o.updatedAt)};
 }
 function orderForUser(user,d) {
@@ -43,6 +53,7 @@ function orderForUser(user,d) {
     dispatch:canDispatch,
     resolve:user.role==='generalManager'&&canResolveDispatch(source),
     corrections:user.role==='generalManager'?correctionTargets(source):[],
+    carrierDeletion:canManageCarrierDeletion(user),
   };
   return data;
 }
