@@ -115,6 +115,22 @@ class _LiveOrdersState extends State<LiveOrders> {
   String? webStoreName;
   bool webMetaLoaded = false;
   Map<String, String> webCompanyNames = const {};
+  // Display-only lookups for the always-visible filter bar: the employees the
+  // caller may filter by (المنشئ) and the electronic pages that are the order
+  // source (مصدر الطلب). Both are read once and never mutate order data.
+  Map<String, String> webCreators = const {};
+  Map<String, String> webPages = const {};
+  // The free-text boxes of the always-visible web filter bar (المنطقة، الهاتف،
+  // الباركود، المنتج، الملاحظات، المبلغ من/إلى). Kept as controllers so typing
+  // survives rebuilds and can be cleared together by «مسح الفلاتر». The bar no
+  // longer hides any of them behind a «المزيد من الفلاتر» button.
+  final webArea = TextEditingController();
+  final webPhone = TextEditingController();
+  final webBarcode = TextEditingController();
+  final webProduct = TextEditingController();
+  final webNote = TextEditingController();
+  final webAmountMin = TextEditingController();
+  final webAmountMax = TextEditingController();
   final webScroll = ScrollController();
   // Desktop web loads a wider first page; Android keeps its 30-row default.
   static const int webPageSize = 50;
@@ -136,6 +152,52 @@ class _LiveOrdersState extends State<LiveOrders> {
       } else {
         next[key] = value;
       }
+      filters = next;
+      webTextController(key)?.text = next[key]?.toString() ?? '';
+    });
+    load(reset: true);
+  }
+
+  /// The controller that backs a free-text filter box, or null for the dropdown
+  /// facets (company/city/source/creator/status) which have no text box.
+  TextEditingController? webTextController(String key) => switch (key) {
+    'area' => webArea,
+    'phone' => webPhone,
+    'barcode' => webBarcode,
+    'product' => webProduct,
+    'note' => webNote,
+    'amountMin' => webAmountMin,
+    'amountMax' => webAmountMax,
+    _ => null,
+  };
+
+  /// Applies one free-text filter box (server does a partial/substring match for
+  /// area/phone/barcode/product/note; amount boxes are a numeric range). An
+  /// empty value removes the key so a box can never pin an empty condition.
+  void webSetText(String key, String value) {
+    final text = value.trim();
+    if ((filters[key]?.toString() ?? '') == text) return;
+    setState(() {
+      final next = {...filters};
+      if (text.isEmpty) {
+        next.remove(key);
+      } else {
+        next[key] = text;
+      }
+      filters = next;
+    });
+    load(reset: true);
+  }
+
+  /// Web «حالة الإرسال» dropdown: the operational dispatch group, mirrored into
+  /// [filters] under the existing server contract and into [_dispatch] so the
+  /// Android chips/count stay consistent if the same state is reused.
+  void webSetDispatch(String? value) {
+    final group = (value == null || value == 'all') ? null : value;
+    setState(() {
+      _dispatch = group;
+      final next = {...filters}..remove('dispatch');
+      if (group != null) next['dispatch'] = group;
       filters = next;
     });
     load(reset: true);
@@ -178,9 +240,14 @@ class _LiveOrdersState extends State<LiveOrders> {
     load(reset: true);
   }
 
-  /// Web section "مسح الفلاتر": returns to the default store-wide list — group,
-  /// internal status, shipping status, company, governorate, period, dispatch
-  /// and the search box are all cleared in one action.
+  /// Web "مسح الفلاتر": returns to the default store-wide list — group,
+  /// internal status, shipping status, company, governorate, area, period,
+  /// dispatch, source, creator and the search box are all cleared in one action.
+  ///
+  /// It never removes the list's own identity: a company-scoped list keeps its
+  /// fixed [companyId], and the carrier-deletion control list keeps its
+  /// [deletion] scope, so clearing can only ever widen within what the server
+  /// already permits for the signed-in employee.
   void webClearFilters() {
     setState(() {
       bucket = 'all';
@@ -191,8 +258,44 @@ class _LiveOrdersState extends State<LiveOrders> {
       sort = 'desc';
       appliedQuery = '';
       search.clear();
+      webArea.clear();
+      webPhone.clear();
+      webBarcode.clear();
+      webProduct.clear();
+      webNote.clear();
+      webAmountMin.clear();
+      webAmountMax.clear();
     });
     load(reset: true);
+  }
+
+  /// Refreshes the already-loaded rows IN PLACE, so returning from an order's
+  /// details never resets the filters, the search, the sort, the loaded pages or
+  /// the scroll position. Re-fetches the visible ids (chunked to the server's
+  /// 60-id limit) and swaps each row's data, keeping the row order and count.
+  Future<void> webRefreshPreservingView() async {
+    if (rows.isEmpty) {
+      load(reset: true);
+      return;
+    }
+    final ids = rows.map((o) => o['id'].toString()).toList();
+    final freshById = <String, Map<String, dynamic>>{};
+    try {
+      for (var i = 0; i < ids.length; i += 60) {
+        final chunk = ids.sublist(i, (i + 60).clamp(0, ids.length));
+        final items = await gateway.ordersByIds(chunk);
+        for (final o in items) {
+          freshById[o['id'].toString()] = o;
+        }
+      }
+    } catch (_) {
+      // A failed soft refresh must never disturb the preserved view.
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      rows = [for (final o in rows) freshById[o['id'].toString()] ?? o];
+    });
   }
 
   /// Sets the period filter from inclusive local days, converted to the store's
@@ -215,12 +318,34 @@ class _LiveOrdersState extends State<LiveOrders> {
     load(reset: true);
   }
 
+  /// Sets the carrier send-date filter («تاريخ الإرسال»), same UTC+03:00
+  /// exclusive-next-day boundary contract as [webSetPeriod].
+  void webSetSentPeriod(DateTime? from, DateTime? to) {
+    DateTime boundary(DateTime d) =>
+        DateTime.utc(d.year, d.month, d.day).subtract(const Duration(hours: 3));
+    setState(() {
+      final next = {...filters}
+        ..remove('sentFrom')
+        ..remove('sentTo');
+      if (from != null && to != null) {
+        next['sentFrom'] = boundary(from).toIso8601String();
+        next['sentTo'] = boundary(
+          to.add(const Duration(days: 1)),
+        ).toIso8601String();
+      }
+      filters = next;
+    });
+    load(reset: true);
+  }
+
   /// Loads the display-only lookups the web grid header/cells need: the store
   /// (organization) name and the delivery-company id→name map. Read once; a
   /// failure just leaves the grid showing em dashes, never blocking the list.
   Future<void> _loadWebMeta() async {
     String? storeName;
     var companyNames = const <String, String>{};
+    var creators = const <String, String>{};
+    var pages = const <String, String>{};
     try {
       final settings = await gateway.call('getSettings');
       final name = settings['organizationName']?.toString();
@@ -233,10 +358,27 @@ class _LiveOrdersState extends State<LiveOrders> {
           if (c['id'] != null) c['id'].toString(): (c['name'] ?? '').toString(),
       };
     } catch (_) {}
+    try {
+      final items = await gateway.directoryItems('listOrderCreators');
+      creators = {
+        for (final c in items)
+          if (c['id'] != null) c['id'].toString(): (c['name'] ?? '').toString(),
+      };
+    } catch (_) {}
+    try {
+      final allowed = await gateway.allowedPages();
+      pages = {
+        for (final p in ((allowed['items'] as List?) ?? const []))
+          if (p is Map && p['id'] != null)
+            p['id'].toString(): (p['name'] ?? '').toString(),
+      };
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       webStoreName = storeName;
       webCompanyNames = companyNames;
+      webCreators = creators;
+      webPages = pages;
       webMetaLoaded = true;
     });
   }
@@ -368,6 +510,18 @@ class _LiveOrdersState extends State<LiveOrders> {
   void initState() {
     super.initState();
     filters = Map.of(widget.initialFilters);
+    for (final key in const [
+      'area',
+      'phone',
+      'barcode',
+      'product',
+      'note',
+      'amountMin',
+      'amountMax',
+    ]) {
+      final value = filters[key]?.toString() ?? '';
+      if (value.isNotEmpty) webTextController(key)?.text = value;
+    }
     status = widget.status;
     shippingStatus = widget.shippingStatus;
     // The operational lifecycle is carried by the existing server `dispatch`
@@ -398,6 +552,13 @@ class _LiveOrdersState extends State<LiveOrders> {
     searchFocus.dispose();
     _listController.dispose();
     webScroll.dispose();
+    webArea.dispose();
+    webPhone.dispose();
+    webBarcode.dispose();
+    webProduct.dispose();
+    webNote.dispose();
+    webAmountMin.dispose();
+    webAmountMax.dispose();
     super.dispose();
   }
 
@@ -1143,49 +1304,10 @@ class _LiveOrdersState extends State<LiveOrders> {
     await _printOrders(printable);
   }
 
-  /// Web-only manual internal «تم التسليم» confirmation (accounting). Opens the
-  /// statement-review dialog, then confirms each selected order server-side. It
-  /// records who confirmed, when, and the optional statement reference / note /
-  /// financial difference. It NEVER touches the shipment: shipping status,
-  /// dispatchState and deliveryAccepted stay exactly as the carrier left them,
-  /// so a carrier update can never auto-confirm the internal step.
-  Future<void> _confirmDelivery() async {
-    if (selected.isEmpty || bulkBusy) return;
-    final confirmation = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => _DeliveryConfirmationDialog(count: selected.length),
-    );
-    if (confirmation == null || !mounted) return;
-    setState(() => bulkBusy = true);
-    var ok = 0;
-    var failed = 0;
-    try {
-      for (final id in selected.toList()) {
-        try {
-          await gateway.confirmOrderDelivery(
-            id,
-            statementRef: confirmation['statementRef'] as String?,
-            note: confirmation['note'] as String?,
-            differenceMinor: confirmation['differenceMinor'] as int?,
-          );
-          ok++;
-        } catch (_) {
-          failed++;
-        }
-      }
-    } finally {
-      if (mounted) setState(() => bulkBusy = false);
-    }
-    if (!mounted) return;
-    showSuccess(
-      context,
-      failed == 0
-          ? 'تم تأكيد تسليم $ok طلب محاسبيًا (لم تتغيّر أي حالة شحنة).'
-          : 'تم تأكيد $ok طلب، وفشل $failed طلب؛ راجع الصلاحيات أو حالة الإرسال.',
-    );
-    _exitSelection();
-    await load(reset: true, fresh: true);
-  }
+  /// Web-only manual internal «تم التسليم» confirmation (accounting) is reached
+  /// through «تغيير الحالة» → «تم التسليم», which collects the same statement
+  /// fields via [_DeliveryConfirmationDialog]. There is no separate bulk button
+  /// for it in the unified operations bar.
 
   Future<void> _bulkAssign() async {
     final companies = (await gateway.companies())

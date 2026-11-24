@@ -204,7 +204,9 @@ class _WebOrdersView extends StatelessWidget {
         builder: (_) => LiveOrderDetail(id: id, policy: state.widget.policy),
       ),
     ).then((_) {
-      if (state.mounted) state.load(reset: true);
+      // Refresh the visible rows in place so filters, search, sort, loaded pages
+      // and scroll position all survive the round-trip to the order details.
+      if (state.mounted) state.webRefreshPreservingView();
     });
   }
 
@@ -243,7 +245,9 @@ class _WebOrdersView extends StatelessWidget {
         if (state.widget.sectionMode) _countersStrip(context),
         _toolbar(context),
         if (state._deletion != null) state._deletionBanner(),
-        if (state.selectionMode) _selectionBar(context),
+        // Always visible: the bulk actions never disappear, so selecting and then
+        // scrolling never hides print / status / send / dispatch log.
+        _operationsBar(context),
         Expanded(child: _table(context)),
       ],
     );
@@ -359,6 +363,8 @@ class _WebOrdersView extends StatelessWidget {
                   color: VColors.ink,
                 ),
               ),
+              const SizedBox(width: 8),
+              _qrButton(),
               const Spacer(),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -433,6 +439,14 @@ class _WebOrdersView extends StatelessWidget {
     };
   }
 
+  /// Barcode scanning stays available on the web grid; it now lives in the top
+  /// bar so the operations bar holds only the four bulk actions.
+  Widget _qrButton() => IconButton.filledTonal(
+    tooltip: 'مسح باركود',
+    onPressed: state._openBarcodeScanner,
+    icon: const Icon(Icons.qr_code_scanner, size: 20),
+  );
+
   /// One compact header row for the dashboard section: store name + section
   /// title on one line with the refresh and add actions, so the table keeps the
   /// vertical space the old status cards wasted.
@@ -486,6 +500,8 @@ class _WebOrdersView extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              _qrButton(),
+              const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: () => showDialog<void>(
                   context: context,
@@ -524,57 +540,53 @@ class _WebOrdersView extends StatelessWidget {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: LayoutBuilder(
-        builder: (context, box) {
-          final wide = box.maxWidth >= 1120;
-          final filters = _filterControls(context);
-          final actions = _actionButtons(context);
-          final search = _searchBox(context);
-          // The dashboard section carries three extra filters (group, shipping
-          // state, clear) plus the wide search, so it always uses two tidy rows:
-          // filters first, then the actions and the search box. The orders page
-          // keeps its original single-row/wrapped layout untouched.
-          if (state.widget.sectionMode) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(spacing: 10, runSpacing: 10, children: [...filters]),
-                const SizedBox(height: 10),
-                Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Row 1 — every filter facet at once. Nothing is hidden behind a
+          // «المزيد من الفلاتر» button; the Wrap lays them out as a compact,
+          // aligned grid and reflows onto more lines on narrower desktops.
+          Wrap(spacing: 10, runSpacing: 10, children: _facetControls(context)),
+          const SizedBox(height: 10),
+          // Row 2 — «الفترة الزمنية» and «تاريخ الإرسال» side by side on desktop
+          // with equal width/height; stacked only when the viewport is narrow.
+          LayoutBuilder(
+            builder: (context, box) {
+              final period = _dateRangeField(
+                label: 'الفترة الزمنية',
+                from: _periodDays().from,
+                to: _periodDays().to,
+                onChanged: state.webSetPeriod,
+              );
+              final sent = _dateRangeField(
+                label: 'تاريخ الإرسال',
+                from: _sentPeriodDays().from,
+                to: _sentPeriodDays().to,
+                onChanged: state.webSetSentPeriod,
+              );
+              if (box.maxWidth >= 720) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Wrap(spacing: 10, runSpacing: 10, children: [...actions]),
+                    Expanded(child: period),
                     const SizedBox(width: 12),
-                    Expanded(child: search),
+                    Expanded(child: sent),
                   ],
-                ),
-              ],
-            );
-          }
-          if (wide) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                ...filters,
-                const SizedBox(width: 12),
-                ...actions,
-                const SizedBox(width: 12),
-                Expanded(child: search),
-              ],
-            );
-          }
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [...filters, ...actions],
-              ),
-              const SizedBox(height: 10),
-              search,
-            ],
-          );
-        },
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [period, const SizedBox(height: 10), sent],
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          // Row 3 — the comprehensive search box (full width). The bulk actions
+          // live in the always-visible operations bar directly below so they stay
+          // reachable while scrolling without competing for this row, and QR moves
+          // to the top bar.
+          _searchBox(context),
+        ],
       ),
     );
   }
@@ -589,7 +601,8 @@ class _WebOrdersView extends StatelessWidget {
     decoration: InputDecoration(
       isDense: true,
       prefixIcon: const Icon(Icons.search, size: 20),
-      hintText: 'بحث (رقم الطلب، الطلب، الاسم، الباركود...)',
+      hintText:
+          'بحث شامل (رقم الطلب، الباركود، الاسم، الهاتف، المنتج، المنطقة، العنوان، المصدر، المنشئ، مرجع الشحنة، الملاحظات...)',
       suffixIcon: state.search.text.trim().isEmpty
           ? null
           : IconButton(
@@ -638,18 +651,21 @@ class _WebOrdersView extends StatelessWidget {
     ),
   );
 
-  List<Widget> _filterControls(BuildContext context) {
-    final section = state.widget.sectionMode;
-    // In the dashboard section the status dropdown offers the six real store
-    // statuses (the same canonical set the bulk change uses); the carrier
-    // vocabulary lives in its own independent «حالة الشحنة» dropdown. The orders
-    // page keeps the original single combined vocabulary.
+  /// The full filter bar of the internal-orders list, rendered in one place —
+  /// there is deliberately NO «المزيد من الفلاتر» button: hiding a condition
+  /// behind a toggle was the exact behaviour this page must not have. Every
+  /// facet the server supports is visible at once, so nothing is ever hidden.
+  /// The Wrap reflows them into a compact, aligned grid at any desktop width.
+  List<Widget> _facetControls(BuildContext context) {
+    // The internal status vocabulary the section's own cards use: every internal
+    // status INCLUDING «مرتجع», but never the carrier-driven «تم الإرسال» /
+    // «قيد التوصيل» — those live in the independent «حالة الشحنة» facet.
+    final internalStatuses = OrderStatus.values.where(
+      (s) => s != OrderStatus.dispatched && s != OrderStatus.inTransit,
+    );
     final statusItems = <String, String>{
       'all': 'الكل',
-      if (section)
-        for (final s in internalChangeableStatuses) s.name: s.label
-      else
-        for (final e in statusLabels.entries) e.key: e.value,
+      for (final s in internalStatuses) s.name: s.label,
     };
     final shippingItems = <String, String>{
       'all': 'الكل',
@@ -669,109 +685,295 @@ class _WebOrdersView extends StatelessWidget {
       'all': 'الكل',
       for (final g in jordanGovernorates) g: g,
     };
+    final creatorItems = <String, String>{
+      'all': 'الكل',
+      for (final e in state.webCreators.entries)
+        if (e.value.isNotEmpty) e.key: e.value,
+    };
+    final sourceItems = <String, String>{
+      'all': 'الكل',
+      for (final e in state.webPages.entries)
+        if (e.value.isNotEmpty) e.key: e.value,
+    };
     return [
-      if (section) ...[
-        _dropdown(
-          label: 'المجموعة',
-          value: state.bucket,
-          items: groupItems,
-          onChanged: state.webSetBucket,
-        ),
-        const SizedBox(width: 10),
-      ],
-      _periodButton(context),
-      const SizedBox(width: 10),
       _dropdown(
-        label: 'المحافظة',
-        value: state.filters['city']?.toString() ?? 'all',
-        items: cityItems,
-        onChanged: (v) => state.webSetFilter('city', v),
+        label: 'المجموعة',
+        value: state.bucket,
+        items: groupItems,
+        onChanged: state.webSetBucket,
       ),
-      const SizedBox(width: 10),
+      _dropdown(
+        label: 'الحالة الداخلية',
+        value: state.status ?? 'all',
+        items: statusItems,
+        onChanged: state.webSetStatus,
+      ),
+      _dropdown(
+        label: 'حالة الشحنة',
+        value: state.shippingStatus ?? 'all',
+        items: shippingItems,
+        onChanged: state.webSetShippingStatus,
+      ),
       _dropdown(
         label: 'شركة التوصيل',
         value: state.filters['companyId']?.toString() ?? 'all',
         items: companyItems,
         onChanged: (v) => state.webSetFilter('companyId', v),
       ),
-      const SizedBox(width: 10),
       _dropdown(
-        label: section ? 'حالة الطلب' : 'الحالة',
-        value: state.status ?? 'all',
-        items: statusItems,
-        onChanged: (v) => state.webSetStatus(v),
+        label: 'المحافظة',
+        value: state.filters['city']?.toString() ?? 'all',
+        items: cityItems,
+        onChanged: (v) => state.webSetFilter('city', v),
       ),
-      if (section) ...[
-        const SizedBox(width: 10),
-        _dropdown(
-          label: 'حالة الشحنة',
-          value: state.shippingStatus ?? 'all',
-          items: shippingItems,
-          onChanged: (v) => state.webSetShippingStatus(v),
+      _textFilter(
+        label: 'المنطقة',
+        filterKey: 'area',
+        controller: state.webArea,
+      ),
+      _dropdown(
+        label: 'مصدر الطلب',
+        value: state.filters['pageId']?.toString() ?? 'all',
+        items: sourceItems,
+        onChanged: (v) => state.webSetFilter('pageId', v),
+      ),
+      _dropdown(
+        label: 'المنشئ',
+        value: state.filters['createdBy']?.toString() ?? 'all',
+        items: creatorItems,
+        onChanged: (v) => state.webSetFilter('createdBy', v),
+      ),
+      _typeDropdown(),
+      _dispatchDropdown(),
+      _textFilter(
+        label: 'الهاتف (أرقام)',
+        filterKey: 'phone',
+        controller: state.webPhone,
+        numbers: true,
+      ),
+      _textFilter(
+        label: 'الباركود / رقم الطلب',
+        filterKey: 'barcode',
+        controller: state.webBarcode,
+        ltr: true,
+      ),
+      _textFilter(
+        label: 'المنتج / المحتويات',
+        filterKey: 'product',
+        controller: state.webProduct,
+      ),
+      _textFilter(
+        label: 'الملاحظات',
+        filterKey: 'note',
+        controller: state.webNote,
+      ),
+      if (state.widget.policy.viewAmounts) ...[
+        _textFilter(
+          label: 'المبلغ من',
+          filterKey: 'amountMin',
+          controller: state.webAmountMin,
+          numbers: true,
         ),
-        const SizedBox(width: 10),
-        SizedBox(
-          height: 48,
-          child: OutlinedButton.icon(
-            onPressed: state.busy ? null : state.webClearFilters,
-            icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-            label: const Text('مسح الفلاتر'),
-          ),
+        _textFilter(
+          label: 'المبلغ إلى',
+          filterKey: 'amountMax',
+          controller: state.webAmountMax,
+          numbers: true,
         ),
       ],
+      _sortDropdown(),
+      SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          onPressed: state.busy ? null : state.webClearFilters,
+          icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+          label: const Text('مسح الفلاتر'),
+        ),
+      ),
     ];
   }
 
-  Widget _periodButton(BuildContext context) {
-    final active = state.filters['from'] != null;
+  /// The operational dispatch-state dropdown, using the same group vocabulary
+  /// the server accepts (idle/sending/sent/review).
+  static const _dispatchItems = <String, String>{
+    'all': 'الكل',
+    'idle': 'غير مرسل',
+    'sending': 'جاري الإرسال',
+    'sent': 'تم الإرسال',
+    'review': 'يحتاج مراجعة',
+  };
+
+  Widget _dispatchDropdown() => SizedBox(
+    width: 158,
+    child: DropdownButtonFormField<String>(
+      key: ValueKey('dispatch-${state.filters['dispatch'] ?? 'all'}'),
+      isExpanded: true,
+      isDense: true,
+      initialValue:
+          _dispatchItems.containsKey(state.filters['dispatch']?.toString())
+          ? state.filters['dispatch'].toString()
+          : 'all',
+      decoration: _fieldDecoration('حالة الإرسال'),
+      style: _fieldStyle,
+      items: [
+        for (final e in _dispatchItems.entries)
+          DropdownMenuItem(value: e.key, child: Text(e.value)),
+      ],
+      onChanged: state.webSetDispatch,
+    ),
+  );
+
+  Widget _typeDropdown() => SizedBox(
+    width: 158,
+    child: DropdownButtonFormField<String>(
+      key: ValueKey('type-${state.filters['orderType'] ?? 'all'}'),
+      isExpanded: true,
+      isDense: true,
+      initialValue: state.filters['orderType']?.toString() ?? 'all',
+      decoration: _fieldDecoration('نوع الطلب'),
+      style: _fieldStyle,
+      items: [
+        const DropdownMenuItem(value: 'all', child: Text('الكل')),
+        for (final t in OrderType.values)
+          DropdownMenuItem(value: t.wire, child: Text(t.label)),
+      ],
+      onChanged: (v) => state.webSetFilter('orderType', v),
+    ),
+  );
+
+  Widget _sortDropdown() {
+    // The server pins the sort while a global search is active, so the control
+    // is disabled (match that contract) instead of silently doing nothing.
+    final searching = state.appliedQuery.trim().length >= 2;
     return SizedBox(
-      height: 48,
-      child: OutlinedButton.icon(
-        onPressed: () => _pickPeriod(context),
-        icon: const Icon(Icons.calendar_month_outlined, size: 18),
-        label: Text(active ? 'فترة محددة' : 'الفترة الزمنية'),
+      width: 158,
+      child: DropdownButtonFormField<String>(
+        key: ValueKey('sort-${state.sort}'),
+        isExpanded: true,
+        isDense: true,
+        initialValue: state.sort,
+        decoration: _fieldDecoration('ترتيب الإنشاء'),
+        style: _fieldStyle,
+        items: const [
+          DropdownMenuItem(value: 'desc', child: Text('الأحدث أولاً')),
+          DropdownMenuItem(value: 'asc', child: Text('الأقدم أولاً')),
+        ],
+        onChanged: searching
+            ? null
+            : (v) {
+                state.webSetState(() => state.sort = v ?? 'desc');
+                state.load(reset: true);
+              },
       ),
     );
   }
 
-  List<Widget> _actionButtons(BuildContext context) {
-    // Right-to-left order matches the reference: QR, send, print, then the
-    // advanced-filter button (all before the wide search box).
-    return [
-      OutlinedButton.icon(
-        onPressed: state._openBarcodeScanner,
-        icon: const Icon(Icons.qr_code_scanner, size: 18),
-        label: const Text('QR'),
+  InputDecoration _fieldDecoration(String label) => InputDecoration(
+    isDense: true,
+    labelText: label,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+  );
+
+  static const _fieldStyle = TextStyle(
+    fontFamily: 'Cairo',
+    fontSize: 13,
+    color: VColors.ink,
+  );
+
+  /// One free-text filter box (المنطقة/الهاتف/الباركود/المنتج/الملاحظات/المبلغ).
+  /// The server matches area/phone/barcode/product/note as substrings and the
+  /// amount boxes as a numeric range; both commit on Enter or when the box loses
+  /// focus, so typing does not fire a query on every keystroke.
+  Widget _textFilter({
+    required String label,
+    required String filterKey,
+    required TextEditingController controller,
+    bool ltr = false,
+    bool numbers = false,
+  }) => SizedBox(
+    width: 158,
+    height: 48,
+    child: TextField(
+      controller: controller,
+      textInputAction: TextInputAction.search,
+      keyboardType: numbers
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : null,
+      textDirection: ltr ? TextDirection.ltr : null,
+      onSubmitted: (v) => state.webSetText(filterKey, v),
+      onTapOutside: (_) => state.webSetText(filterKey, controller.text),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: label,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
+        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      const SizedBox(width: 10),
-      FilledButton.tonalIcon(
-        onPressed: () => state.selected.isEmpty
-            ? showSuccess(context, 'حدّد طلباً واحداً على الأقل لإرساله.')
-            : state._bulkDispatch(),
-        icon: const Icon(Icons.send_outlined, size: 18),
-        label: const Text('إرسال الطلبات'),
-      ),
-      const SizedBox(width: 10),
-      FilledButton.tonalIcon(
-        onPressed: () => state.selected.isEmpty
-            ? showSuccess(context, 'حدّد طلباً واحداً على الأقل لطباعته.')
-            : state._bulkPrint(),
-        icon: const Icon(Icons.print_outlined, size: 18),
-        label: const Text('طباعة'),
-      ),
-      const SizedBox(width: 10),
-      OutlinedButton.icon(
-        onPressed: () => state._openFilters(context),
-        icon: const Icon(Icons.filter_alt_outlined, size: 18),
-        label: const Text('فلترة متقدمة'),
-      ),
-    ];
+      style: _fieldStyle,
+    ),
+  );
+
+  /// One inline date-range picker. A [ValueKey] on the applied range remounts
+  /// the field when the filter is changed from elsewhere (e.g. «مسح الفلاتر»),
+  /// so the visible range always reflects the live filter.
+  Widget _dateRangeField({
+    required String label,
+    DateTime? from,
+    DateTime? to,
+    required void Function(DateTime? from, DateTime? to) onChanged,
+  }) => VDateRangeField(
+    key: ValueKey(
+      '$label-${from?.toIso8601String() ?? ''}-${to?.toIso8601String() ?? ''}',
+    ),
+    label: label,
+    from: from,
+    to: to,
+    onChanged: onChanged,
+  );
+
+  /// The applied order-created period as inclusive local days.
+  ({DateTime? from, DateTime? to}) _periodDays() =>
+      _daysFromFilters('from', 'to');
+
+  /// The applied carrier send-date period as inclusive local days.
+  ({DateTime? from, DateTime? to}) _sentPeriodDays() =>
+      _daysFromFilters('sentFrom', 'sentTo');
+
+  /// Converts the exclusive UTC+03:00 boundaries stored in [filters] back to the
+  /// inclusive local calendar days the date field displays.
+  ({DateTime? from, DateTime? to}) _daysFromFilters(
+    String fromKey,
+    String toKey,
+  ) {
+    final rawFrom = DateTime.tryParse(state.filters[fromKey]?.toString() ?? '');
+    final rawTo = DateTime.tryParse(state.filters[toKey]?.toString() ?? '');
+    if (rawFrom == null || rawTo == null) return (from: null, to: null);
+    final from = businessTime(rawFrom);
+    final to = businessTime(rawTo).subtract(const Duration(microseconds: 1));
+    return (
+      from: DateTime(from.year, from.month, from.day),
+      to: DateTime(to.year, to.month, to.day),
+    );
   }
+
   // ---------------------------------------------------------------- selection
 
-  Widget _selectionBar(BuildContext context) {
+  /// The always-visible bulk operations bar, pinned directly under the filters
+  /// with the table header below it. It never disappears: with no selection the
+  /// selection-dependent actions are disabled instead of hidden, so the toolbar
+  /// keeps its place and nothing ever jumps. The four actions are the single
+  /// print / status / «إرسال إلى شركة التوصيل» / dispatch-log set, matching the
+  /// reference — there is deliberately NO separate «إرسال» button.
+  Widget _operationsBar(BuildContext context) {
+    final selected = state.selected.length;
     final canManage = state.widget.policy.canChangeStatus;
     final canSend = state.widget.policy.can('sendToDelivery');
+    final none = selected == 0;
+    final busy = state.bulkBusy;
+    final allVisible = state.rows.isNotEmpty && selected == state.rows.length;
     return Container(
       color: VColors.softBlue,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -780,66 +982,64 @@ class _WebOrdersView extends StatelessWidget {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text(
-            'المحدد: ${state.selected.length}',
-            style: const TextStyle(fontWeight: FontWeight.w900),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                none ? Icons.check_box_outline_blank : Icons.check_circle,
+                color: VColors.brand,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'المحدد: $selected',
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
           ),
           TextButton(
-            onPressed: () => _selectAllVisible(
-              state.rows.isNotEmpty &&
-                  state.selected.length == state.rows.length,
-            ),
-            child: const Text('تحديد كل المعروض'),
+            onPressed: state.rows.isEmpty || allVisible
+                ? null
+                : () => _selectAllVisible(false),
+            child: const Text('تحديد الظاهر'),
           ),
           TextButton(
-            onPressed: state.bulkBusy ? null : state._selectAllMatching,
+            onPressed: busy ? null : state._selectAllMatching,
             child: const Text('تحديد كل النتائج'),
           ),
           TextButton(
-            onPressed: state._exitSelection,
+            onPressed: none ? null : state._exitSelection,
             child: const Text('إلغاء التحديد'),
           ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: state.selected.isEmpty || state.bulkBusy
-                ? null
-                : state._bulkPrint,
-            icon: const Icon(Icons.print_outlined, size: 18),
-            label: const Text('طباعة المحدد'),
-          ),
-          if (canSend)
-            OutlinedButton.icon(
-              onPressed: state.selected.isEmpty || state.bulkBusy
-                  ? null
-                  : state._bulkDispatch,
-              icon: const Icon(Icons.send_outlined, size: 18),
-              label: const Text('إرسال المحدد'),
+          Tooltip(
+            message: none
+                ? 'حدّد طلباً واحداً أو أكثر لتفعيل الطباعة'
+                : 'طباعة $selected طلب',
+            child: FilledButton.icon(
+              onPressed: none || busy ? null : state._bulkPrint,
+              icon: const Icon(Icons.print_outlined, size: 18),
+              label: Text(none ? 'طباعة' : 'طباعة ($selected)'),
             ),
+          ),
           if (canManage)
             OutlinedButton.icon(
-              onPressed: state.selected.isEmpty || state.bulkBusy
-                  ? null
-                  : state._bulkChangeStatus,
+              onPressed: none || busy ? null : state._bulkChangeStatus,
               icon: const Icon(Icons.sync_alt, size: 18),
               label: const Text('تغيير الحالة'),
             ),
-          if (canManage)
+          if (canSend)
             FilledButton.tonalIcon(
-              onPressed: state.selected.isEmpty || state.bulkBusy
-                  ? null
-                  : state._confirmDelivery,
-              icon: const Icon(Icons.verified_outlined, size: 18),
-              label: const Text('تأكيد التسليم (محاسبي)'),
+              onPressed: none || busy ? null : () => _sendToCompany(context),
+              icon: const Icon(Icons.local_shipping_outlined, size: 18),
+              label: const Text('إرسال إلى شركة التوصيل'),
             ),
           if (canSend)
             OutlinedButton.icon(
-              onPressed: state.selected.isEmpty || state.bulkBusy
-                  ? null
-                  : state._bulkAssign,
-              icon: const Icon(Icons.local_shipping_outlined, size: 18),
-              label: const Text('إسناد شركة'),
+              onPressed: busy ? null : () => _openDispatchLog(context),
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('سجل عمليات الإرسال'),
             ),
-          if (state.bulkBusy)
+          if (busy)
             const SizedBox(
               width: 18,
               height: 18,
@@ -848,6 +1048,122 @@ class _WebOrdersView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openDispatchLog(BuildContext context) => Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => BulkOperationsScreen(policy: state.widget.policy),
+    ),
+  );
+
+  /// One clear «إرسال إلى شركة التوصيل» action: pick/confirm the carrier, assign
+  /// every selected order that still needs it, then REALLY send ONLY the orders
+  /// whose assignment is confirmed, through the existing durable bulk-dispatch
+  /// path. Already-sent / needs-review orders are blocked by the backend and are
+  /// never re-sent; an order whose assignment failed or was not confirmed is
+  /// never sent. The internal status is never changed by this action.
+  Future<void> _sendToCompany(BuildContext context) async {
+    if (state.bulkBusy || state.selected.isEmpty) return;
+    if (!state.widget.policy.can('sendToDelivery')) {
+      showError(context, 'لا تملك صلاحية الإرسال إلى شركة التوصيل.');
+      return;
+    }
+    final companies = (await state.gateway.companies())
+        .where((c) => c['enabled'] == true && c['archived'] != true)
+        .toList();
+    if (!context.mounted) return;
+    if (companies.isEmpty) {
+      showError(context, 'لا توجد شركات توصيل مفعّلة.');
+      return;
+    }
+    final ids = state.selected.toList();
+    final byId = {for (final o in state.rows) o['id'].toString(): o};
+    final companyIds = {for (final c in companies) c['id'].toString()};
+    // Pre-select the carrier when every selected order already shares one.
+    final current = {
+      for (final id in ids) byId[id]?['companyId']?.toString() ?? '',
+    };
+    final preset = current.length == 1 && companyIds.contains(current.first)
+        ? current.first
+        : null;
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (_) => _SendToCompanyDialog(
+        count: ids.length,
+        companies: companies,
+        presetCompanyId: preset,
+      ),
+    );
+    if (chosen == null || !context.mounted) return;
+
+    // 1) Assign (only) the orders not already assigned to the chosen carrier.
+    final needAssign = [
+      for (final id in ids)
+        if ((byId[id]?['companyId']?.toString() ?? '') != chosen) id,
+    ];
+    final assignFailed = <String, String>{};
+    if (needAssign.isNotEmpty) {
+      state.webSetState(() => state.bulkBusy = true);
+      try {
+        for (
+          var i = 0;
+          i < needAssign.length;
+          i += _LiveOrdersState._bulkChunk
+        ) {
+          final end = (i + _LiveOrdersState._bulkChunk) > needAssign.length
+              ? needAssign.length
+              : i + _LiveOrdersState._bulkChunk;
+          final chunk = needAssign.sublist(i, end);
+          final res = await state.gateway.bulkAssignCompany(chunk, chosen);
+          for (final raw in (res['results'] as List? ?? const [])) {
+            final m = Map<String, dynamic>.from(raw as Map);
+            if (m['ok'] != true) {
+              final msg = (m['message'] as String?)?.trim() ?? '';
+              assignFailed[m['id'].toString()] = msg.isEmpty
+                  ? 'تعذّر الإسناد'
+                  : msg;
+            }
+          }
+        }
+      } catch (_) {
+        // A transport failure means the remaining assignments are UNCONFIRMED:
+        // never send an order whose assignment we could not confirm.
+        for (final id in needAssign) {
+          assignFailed.putIfAbsent(id, () => 'تعذّر تأكيد الإسناد');
+        }
+      } finally {
+        if (state.mounted) state.webSetState(() => state.bulkBusy = false);
+      }
+    }
+    if (!context.mounted) return;
+    final toSend = [
+      for (final id in ids)
+        if (!assignFailed.containsKey(id)) id,
+    ];
+    if (toSend.isEmpty) {
+      showError(context, 'تعذّر إسناد الطلبات المحددة؛ لم يبدأ أي إرسال.');
+      return;
+    }
+    // 2) Really send the confirmed orders through the durable bulk path. Each
+    // chunk gets its own stable operation id so results survive a drop and a
+    // chunk is never re-sent with different content.
+    final base =
+        'op${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
+        '${Random.secure().nextInt(1 << 30).toRadixString(36)}';
+    var chunkIndex = 0;
+    await state._runBulkChunked(toSend, (chunk) {
+      final opId = '${base}_$chunkIndex';
+      chunkIndex++;
+      return state.gateway.bulkDispatch(chunk, operationId: opId);
+    }, chunkSize: _LiveOrdersState._dispatchChunk);
+    if (!context.mounted) return;
+    if (assignFailed.isNotEmpty) {
+      showError(
+        context,
+        'تعذّر إسناد ${assignFailed.length} طلب فلم يُرسل؛ الطلبات المرسلة أو قيد المراجعة لا يُعاد إرسالها.',
+      );
+    }
   }
 
   // ---------------------------------------------------------------- table
@@ -1180,33 +1496,6 @@ class _WebOrdersView extends StatelessWidget {
       child: child,
     ),
   );
-
-  // ---------------------------------------------------------------- period
-
-  Future<void> _pickPeriod(BuildContext context) async {
-    final initial = _currentPeriod();
-    final picked = await showDialog<({DateTime? from, DateTime? to})>(
-      context: context,
-      builder: (_) => _WebPeriodDialog(from: initial.from, to: initial.to),
-    );
-    if (picked == null || !state.mounted) return;
-    state.webSetPeriod(picked.from, picked.to);
-  }
-
-  ({DateTime? from, DateTime? to}) _currentPeriod() {
-    final rawFrom = DateTime.tryParse(state.filters['from']?.toString() ?? '');
-    final rawTo = DateTime.tryParse(state.filters['to']?.toString() ?? '');
-    DateTime? day(DateTime? v) => v == null
-        ? null
-        : businessTime(v).subtract(const Duration(microseconds: 1));
-    final from = rawFrom == null ? null : businessTime(rawFrom);
-    var to = day(rawTo);
-    if (from == null || to == null) return (from: null, to: null);
-    return (
-      from: DateTime(from.year, from.month, from.day),
-      to: DateTime(to.year, to.month, to.day),
-    );
-  }
 }
 
 /// One column of the web grid: stable sort key, Arabic label, fixed width and
@@ -1226,40 +1515,65 @@ class _WebCol {
   final bool sortable;
 }
 
-/// Period selector dialog. Returns inclusive local calendar days, or
-/// `(null, null)` to clear; the caller converts them to the store's UTC+03:00
-/// boundaries before querying, exactly like the shared OrderFilters does.
-class _WebPeriodDialog extends StatefulWidget {
-  const _WebPeriodDialog({this.from, this.to});
-  final DateTime? from;
-  final DateTime? to;
+/// Carrier picker for the unified web «إرسال إلى شركة التوصيل» action. Returns
+/// the chosen company id, or null when cancelled. The dialog states plainly that
+/// the action assigns THEN really sends, that the internal status is not changed,
+/// and that sent / needs-review orders are never re-sent.
+class _SendToCompanyDialog extends StatefulWidget {
+  const _SendToCompanyDialog({
+    required this.count,
+    required this.companies,
+    this.presetCompanyId,
+  });
+  final int count;
+  final List<Map<String, dynamic>> companies;
+  final String? presetCompanyId;
   @override
-  State<_WebPeriodDialog> createState() => _WebPeriodDialogState();
+  State<_SendToCompanyDialog> createState() => _SendToCompanyDialogState();
 }
 
-class _WebPeriodDialogState extends State<_WebPeriodDialog> {
-  DateTime? from;
-  DateTime? to;
+class _SendToCompanyDialogState extends State<_SendToCompanyDialog> {
+  late String _selected;
 
   @override
   void initState() {
     super.initState();
-    from = widget.from;
-    to = widget.to;
+    _selected =
+        widget.presetCompanyId ?? widget.companies.first['id'].toString();
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('الفترة الزمنية'),
+    title: const Text('إرسال إلى شركة التوصيل'),
     content: SizedBox(
-      width: 360,
-      child: VDateRangeField(
-        from: from,
-        to: to,
-        onChanged: (a, b) => setState(() {
-          from = a;
-          to = b;
-        }),
+      width: 440,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'سيُسند ${widget.count} طلب إلى الشركة المختارة ثم يُرسل فعلياً إليها. '
+            'لا تُغيَّر الحالة الداخلية عند الإرسال، والطلبات المرسلة أو التي تحتاج '
+            'مراجعة لن تُعاد، والطلبات التي يتعذّر إسنادها لن تُرسل.',
+            style: const TextStyle(fontSize: 12.5, color: VColors.muted),
+          ),
+          const SizedBox(height: 10),
+          for (final c in widget.companies)
+            ListTile(
+              dense: true,
+              selected: c['id'].toString() == _selected,
+              leading: Icon(
+                c['id'].toString() == _selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: c['id'].toString() == _selected
+                    ? VColors.brand
+                    : VColors.muted,
+              ),
+              title: Text(c['name'].toString()),
+              onTap: () => setState(() => _selected = c['id'].toString()),
+            ),
+        ],
       ),
     ),
     actions: [
@@ -1267,13 +1581,10 @@ class _WebPeriodDialogState extends State<_WebPeriodDialog> {
         onPressed: () => Navigator.pop(context),
         child: const Text('إلغاء'),
       ),
-      TextButton(
-        onPressed: () => Navigator.pop(context, (from: null, to: null)),
-        child: const Text('مسح الفترة'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, (from: from, to: to)),
-        child: const Text('تطبيق'),
+      FilledButton.icon(
+        onPressed: () => Navigator.pop(context, _selected),
+        icon: const Icon(Icons.send_outlined, size: 18),
+        label: const Text('إسناد وإرسال'),
       ),
     ],
   );
