@@ -996,8 +996,16 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// change. It is independent of any status change: a print failure never
   /// reverses a completed change, and calling it twice for the same ids would
   /// only re-open the preview, never re-run a change.
-  Future<void> _printOrders(List<String> ids) async {
+  ///
+  /// On the WEB this hands the job to the standalone Print Manager, which keeps
+  /// a durable, resumable queue in its OWN window (single, bulk, post-status and
+  /// reprint all funnel through it). Android keeps the in-app preview untouched.
+  Future<void> _printOrders(List<String> ids, {String source = 'bulk'}) async {
     if (ids.isEmpty) return;
+    if (kIsWeb) {
+      await openPrintManager(context, orderIds: ids, source: source);
+      return;
+    }
     // Large selections are printed in explicit chunks with a warning, never
     // silently truncated.
     final chunks = <List<String>>[];
@@ -1301,7 +1309,7 @@ class _LiveOrdersState extends State<LiveOrders> {
       showSuccess(context, 'لم تُحدَّث أي طلبات قابلة للطباعة.');
       return;
     }
-    await _printOrders(printable);
+    await _printOrders(printable, source: 'status');
   }
 
   /// Web-only manual internal «تم التسليم» confirmation (accounting) is reached
@@ -3159,6 +3167,16 @@ class _LiveOrderDetailState extends State<LiveOrderDetail> {
             icon: Icons.print_outlined,
             label: 'طباعة / PDF / باركود',
             onPressed: () async {
+              if (kIsWeb) {
+                // The very same Print Manager the list uses: a single order is
+                // just a one-order batch, still durable and resumable.
+                await openPrintManager(
+                  context,
+                  orderIds: [widget.id],
+                  source: 'single',
+                );
+                return;
+              }
               try {
                 final latest = await VelnixGateway.instance.order(widget.id);
                 if (!context.mounted) return;

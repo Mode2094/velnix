@@ -28,19 +28,27 @@ function sourcePlan(root=path.resolve(__dirname,'../..')){
   const bulkFactory="const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyInternalStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});";
  const bulkBinding='for(const [name,handler] of Object.entries(bulk))if(typeof handler===\'function\')exports[name]=callable(handler);';
  const bulkReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(bulkSrc);
- if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||!text.includes(bulkFactory)||!text.includes(bulkBinding)||[...text.matchAll(/exports\s*\[/g)].length!==3||!returned||!pagesReturned||!bulkReturned)throw Error('source_manifest_requires_review');
+ // The durable print-batch factory (web Print Manager) exposes its callables the same way.
+ const printSrc=fs.readFileSync(path.join(root,'functions/src/print_batches.js'),'utf8');
+ const printFactory="const printBatches=require('./print_batches')({db,FieldValue,requireAuth,currentActor,audit,fail,can,canSeeOrder});";
+ const printBinding='for(const [name,handler] of Object.entries(printBatches))exports[name]=callable(handler);';
+ const printReturned=/return\s*\{([A-Za-z0-9_,\s]+)\};\s*\};?\s*$/.exec(printSrc);
+ if(!text.includes(factory)||!text.includes(binding)||!text.includes(pagesFactory)||!text.includes(pagesBinding)||!text.includes(bulkFactory)||!text.includes(bulkBinding)||!text.includes(printFactory)||!text.includes(printBinding)||[...text.matchAll(/exports\s*\[/g)].length!==4||!returned||!pagesReturned||!bulkReturned||!printReturned)throw Error('source_manifest_requires_review');
  const names=returned[1].split(',').map(n=>n.trim());
  if(names.length!==3||new Set(names).size!==names.length||names.some(n=>!['joinSession','listJoinRequests','decideJoinRequest'].includes(n)))throw Error('source_manifest_requires_review');
  const pageNames=pagesReturned[1].split(',').map(n=>n.trim());
  if(pageNames.length!==6||new Set(pageNames).size!==pageNames.length||pageNames.some(n=>!['listPages','listAllowedPages','savePage','archivePage','restorePage','pageStats'].includes(n)))throw Error('source_manifest_requires_review');
  const bulkNames=bulkReturned[1].split(',').map(n=>n.trim()).filter(n=>!['MAX_BULK','MAX_DISPATCH'].includes(n));
  if(bulkNames.length!==6||new Set(bulkNames).size!==bulkNames.length||bulkNames.some(n=>!['resolveBarcodes','bulkChangeStatus','bulkAssignCompany','bulkDispatch','getBulkOperation','listBulkOperations'].includes(n)))throw Error('source_manifest_requires_review');
+ const printNames=printReturned[1].split(',').map(n=>n.trim());
+ if(printNames.length!==5||new Set(printNames).size!==printNames.length||printNames.some(n=>!['createPrintBatch','getPrintBatch','listPrintBatches','updatePrintBatch','deletePrintBatch'].includes(n)))throw Error('source_manifest_requires_review');
  functions.push(...names.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...pageNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  functions.push(...bulkNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
+ functions.push(...printNames.map(name=>({name,kind:'callable',region:'europe-west1'})));
  if(new Set(functions.map(f=>f.name)).size!==functions.length)throw Error('source_manifest_requires_review');
  const rules=fs.readFileSync(path.join(root,'firestore.rules'),'utf8'),indexes=JSON.parse(fs.readFileSync(path.join(root,'firestore.indexes.json'),'utf8'));
- return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),pageHandlersSha256:hash(pages),bulkHandlersSha256:hash(bulkSrc),searchHandlersSha256:hash(fs.readFileSync(path.join(root,'functions/src/search.js'),'utf8')),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
+ return {functions,backendSha256:hash(text),joinHandlersSha256:hash(joins),pageHandlersSha256:hash(pages),bulkHandlersSha256:hash(bulkSrc),printHandlersSha256:hash(printSrc),searchHandlersSha256:hash(fs.readFileSync(path.join(root,'functions/src/search.js'),'utf8')),indexesSha256:hash(JSON.stringify(indexes)),rulesSha256:hash(rules),indexes:indexes.indexes,rules,clickEnabled:false,deployAuthorized:false,bootstrapForbidden:true};
 }
 function indexKey(index){return JSON.stringify({collectionGroup:index.collectionGroup,queryScope:index.queryScope,documentNameOrder:(index.fields||[]).find(f=>f.fieldPath==='__name__')?.order||(index.fields||[]).filter(f=>f.order).at(-1)?.order||'ASCENDING',fields:(index.fields||[]).filter(f=>f.fieldPath!=='__name__').map(({fieldPath,order,arrayConfig})=>({fieldPath,...(order?{order}:{}),...(arrayConfig?{arrayConfig}:{})}))});}
 async function operationalReadiness({get,auth,readIam,plan}){

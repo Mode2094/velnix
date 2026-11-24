@@ -309,6 +309,9 @@ for(const [name,handler] of Object.entries(pages))exports[name]=callable(handler
 const bulk=require('./bulk')({db,auth:getAuth(),FieldValue,requireAuth,currentActor,audit,fail,requiredPerm,logger,applyStatusChange,applyInternalStatusChange,applyCompanyAssignment,runDispatch:dispatchOrder,orderForUser});
 for(const [name,handler] of Object.entries(bulk))if(typeof handler==='function')exports[name]=callable(handler);
 
+const printBatches=require('./print_batches')({db,FieldValue,requireAuth,currentActor,audit,fail,can,canSeeOrder});
+for(const [name,handler] of Object.entries(printBatches))exports[name]=callable(handler);
+
 exports.me=callable(async req=>{const user=await requireAuth(req);return {id:user.id,name:user.name,role:user.role,active:user.active,permissions:user.permissions||[],salesSupervisorId:user.salesSupervisorId||null,allowedPageIds:user.allowedPageIds||[],email:user.email||''};});
 exports.listOrders=callable(async req=>{
   const user=await requireAuth(req);

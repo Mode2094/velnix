@@ -69,8 +69,8 @@ test('only the current registered web app and matching mobile packages qualify',
 test('project IAM read uses the pinned official human session and redacts unrelated identities',()=>{
  const calls=[],s=createGcloudSession({env:{},expectedAccount:owner,run:args=>{calls.push(args);return args[0]==='projects'?'{}':args[0]==='config'?'(unset)':owner;}});assert.deepEqual(s.readProjectIam(),{});const args=calls.at(-1);assert.equal(args[1],'get-iam-policy');assert.ok(args.includes('--account='+owner));assert.ok(args.includes('--billing-project='+project));
 });
-test('source manifest includes all 58 exports, existing schedulers, and deny-by-default rules; index normalization preserves real filters',()=>{
- assert.equal(plan.functions.length,58);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,218);assert.equal(plan.bootstrapForbidden,true);
+test('source manifest includes all 63 exports, existing schedulers, and deny-by-default rules; index normalization preserves real filters',()=>{
+ assert.equal(plan.functions.length,63);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,218);assert.equal(plan.bootstrapForbidden,true);
   // Dashboard/company aggregates sum amountMinor, so every facet needs the
   // aggregated field indexed. These are the unfiltered facet shapes.
   const facetFields=[['status'],['status','deliveryAccepted'],['shippingStatus'],['hasDelivery'],['hasDelivery','deliveryAccepted'],['hasDelivery','dispatchState'],['carrierDeletion.state']];
@@ -160,7 +160,7 @@ test('unrecognized dynamic source exports fail offline planning instead of silen
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'velnix-manifest-'));
  try{
   fs.mkdirSync(path.join(dir,'functions/src'),{recursive:true});
-  for(const name of ['index.js','join_requests.js','pages.js','bulk.js','search.js','query.js','policy.js'])fs.copyFileSync(path.join(__dirname,'../src',name),path.join(dir,'functions/src',name));
+  for(const name of ['index.js','join_requests.js','pages.js','bulk.js','print_batches.js','search.js','query.js','policy.js'])fs.copyFileSync(path.join(__dirname,'../src',name),path.join(dir,'functions/src',name));
   fs.appendFileSync(path.join(dir,'functions/src/index.js'),"\nexports['unexpectedHandler']=callable(()=>{});\n");
   assert.throws(()=>sourcePlan(dir),/source_manifest_requires_review/);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}

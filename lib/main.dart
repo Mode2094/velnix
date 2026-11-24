@@ -99,7 +99,10 @@ Future<void> main() async {
     if (!kIsWeb) {
       await AppCheckGate.wait();
     }
-    runApp(const VelnixLiveApp());
+    // A dedicated Print Manager window is requested by `?velnixPrint=<batchId>`.
+    // It must boot Firebase/Auth exactly like the main app (it shares the browser
+    // session) but render ONLY the manager, so the main site stays usable in its
+    // own window while a long print queue runs.
     if (kIsWeb) {
       unawaited(
         Future<void>.delayed(
@@ -107,7 +110,13 @@ Future<void> main() async {
           AppCheckGate.wait,
         ),
       );
+      final printBatchId = Uri.base.queryParameters['velnixPrint'];
+      if (printBatchId != null && printBatchId.isNotEmpty) {
+        runApp(VelnixPrintManagerApp(batchId: printBatchId));
+        return;
+      }
     }
+    runApp(const VelnixLiveApp());
   } catch (_) {
     runApp(const SetupFailureApp());
   }

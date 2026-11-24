@@ -19,6 +19,7 @@ dependencies:
   google_sign_in: ^7.2.0
   pdf: ^3.13.1
   printing: ^5.15.1
+  web: ^1.1.1
   image_picker: ^1.2.4
   mobile_scanner: ^7.4.2
   barcode: ^2.2.9

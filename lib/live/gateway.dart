@@ -239,6 +239,66 @@ class VelnixGateway {
     return result;
   }
 
+  // ---- Standalone print manager (durable, resumable print batches) ---------
+
+  /// Creates (or, for a repeated action, returns the existing) durable print
+  /// batch and returns its server record. The server verifies that every order
+  /// is visible to the caller and drops the ones that are not (`skipped`).
+  Future<Map<String, dynamic>> createPrintBatch({
+    required List<String> orderIds,
+    required String paper,
+    required String template,
+    required bool landscape,
+    required int chunkSize,
+    required String source,
+    String? dedupeKey,
+  }) => call('createPrintBatch', {
+    'orderIds': orderIds,
+    'paper': paper,
+    'template': template,
+    'landscape': landscape,
+    'chunkSize': chunkSize,
+    'source': source,
+    'dedupeKey': ?dedupeKey,
+  });
+
+  Future<Map<String, dynamic>> getPrintBatch(String id) =>
+      call('getPrintBatch', {'id': id});
+
+  Future<Map<String, dynamic>> listPrintBatches({
+    int limit = 20,
+    String? cursor,
+    bool includeFinished = true,
+  }) => call('listPrintBatches', {
+    'limit': limit,
+    'cursor': ?cursor,
+    'includeFinished': includeFinished,
+  });
+
+  /// One control channel for the batch: confirm progress, record an issued
+  /// range, pause/resume, set the resume point, flag a reprint or finish.
+  Future<Map<String, dynamic>> updatePrintBatch(
+    String id, {
+    required String op,
+    int? confirmedCount,
+    int? fromIndex,
+    int? toIndex,
+    int? startIndex,
+    List<int>? indices,
+  }) => call('updatePrintBatch', {
+    'id': id,
+    'op': op,
+    'confirmedCount': ?confirmedCount,
+    'fromIndex': ?fromIndex,
+    'toIndex': ?toIndex,
+    'startIndex': ?startIndex,
+    'indices': ?indices,
+  });
+
+  Future<void> deletePrintBatch(String id) async {
+    await call('deletePrintBatch', {'id': id});
+  }
+
   Future<Map<String, dynamic>> dashboard([
     Map<String, dynamic> filters = const {},
     bool fresh = false,
