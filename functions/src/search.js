@@ -12,13 +12,41 @@
 //
 // Both are capped so a single document cannot exceed Firestore limits.
 
-const MAX_TOKENS = 40;
+const { SHIPPING_LABELS } = require('./shipping_status');
+
+// Arabic labels of the internal order statuses, mirroring the client vocabulary.
+// Indexed only so the free-text box can find an order by the status name a user
+// reads on screen; the canonical value stays the enum in `status`/`internalStatus`.
+const STATUS_LABELS = Object.freeze({
+  created: 'جديد',
+  review: 'قيد المراجعة',
+  preparing: 'قيد التجهيز',
+  ready: 'جاهز للتسليم',
+  dispatched: 'تم الإرسال',
+  inTransit: 'قيد التوصيل',
+  delivered: 'تم التسليم',
+  returned: 'مرتجع',
+  cancelled: 'ملغي',
+});
+
+// Carrier shipping state -> its primary Arabic label. SHIPPING_LABELS is
+// label -> code and several labels can map to one code; the first (portal-
+// canonical) label wins so the index stays deterministic.
+const SHIPPING_CODE_LABELS = (() => {
+  const out = {};
+  for (const [label, code] of Object.entries(SHIPPING_LABELS)) {
+    if (!out[code]) out[code] = label;
+  }
+  return Object.freeze(out);
+})();
+
+const MAX_TOKENS = 260;
 const MAX_TOKEN_LEN = 60;
-const MAX_TEXT_LEN = 900;
+const MAX_TEXT_LEN = 6000;
 // Prefixes of each word (bounded) let a query match the START of any word, not
 // just the start of the whole joined string. Numbered prefixes (>= MIN_PREFIX)
 // keep the index small while covering realistic partial queries.
-const MAX_PREFIXES = 120;
+const MAX_PREFIXES = 600;
 const MIN_PREFIX = 2;
 const PREFIX_TOKEN_CAP = 24;
 // Digit suffixes (bounded) let a query match digits in the MIDDLE of a phone.
@@ -60,22 +88,38 @@ function tokenize(value) {
 // Builds the derived search fields for an order-like object. Every source is
 // optional; only present/relevant values are included so legacy orders remain
 // valid (they simply have fewer tokens until backfilled).
+//
+// The free-text index covers every human-searchable field a permitted user may
+// see: recipient name/phone (primary + extra), product/description (which also
+// carries quantities), note, governorate/city, area, detailed address, order
+// number, barcode/order id, source page name, delivery-company name, shipment
+// references (Click ref / carrier order id / tracking number), the creator's
+// name and the Arabic labels of the internal and carrier statuses. Amounts are
+// deliberately NOT indexed: they are permission-gated and are searched with the
+// dedicated amount-range filter instead.
 function buildSearchFields(order = {}) {
+  // Ordered so the compact, high-value identifiers and names are tokenised first
+  // and can never be crowded out by a long description/note at the token cap.
   const raw = [
-    order.customer,
+    order.orderNumber,
+    order.barcodeValue,
     order.phone,
     order.extraPhone,
-    order.description,
-    order.note,
+    order.clickOrderRef,
+    order.providerOrderId,
+    order.trackingNumber,
+    order.customer,
+    order.companyName,
+    order.createdByName,
     order.city,
     order.area,
     order.address,
-    order.orderNumber,
-    order.barcodeValue,
     order.pageName,
-    order.clickOrderRef,
-    order.trackingNumber,
-    order.providerOrderId,
+    STATUS_LABELS[order.internalStatus],
+    STATUS_LABELS[order.status],
+    SHIPPING_CODE_LABELS[order.shippingStatus],
+    order.note,
+    order.description,
   ].filter(v => v != null && String(v).trim() !== '');
 
   const tokens = new Set();
@@ -137,6 +181,8 @@ module.exports = {
   normalizeSearch,
   tokenize,
   buildSearchFields,
+  STATUS_LABELS,
+  SHIPPING_CODE_LABELS,
   MAX_TOKENS,
   MAX_TOKEN_LEN,
   MAX_TEXT_LEN,

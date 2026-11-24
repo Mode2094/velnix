@@ -1,8 +1,9 @@
 'use strict';
 // DRY RUN by default. Run only after backup and emulator testing.
 // Explicit --apply writes missing derived search fields (phoneDigits,
-// customerKey, searchText, searchTokens). It NEVER changes order ownership,
-// status, orderNumber or barcodeValue, and never recreates orders.
+// customerKey, searchText, searchTokens, and the denormalised companyName the
+// free-text index needs). It NEVER changes order ownership, status, orderNumber
+// or barcodeValue, and never recreates orders.
 //
 // Resumable: processes orders in document-id order with an optional
 // --start-after cursor so a run can be resumed. Idempotent: only writes when a
@@ -17,6 +18,14 @@ const apply=process.argv.includes('--apply');
 const arg=(name,fallback=null)=>{const i=process.argv.indexOf('--'+name);return i>=0&&process.argv[i+1]?process.argv[i+1]:fallback;};
 const batchSize=Math.max(1,Math.min(500,Number(arg('batch','200'))));
 async function main(){
+  // Company names are resolved once (a small, bounded collection) so legacy
+  // orders — which stored only the company id — become searchable by carrier
+  // name without an extra read per order.
+  const companyNames={};
+  try{
+    const companies=await db.collection('companies').get();
+    companies.forEach(d=>{const n=(d.data().name||'').trim();if(n)companyNames[d.id]=n;});
+  }catch(e){console.warn('companies lookup skipped:',e.code||e.message);}
   let cursorId=arg('start-after'),seen=0,changed=0,failed=0;
   while(true){
     let query=db.collection('orders').orderBy(FieldPath.documentId()).limit(batchSize);
@@ -28,8 +37,10 @@ async function main(){
       const data=doc.data();
       const phoneDigits=searchDigits(data.phone);
       const customerKey=normalize(data.customer);
-      const derived=buildSearchFields(data);
+      const companyName=data.companyName||companyNames[data.companyId]||null;
+      const derived=buildSearchFields(companyName?{...data,companyName}:data);
       const patch={};
+      if(companyName&&data.companyName!==companyName)patch.companyName=companyName;
       if(data.phoneDigits!==phoneDigits)patch.phoneDigits=phoneDigits;
       if(data.customerKey!==customerKey)patch.customerKey=customerKey;
       if(JSON.stringify(data.searchText||null)!==JSON.stringify(derived.searchText))patch.searchText=derived.searchText;

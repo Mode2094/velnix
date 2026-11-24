@@ -164,8 +164,11 @@ async function applyStatusChange(ref,user,target){
     if(!latest.exists)fail('not-found','الطلب غير موجود');
     if(!canSeeOrder(user,{...latest.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
     if(!allowedTransition(user,{...latest.data(),id:ref.id},target))fail('failed-precondition','هذا الانتقال غير مسموح');
+    const base=latest.data();
     const completion=target==='delivered'?{completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}:{};
-    tx.update(ref,{status:target,internalStatus:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{status:target,internalStatus:target,...completion,
+      ...buildSearchFields({...base,status:target,internalStatus:target}),
+      revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     const detail={status:target,...(target==='delivered'?{completionSource:'internal'}:{})};
     await addEvent(ref.id,'status_changed',user,detail,tx);await audit('order.status_changed',user,ref.id,detail,tx);
   });
@@ -226,7 +229,9 @@ async function applyInternalStatusChange(ref,user,target,meta){
           ...(confirmation.note?{note:confirmation.note}:{}),
           ...(confirmation.differenceMinor!==null?{differenceMinor:confirmation.differenceMinor}:{})}}
       : (currentInternal==='delivered'?{internalCompletion:FieldValue.delete()}:{});
-    tx.update(ref,{status:target,internalStatus:target,...completion,...reconciliation,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{status:target,internalStatus:target,...completion,...reconciliation,
+      ...buildSearchFields({...o,status:target,internalStatus:target}),
+      revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     // The event/audit action stays the existing `status_changed` so the journey
     // timeline labels and the historical audit vocabulary are unchanged; the
     // accounting proof (who/when + optional statement reference, note and
@@ -249,9 +254,16 @@ async function applyCompanyAssignment(ref,user,id){
     const order=await tx.get(ref);
     if(!order.exists)fail('not-found','الطلب غير موجود');
     if(!canSeeOrder(user,{...order.data(),id:ref.id}))fail('permission-denied','لا يمكن الوصول للطلب');
-    if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');}
-    if(internalStatusOf(order.data())===null&&!['dispatched','inTransit'].includes(order.data().status)||dispatchBlocked(order.data()))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
-    tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,updatedAt:FieldValue.serverTimestamp()});
+    let companyName=null;
+    if(id){const company=await tx.get(db.doc('companies/'+id));if(!company.exists||company.data().archived||!company.data().enabled)fail('failed-precondition','الشركة غير مفعلة');companyName=company.data().name||null;}
+    const current=order.data();
+    if(internalStatusOf(current)===null&&!['dispatched','inTransit'].includes(current.status)||dispatchBlocked(current))fail('failed-precondition','لا يمكن تعديل شركة طلب مرسل');
+    // The company name is denormalised onto the order (and its search index) so
+    // free-text search can find an order by carrier name; it is removed on
+    // un-assignment. The order's own status/amounts are untouched.
+    tx.update(ref,{revision:FieldValue.increment(1),companyId:id,hasDelivery:id!=null,companyName:id?companyName:FieldValue.delete(),
+      ...buildSearchFields({...current,companyId:id,companyName:companyName||''}),
+      updatedAt:FieldValue.serverTimestamp()});
     const action=id?'company_assigned':'company_unassigned';
     await addEvent(ref.id,action,user,{companyId:id},tx);
     await audit('order.'+action,user,ref.id,{companyId:id},tx);
@@ -719,13 +731,15 @@ async function resolveOrderPage(user,pageIdRaw){
 // Optional delivery company chosen at creation time. Assigning here does NOT
 // send the shipment; sending stays an explicit, separately guarded action.
 async function resolveOrderCompany(companyIdRaw){
-  if(companyIdRaw==null)return null;
+  if(companyIdRaw==null)return {id:null,name:null};
   const companyId=idValue(companyIdRaw);
   const snap=await db.doc('companies/'+companyId).get();
   if(!snap.exists)fail('failed-precondition','شركة التوصيل غير موجودة');
   const c=snap.data();
   if(c.enabled!==true||c.archived===true)fail('failed-precondition','شركة التوصيل غير مفعلة');
-  return companyId;
+  // The name is returned so the order can denormalise it for the free-text
+  // search index (a company name is otherwise only resolved at read time).
+  return {id:companyId,name:c.name||null};
 }
 // Validates and de-duplicates an employee's allowed page ids. Unknown page ids
 // are rejected so a client cannot attach a page that does not exist.
@@ -750,7 +764,8 @@ exports.createOrder=callable(async req=>{
   // the caller is allowed to use. The snapshot is copied onto the order so
   // history and printing survive later page renames/archival.
   const pageSnapshot=await resolveOrderPage(user,req.data?.pageId);
-  const companyId=await resolveOrderCompany(req.data?.companyId);
+  const company=await resolveOrderCompany(req.data?.companyId);
+  const companyId=company.id;
   fields.phoneDigits=fields.phone.replace(/\D/g,'');
   fields.customerKey=normalizeCustomer(fields.customer);
   const visibleTo=[user.id];
@@ -791,8 +806,9 @@ exports.createOrder=callable(async req=>{
     tx.create(ref,{...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
       ...pageSnapshot,
-      ...buildSearchFields({...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,...pageSnapshot}),
-      companyId:companyId||null,hasDelivery:companyId!=null,deliveryAccepted:false,revision:0,status:'created',internalStatus:'created',trackingNumber:null,remoteStatus:null,
+      ...buildSearchFields({...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,...pageSnapshot,
+        createdByName:user.name,companyName:company.name||'',status:'created',internalStatus:'created'}),
+      companyId:companyId||null,companyName:company.name||null,hasDelivery:companyId!=null,deliveryAccepted:false,revision:0,status:'created',internalStatus:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
     tx.create(idemRef,{orderId:ref.id,payloadHash,createdBy:user.id,createdAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'created',user,{},tx);await audit('order.created',user,ref.id,{},tx);
@@ -826,9 +842,13 @@ exports.updateOrder=callable(async req=>{
   // Preserve the historical quantity on edit: legacy orders may carry >1 and
   // editing must not silently rewrite that record to the new contract.
   fields.quantity=Number.isSafeInteger(old.quantity)&&old.quantity>0?old.quantity:1;
-  // Recompute derived search fields on edit; keep the immutable identifiers.
+  // Recompute derived search fields on edit; keep the immutable identifiers and
+  // the fields an edit never changes (creator, company, lifecycle statuses) so
+  // the free-text index keeps covering them.
   const searchFields=buildSearchFields({...fields,orderNumber:old.orderNumber,barcodeValue:old.barcodeValue||`VNX/${ref.id}`,...pageSnapshot,
-    clickOrderRef:old.clickOrderRef,trackingNumber:old.trackingNumber,providerOrderId:old.providerOrderId});
+    clickOrderRef:old.clickOrderRef,trackingNumber:old.trackingNumber,providerOrderId:old.providerOrderId,
+    createdByName:old.createdByName,companyName:old.companyName,
+    status:old.status,internalStatus:old.internalStatus,shippingStatus:old.shippingStatus});
   await db.runTransaction(async tx=>{
     await currentActor(tx,user);
     const latest=await tx.get(ref);if(!latest.exists)fail('not-found','الطلب غير موجود');
@@ -873,7 +893,9 @@ exports.correctOrderStatus=callable(async req=>{
     const completion=target==='delivered'
       ? {completionSource:'internal',hasDelivery:false,completedBy:user.id,completedAt:FieldValue.serverTimestamp()}
       : {completionSource:FieldValue.delete(),completedBy:FieldValue.delete(),completedAt:FieldValue.delete()};
-    tx.update(ref,{status:target,...completion,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{status:target,...completion,
+      ...buildSearchFields({...o,status:target}),
+      revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     const detail={from:o.status,to:target,reason};
     await addEvent(ref.id,'status_corrected',user,detail,tx);
     await audit('order.status_corrected',user,ref.id,detail,tx);
@@ -1168,7 +1190,9 @@ exports.resolveDispatchException=callable(async req=>{
     if(!canResolveDispatch(o))fail('failed-precondition','الطلب لا يحتاج هذه المراجعة');
     const change=outcome==='shipment_exists'?{internalStatus:internalStatusOf(o),deliveryAccepted:true,trackingNumber:tracking,dispatchState:'sent',nextPollAt:Timestamp.now(),sentAt:FieldValue.serverTimestamp()}
       :{dispatchState:'idle',trackingNumber:null};
-    tx.update(ref,{...change,revision:FieldValue.increment(1),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
+    tx.update(ref,{...change,
+      ...buildSearchFields({...o,...change}),
+      revision:FieldValue.increment(1),dispatchLockId:FieldValue.delete(),dispatchLockUntil:FieldValue.delete(),syncError:null,updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'dispatch_exception_resolved',user,{outcome,trackingNumber:tracking,reason},tx);
     await audit('order.dispatch_exception_resolved',user,ref.id,{outcome,trackingNumber:tracking,reason},tx);
   });
@@ -1219,6 +1243,7 @@ exports.reconcileClickShipment=callable(async req=>{
     // is allowed from any internal status; it never overwrites `status`.
     if(internalStatusOf(o)===null&&!['dispatched','inTransit'].includes(o.status))fail('failed-precondition','لا يمكن ربط شحنة Click بهذه الحالة');
     tx.update(ref,{providerOrderId:clickOrderId,clickOrderRef,clickClientSerial,shippingStatus:state,shippingStatusSource:'manual',shippingStatusUpdatedAt:FieldValue.serverTimestamp(),dispatchState:'sent',deliveryAccepted:true,sentAt:o.sentAt||FieldValue.serverTimestamp(),
+      ...buildSearchFields({...o,shippingStatus:state,providerOrderId:clickOrderId,clickOrderRef,internalStatus:internalStatusOf(o)||o.internalStatus}),
       internalStatus:internalStatusOf(o)||o.internalStatus,hasDelivery:true,nextPollAt:null,syncError:null,lastSyncAt:FieldValue.serverTimestamp(),revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
     await addEvent(ref.id,'click_reconciled',user,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
     await audit('order.click_reconciled',user,ref.id,{clickOrderId,clickOrderRef,shippingStatus:state,reason},tx);
@@ -1331,6 +1356,9 @@ async function syncClickOrderForRef(ref,actor,{source='manual',checkActor=null}=
       patch.internalStatus=internalStatusOf(o)||o.internalStatus;
     }
     if(!unchanged||resolvingReview){patch.revision=FieldValue.increment(1);applied=true;}
+    // Keep the free-text index in step with the carrier state, from the settled
+    // patch values so the indexed label always matches what is stored.
+    Object.assign(patch,buildSearchFields({...o,shippingStatus:parsed.shippingStatus,internalStatus:patch.internalStatus||o.internalStatus}));
     tx.update(ref,patch);
     if(resolvingReview){
       await addEvent(ref.id,'dispatch_exception_resolved',actor,{outcome:'shipment_exists',rawStatus:parsed.rawStatus,statusDate:parsed.statusDate,source},tx);
@@ -1379,7 +1407,9 @@ async function recoverStuckDispatch(ref,actor,{source='scheduled'}={}){
             const isTerminal=['delivered','cancelled'].includes(parsed.shippingStatus);
             await db.runTransaction(async tx=>{
               const cur=await tx.get(ref);if(cur.data()?.dispatchState!=='sending')return;
-              tx.update(ref,{dispatchState:'sent',deliveryAccepted:true,internalStatus:internalStatusOf(cur.data())||cur.data().internalStatus,revision:FieldValue.increment(1),
+              const base=cur.data();
+              tx.update(ref,{dispatchState:'sent',deliveryAccepted:true,internalStatus:internalStatusOf(base)||base.internalStatus,revision:FieldValue.increment(1),
+                ...buildSearchFields({...base,shippingStatus:parsed.shippingStatus,internalStatus:internalStatusOf(base)||base.internalStatus}),
                 shippingStatus:parsed.shippingStatus,shippingStatusSource:'click_api',shippingStatusUpdatedAt:Timestamp.now(),
                 clickStatusRaw:parsed.rawStatus,clickStatusDate:parsed.statusDate,clickStatusDateMs:parsed.statusDateMs,clickStatusNote:parsed.note,clickAmounts:parsed.amounts,
                 clickStatusVerified:isApiConfirmed(parsed.shippingStatus),nextClickSyncAt:isTerminal?null:pollNext,nextPollAt:Timestamp.now(),
