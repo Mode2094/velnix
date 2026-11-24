@@ -87,12 +87,15 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
   void refresh() =>
       setState(() => request = VelnixGateway.instance.dashboard({}, true));
 
-  /// Reads the correct counter facet for this bucket. The delivery bucket shows
-  /// TWO clearly separated groups: the operational lifecycle of assigned orders
-  /// (never sent / sending / needs review / send confirmed) and, below it, the
-  /// real carrier states reported by the delivery company. Every other bucket
-  /// shows the internal order statuses. The `all` facet stays the single grand
-  /// total and is never derived from the delivery facets.
+  /// Reads the correct counter facet for this bucket. On Android the delivery
+  /// bucket shows TWO clearly separated groups: the operational lifecycle of
+  /// assigned orders (never sent / sending / needs review / send confirmed) and,
+  /// below it, the real carrier states reported by the delivery company. On the
+  /// web the operational group is not rendered at all — the delivery dashboard
+  /// shows ONLY the real carrier states (the requirements still live in the
+  /// order lists and their dedicated processing paths). Every other bucket shows
+  /// the internal order statuses. The `all` facet stays the single grand total
+  /// and is never derived from the delivery facets.
   List<_StatusTile> _tiles(Map<String, dynamic> data) {
     final counters = Map<String, dynamic>.from(data['counters'] as Map? ?? {});
     if (bucketShowsShipping(widget.bucket)) {
@@ -104,7 +107,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
       );
       int countOf(Map<String, dynamic> f, String key) =>
           (f[key] as Map?)?['count'] as int? ?? 0;
-      return [
+      // Operational lifecycle of assigned orders. Built only when it will be
+      // shown (Android); the web returns the carrier states alone.
+      final operational = <_StatusTile>[
         // Operational lifecycle: an assigned order that was never sent must not
         // be presented as a carrier state.
         _StatusTile(
@@ -143,7 +148,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
           facet: 'dispatch',
           note: 'أُرسلت الشحنة للشركة',
         ),
-        // Carrier vocabulary, only from the shipping facet.
+      ];
+      // Carrier vocabulary, only from the shipping facet.
+      final carrier = <_StatusTile>[
         for (final status in ShippingStatus.values)
           _StatusTile(
             wire: status.name,
@@ -155,6 +162,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
             note: _shippingNote(status),
           ),
       ];
+      // Web hides the operational group entirely; Android keeps the two-group
+      // layout. The list and its per-item handling stay available elsewhere.
+      return kIsWeb ? carrier : [...operational, ...carrier];
     }
     final bucket = Map<String, dynamic>.from(
       counters[widget.bucket] as Map? ?? {},
@@ -278,17 +288,34 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
     return count;
   }
 
+  /// Exact count of the carrier-confirmed delivery queue on the web: the sum of
+  /// the `delivery` facet, which the server builds from `deliveryAccepted == true`
+  /// — the same subset the delivery bucket's order list uses.
+  static int _deliveryAcceptedTotal(Map<String, dynamic> counters) {
+    final facet = Map<String, dynamic>.from(counters['delivery'] as Map? ?? {});
+    var count = 0;
+    for (final value in facet.values) {
+      count += (value as Map?)?['count'] as int? ?? 0;
+    }
+    return count;
+  }
+
   Widget _cardsBody(Map<String, dynamic> data) {
     final tiles = _tiles(data);
     final shipping = bucketShowsShipping(widget.bucket);
-    // For the delivery bucket the operational group is the mutually
-    // exclusive partition of assigned orders, so it is the true total. The
-    // carrier states below it are a second, overlapping view and must never
-    // be added to the total (that would double-count a shipped order).
+    final counters = Map<String, dynamic>.from(data['counters'] as Map? ?? {});
+    // For the delivery bucket the total must reflect the orders the section
+    // actually covers. The carrier states overlap (a shipped order is both "out
+    // for delivery" and later "delivered"), so they are never summed.
+    //   • Web    : the carrier-confirmed shipments only (deliveryAccepted == true),
+    //              the same subset the bucket's order list uses.
+    //   • Android: the operational partition of assigned orders (unchanged).
     final total = shipping
-        ? tiles
-              .where((t) => t.facet == 'dispatch')
-              .fold<int>(0, (acc, t) => acc + t.count)
+        ? (kIsWeb
+              ? _deliveryAcceptedTotal(counters)
+              : tiles
+                    .where((t) => t.facet == 'dispatch')
+                    .fold<int>(0, (acc, t) => acc + t.count))
         : tiles.fold<int>(0, (acc, tile) => acc + tile.count);
     return RefreshIndicator(
       onRefresh: () async {
@@ -303,7 +330,9 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
             children: [
               Text(
                 shipping
-                    ? 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة'
+                    ? (kIsWeb
+                          ? 'حالات شركة التوصيل الفعلية كما وردت من الشركة — لا تُخلط مع حالة الطلب الداخلية'
+                          : 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة')
                     : kIsWeb && widget.bucket == 'internal'
                     ? 'حالات داخلية فقط. «تم التسليم» تأكيد محاسبي يدوي بعد مطابقة كشف شركة التوصيل، ولا يتغيّر تلقائياً مع حالة الشحنة.'
                     : 'اختر حالة داخلية لعرض الطلبات المطابقة',
@@ -332,22 +361,27 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
     );
   }
 
-  /// Delivery bucket: an operational-lifecycle section followed by the carrier
-  /// states, each with its own header so the two are never read as one list.
+  /// Delivery bucket: the real carrier states. On Android the operational
+  /// lifecycle section is rendered above them; on the web that whole group
+  /// (header, cards and notes) is omitted, so only the carrier section remains.
   Widget _sectionedGrid(List<_StatusTile> tiles) {
     final ops = tiles.where((t) => t.facet == 'dispatch').toList();
     final carriers = tiles.where((t) => t.facet == 'shipping').toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sectionHeader('حالة الإرسال التشغيلية'),
-        const SizedBox(height: 10),
-        _statusGrid(ops),
-        const SizedBox(height: 26),
+        if (ops.isNotEmpty) ...[
+          _sectionHeader('حالة الإرسال التشغيلية'),
+          const SizedBox(height: 10),
+          _statusGrid(ops),
+          const SizedBox(height: 26),
+        ],
         _sectionHeader('حالات شركة التوصيل الفعلية'),
         const SizedBox(height: 6),
         Text(
-          'تُملأ من شركة التوصيل فقط؛ لا تُخلط مع حالة الإرسال التشغيلية.',
+          kIsWeb
+              ? 'تُملأ من شركة التوصيل فقط.'
+              : 'تُملأ من شركة التوصيل فقط؛ لا تُخلط مع حالة الإرسال التشغيلية.',
           style: const TextStyle(fontSize: 11.5, color: VColors.muted),
         ),
         const SizedBox(height: 10),
