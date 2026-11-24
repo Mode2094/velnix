@@ -13,6 +13,8 @@ class LiveOrders extends StatefulWidget {
     this.onFiltersChanged,
     this.autoSearchFocus = false,
     this.onCreated,
+    this.sectionMode = false,
+    this.sectionTotal,
   });
   final SessionPolicy policy;
   final String bucket;
@@ -37,6 +39,17 @@ class LiveOrders extends StatefulWidget {
   /// to land on the dashboard exactly like the dedicated create tab, so every
   /// entry point has one post-create destination.
   final VoidCallback? onCreated;
+
+  /// Web-only section mode (kIsWeb + the dashboard's «جميع طلبات المتجر»
+  /// bucket). It reuses this exact list/grid component but adds the compact
+  /// counters strip and the group + shipping-status + clear filters on top.
+  /// The orders page never sets it, so that page's toolbar and behaviour are
+  /// unchanged.
+  final bool sectionMode;
+
+  /// Store-wide order total (every status, from the dashboard aggregate the
+  /// section already loaded) for the counters strip. Null shows a dash.
+  final int? sectionTotal;
   @override
   State<LiveOrders> createState() => _LiveOrdersState();
 }
@@ -111,6 +124,54 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// Sets the internal-status filter (web grid "الحالة" dropdown).
   void webSetStatus(String? value) {
     setState(() => status = (value == null || value == 'all') ? null : value);
+    load(reset: true);
+  }
+
+  /// Web section "المجموعة" dropdown: switches between the store-wide book, the
+  /// internal (not-yet-accepted) queue and the accepted delivery queue. Mirrors
+  /// the orders form: an internal status is meaningless on the carrier facet and
+  /// vice versa, so switching scope clears the other vocabulary rather than
+  /// mixing the two in one query.
+  void webSetBucket(String? value) {
+    final next = (value == null || value.isEmpty) ? 'all' : value;
+    setState(() {
+      bucket = next;
+      if (bucket == 'delivery') {
+        status = null;
+      } else {
+        shippingStatus = null;
+        _dispatch = null;
+        if (filters.containsKey('dispatch')) {
+          filters = {...filters}..remove('dispatch');
+        }
+      }
+    });
+    load(reset: true);
+  }
+
+  /// Web section "حالة الشحنة" dropdown: the delivery-company vocabulary, kept
+  /// fully independent of the internal order status.
+  void webSetShippingStatus(String? value) {
+    setState(
+      () => shippingStatus = (value == null || value == 'all') ? null : value,
+    );
+    load(reset: true);
+  }
+
+  /// Web section "مسح الفلاتر": returns to the default store-wide list — group,
+  /// internal status, shipping status, company, governorate, period, dispatch
+  /// and the search box are all cleared in one action.
+  void webClearFilters() {
+    setState(() {
+      bucket = 'all';
+      status = null;
+      shippingStatus = null;
+      _dispatch = null;
+      filters = {};
+      sort = 'desc';
+      appliedQuery = '';
+      search.clear();
+    });
     load(reset: true);
   }
 
@@ -441,6 +502,14 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// True when this list is scoped to the carrier vocabulary, so the state
   /// dropdown offers delivery states instead of internal order statuses.
   bool get _shippingScope => bucket == 'delivery';
+
+  /// Arabic title for the current order group. Shared by the web section
+  /// header and the applied-filter banner so both always agree.
+  String get groupLabel => switch (bucket) {
+    'delivery' => 'طلبات شركة التوصيل',
+    'internal' => 'الطلبات الداخلية',
+    _ => 'جميع طلبات المتجر',
+  };
 
   static String _shippingLabel(String wire) {
     final parsed = ShippingStatus.parse(wire);

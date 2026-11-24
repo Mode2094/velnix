@@ -211,66 +211,107 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(bucketTitles[widget.bucket] ?? 'الطلبات')),
-    body: AsyncPanel<Map<String, dynamic>>(
-      future: request,
-      onRetry: refresh,
-      loading: const Center(child: CircularProgressIndicator()),
-      builder: (data) {
-        final tiles = _tiles(data);
-        final shipping = bucketShowsShipping(widget.bucket);
-        // For the delivery bucket the operational group is the mutually
-        // exclusive partition of assigned orders, so it is the true total. The
-        // carrier states below it are a second, overlapping view and must never
-        // be added to the total (that would double-count a shipped order).
-        final total = shipping
-            ? tiles
-                  .where((t) => t.facet == 'dispatch')
-                  .fold<int>(0, (acc, t) => acc + t.count)
-            : tiles.fold<int>(0, (acc, tile) => acc + tile.count);
-        return RefreshIndicator(
-          onRefresh: () async {
-            refresh();
-            await request;
+  Widget build(BuildContext context) {
+    // Web-only: the store-wide «جميع طلبات المتجر» section becomes a compact
+    // filter bar + Excel-style Data Grid (the same widget the orders page uses)
+    // instead of the nine status cards. Every other bucket keeps its cards, and
+    // Android is untouched.
+    if (kIsWeb && widget.bucket == 'all') {
+      return Scaffold(
+        appBar: AppBar(title: Text(bucketTitles[widget.bucket] ?? 'الطلبات')),
+        body: AsyncPanel<Map<String, dynamic>>(
+          future: request,
+          onRetry: refresh,
+          loading: const Center(child: CircularProgressIndicator()),
+          builder: (data) {
+            final counters = Map<String, dynamic>.from(
+              data['counters'] as Map? ?? {},
+            );
+            return LiveOrders(
+              policy: widget.policy,
+              bucket: 'all',
+              sectionMode: true,
+              sectionTotal: _allTotal(counters['all']),
+            );
           },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: LiveContent(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    shipping
-                        ? 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة'
-                        : 'اختر حالة داخلية لعرض الطلبات المطابقة',
-                    style: const TextStyle(color: VColors.muted),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'الإجمالي: $total طلب',
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 18),
-                  if (total == 0)
-                    const VFeedbackPanel(
-                      title: 'لا توجد طلبات في هذا القسم',
-                      message:
-                          'ستظهر الحالات هنا فور وجود طلبات في هذا النطاق.',
-                      icon: Icons.inbox_outlined,
-                    )
-                  else if (shipping)
-                    _sectionedGrid(tiles)
-                  else
-                    _statusGrid(tiles),
-                ],
-              ),
-            ),
-          ),
-        );
+        ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: Text(bucketTitles[widget.bucket] ?? 'الطلبات')),
+      body: AsyncPanel<Map<String, dynamic>>(
+        future: request,
+        onRetry: refresh,
+        loading: const Center(child: CircularProgressIndicator()),
+        builder: (data) => _cardsBody(data),
+      ),
+    );
+  }
+
+  /// Exact store-wide total for the atomic counters strip: the sum of the
+  /// per-status counts of the `all` facet. The server guarantees
+  /// all == internal + delivery (delivery is the confirmed `deliveryAccepted`
+  /// subset), so this never double-counts a shipped order.
+  static int _allTotal(dynamic source) {
+    final map = Map<String, dynamic>.from(source as Map? ?? {});
+    var count = 0;
+    for (final value in map.values) {
+      count += (value as Map?)?['count'] as int? ?? 0;
+    }
+    return count;
+  }
+
+  Widget _cardsBody(Map<String, dynamic> data) {
+    final tiles = _tiles(data);
+    final shipping = bucketShowsShipping(widget.bucket);
+    // For the delivery bucket the operational group is the mutually
+    // exclusive partition of assigned orders, so it is the true total. The
+    // carrier states below it are a second, overlapping view and must never
+    // be added to the total (that would double-count a shipped order).
+    final total = shipping
+        ? tiles
+              .where((t) => t.facet == 'dispatch')
+              .fold<int>(0, (acc, t) => acc + t.count)
+        : tiles.fold<int>(0, (acc, tile) => acc + tile.count);
+    return RefreshIndicator(
+      onRefresh: () async {
+        refresh();
+        await request;
       },
-    ),
-  );
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: LiveContent(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                shipping
+                    ? 'حالة الإرسال التشغيلية، ثم حالات شركة التوصيل الفعلية — كل مجموعة مستقلة'
+                    : 'اختر حالة داخلية لعرض الطلبات المطابقة',
+                style: const TextStyle(color: VColors.muted),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'الإجمالي: $total طلب',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 18),
+              if (total == 0)
+                const VFeedbackPanel(
+                  title: 'لا توجد طلبات في هذا القسم',
+                  message: 'ستظهر الحالات هنا فور وجود طلبات في هذا النطاق.',
+                  icon: Icons.inbox_outlined,
+                )
+              else if (shipping)
+                _sectionedGrid(tiles)
+              else
+                _statusGrid(tiles),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Delivery bucket: an operational-lifecycle section followed by the carrier
   /// states, each with its own header so the two are never read as one list.

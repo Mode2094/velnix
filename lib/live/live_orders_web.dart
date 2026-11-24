@@ -179,6 +179,7 @@ class _WebOrdersView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _topBar(context),
+        if (state.widget.sectionMode) _countersStrip(context),
         _toolbar(context),
         if (state.selectionMode) _selectionBar(context),
         Expanded(child: _table(context)),
@@ -186,9 +187,100 @@ class _WebOrdersView extends StatelessWidget {
     );
   }
 
+  // ------------------------------------------------- web section counters
+
+  /// Compact summary that replaces the old nine status cards: the store-wide
+  /// total (from the dashboard aggregate, never recomputed here) next to the
+  /// number of orders matching the current filters. The matching value is the
+  /// loaded result set; a trailing "+" marks that more pages exist, so the
+  /// number is never presented as an exact total it is not.
+  Widget _countersStrip(BuildContext context) {
+    final total = state.widget.sectionTotal;
+    final matching = '${state.rows.length}${state.more ? '+' : ''}';
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _counterChip(
+            icon: Icons.receipt_long_outlined,
+            label: 'إجمالي جميع طلبات المتجر',
+            value: total == null ? '—' : '$total',
+            strong: true,
+          ),
+          _counterChip(
+            icon: Icons.filter_alt_outlined,
+            label: 'المطابق للفلتر الحالي',
+            value: matching,
+          ),
+          if (state.busy)
+            const Padding(
+              padding: EdgeInsetsDirectional.only(start: 4),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _counterChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool strong = false,
+  }) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+    decoration: BoxDecoration(
+      color: strong ? VColors.softBlue : Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: strong
+            ? VColors.brand.withValues(alpha: .35)
+            : const Color(0xFFD9E1EC),
+      ),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: VColors.brand),
+        const SizedBox(width: 7),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: VColors.muted,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+            color: VColors.ink,
+          ),
+        ),
+        const SizedBox(width: 4),
+        const Text(
+          'طلب',
+          style: TextStyle(fontSize: 11.5, color: VColors.muted),
+        ),
+      ],
+    ),
+  );
+
   // ---------------------------------------------------------------- top bar
 
   Widget _topBar(BuildContext context) {
+    if (state.widget.sectionMode) return _sectionTopBar(context);
     final section = _sectionLabel();
     return Container(
       color: Colors.white,
@@ -266,6 +358,7 @@ class _WebOrdersView extends StatelessWidget {
   }
 
   String _sectionLabel() {
+    if (state.widget.sectionMode) return state.groupLabel;
     if (state.status != null) {
       return statusLabels[state.status] ?? state.status!;
     }
@@ -276,6 +369,79 @@ class _WebOrdersView extends StatelessWidget {
       'internal' => 'الطلبات الداخلية',
       _ => 'كل الطلبات',
     };
+  }
+
+  /// One compact header row for the dashboard section: store name + section
+  /// title on one line with the refresh and add actions, so the table keeps the
+  /// vertical space the old status cards wasted.
+  Widget _sectionTopBar(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.storefront_outlined, color: VColors.brand),
+              const SizedBox(width: 8),
+              Text(
+                state.webStoreName ?? 'Velnix',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: VColors.brand,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text('•', style: TextStyle(color: VColors.muted)),
+              const SizedBox(width: 10),
+              Text(
+                _sectionLabel(),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: VColors.ink,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: VColors.brand,
+                borderRadius: BorderRadius.circular(10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => _create(context),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.add, color: Colors.white, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                onPressed: state.busy
+                    ? null
+                    : () => state.load(reset: true, fresh: true),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('تحديث'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: () => _create(context),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('إضافة طلب'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   // ---------------------------------------------------------------- toolbar
@@ -290,6 +456,26 @@ class _WebOrdersView extends StatelessWidget {
           final filters = _filterControls(context);
           final actions = _actionButtons(context);
           final search = _searchBox(context);
+          // The dashboard section carries three extra filters (group, shipping
+          // state, clear) plus the wide search, so it always uses two tidy rows:
+          // filters first, then the actions and the search box. The orders page
+          // keeps its original single-row/wrapped layout untouched.
+          if (state.widget.sectionMode) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(spacing: 10, runSpacing: 10, children: [...filters]),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Wrap(spacing: 10, runSpacing: 10, children: [...actions]),
+                    const SizedBox(width: 12),
+                    Expanded(child: search),
+                  ],
+                ),
+              ],
+            );
+          }
           if (wide) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -379,9 +565,26 @@ class _WebOrdersView extends StatelessWidget {
   );
 
   List<Widget> _filterControls(BuildContext context) {
+    final section = state.widget.sectionMode;
+    // In the dashboard section the status dropdown offers the six real store
+    // statuses (the same canonical set the bulk change uses); the carrier
+    // vocabulary lives in its own independent «حالة الشحنة» dropdown. The orders
+    // page keeps the original single combined vocabulary.
     final statusItems = <String, String>{
       'all': 'الكل',
-      for (final e in statusLabels.entries) e.key: e.value,
+      if (section)
+        for (final s in internalChangeableStatuses) s.name: s.label
+      else
+        for (final e in statusLabels.entries) e.key: e.value,
+    };
+    final shippingItems = <String, String>{
+      'all': 'الكل',
+      for (final s in ShippingStatus.values) s.name: s.label,
+    };
+    const groupItems = <String, String>{
+      'all': 'جميع طلبات المتجر',
+      'internal': 'الطلبات الداخلية',
+      'delivery': 'طلبات شركة التوصيل',
     };
     final companyItems = <String, String>{
       'all': 'الكل',
@@ -393,6 +596,15 @@ class _WebOrdersView extends StatelessWidget {
       for (final g in jordanGovernorates) g: g,
     };
     return [
+      if (section) ...[
+        _dropdown(
+          label: 'المجموعة',
+          value: state.bucket,
+          items: groupItems,
+          onChanged: state.webSetBucket,
+        ),
+        const SizedBox(width: 10),
+      ],
       _periodButton(context),
       const SizedBox(width: 10),
       _dropdown(
@@ -410,11 +622,29 @@ class _WebOrdersView extends StatelessWidget {
       ),
       const SizedBox(width: 10),
       _dropdown(
-        label: 'الحالة',
+        label: section ? 'حالة الطلب' : 'الحالة',
         value: state.status ?? 'all',
         items: statusItems,
         onChanged: (v) => state.webSetStatus(v),
       ),
+      if (section) ...[
+        const SizedBox(width: 10),
+        _dropdown(
+          label: 'حالة الشحنة',
+          value: state.shippingStatus ?? 'all',
+          items: shippingItems,
+          onChanged: (v) => state.webSetShippingStatus(v),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          height: 48,
+          child: OutlinedButton.icon(
+            onPressed: state.busy ? null : state.webClearFilters,
+            icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+            label: const Text('مسح الفلاتر'),
+          ),
+        ),
+      ],
     ];
   }
 
