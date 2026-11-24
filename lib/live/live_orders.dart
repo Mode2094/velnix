@@ -1014,22 +1014,18 @@ class _LiveOrdersState extends State<LiveOrders> {
       ),
     );
     if (choice == null || !mounted) return;
-    // Optional accounting confirmation for «تم التسليم» (web dialog). Sent only
-    // when the operator actually filled at least one field, so a plain status
-    // change keeps its existing payload.
-    final confirmation =
-        choice.target == OrderStatus.delivered &&
-            (choice.statementRef.isNotEmpty ||
-                choice.note.isNotEmpty ||
-                choice.differenceMinor != null)
-        ? <String, dynamic>{
-            if (choice.statementRef.isNotEmpty)
-              'statementRef': choice.statementRef,
-            if (choice.note.isNotEmpty) 'note': choice.note,
-            if (choice.differenceMinor != null)
-              'differenceMinor': choice.differenceMinor,
-          }
-        : null;
+    // «تم التسليم» on the web is a manual accounting confirmation: collect the
+    // optional statement reference, note and financial difference first (web
+    // only — Android's behaviour is unchanged). Cancelling that step cancels the
+    // whole operation, so no order is silently confirmed without a review.
+    Map<String, dynamic>? confirmation;
+    if (kIsWeb && choice.target == OrderStatus.delivered) {
+      confirmation = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (ctx) => _DeliveryConfirmationDialog(count: count),
+      );
+      if (confirmation == null || !mounted) return;
+    }
     final results = await _runBulkChunked(
       selected.toList(),
       (chunk) => gateway.bulkChangeStatus(
@@ -1708,22 +1704,9 @@ class _LiveOrdersState extends State<LiveOrders> {
 /// The outcome chosen in the bulk status dialog: the target status and whether
 /// the user asked to print the successfully-changed orders afterwards.
 class _BulkStatusChoice {
-  const _BulkStatusChoice(
-    this.target,
-    this.printAfter, {
-    this.statementRef = '',
-    this.note = '',
-    this.differenceMinor,
-  });
+  const _BulkStatusChoice(this.target, this.printAfter);
   final OrderStatus target;
   final bool printAfter;
-
-  /// Optional accounting confirmation, only meaningful when [target] is
-  /// «تم التسليم». Recorded server-side with the confirmer and time; never
-  /// derived from, and never touching, any carrier/shipping status.
-  final String statementRef;
-  final String note;
-  final int? differenceMinor;
 }
 
 /// RTL dialog for a bulk internal status change. Shows every valid internal
@@ -1748,30 +1731,6 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
   OrderStatus? _target;
   bool _printAfter = false;
   bool _submitting = false;
-  final _statementRef = TextEditingController();
-  final _note = TextEditingController();
-  final _difference = TextEditingController();
-
-  @override
-  void dispose() {
-    _statementRef.dispose();
-    _note.dispose();
-    _difference.dispose();
-    super.dispose();
-  }
-
-  bool get _confirming => kIsWeb && _target == OrderStatus.delivered;
-
-  /// Converts the operator's JOD difference to the stored thousandths unit,
-  /// mirroring `amountMinor`. An unparseable or empty value is treated as
-  /// "no difference recorded" rather than an error, since the field is optional.
-  int? _parseDifferenceMinor() {
-    final raw = _difference.text.trim().replaceAll(',', '');
-    if (raw.isEmpty) return null;
-    final value = double.tryParse(raw);
-    if (value == null || !value.isFinite) return null;
-    return (value * 1000).round();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1840,54 +1799,6 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
                   style: TextStyle(fontSize: 12),
                 ),
               ),
-              if (_confirming) ...[
-                const SizedBox(height: 4),
-                const Divider(),
-                const Text(
-                  '«تم التسليم» تأكيد محاسبي يدوي يُثبَّت بعد مراجعة كشف شركة '
-                  'التوصيل. لا يتغيّر تلقائياً مع حالة الشحنة، ولن يمسّ بيانات '
-                  'الشحنة أو الإرسال. الحقول التالية اختيارية ويُسجَّل مَن أكّد ومتى.',
-                  style: TextStyle(fontSize: 12, color: VColors.muted),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _statementRef,
-                  enabled: !_submitting,
-                  maxLength: 80,
-                  decoration: const InputDecoration(
-                    labelText: 'مرجع كشف الشركة (اختياري)',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _note,
-                  enabled: !_submitting,
-                  maxLength: 300,
-                  maxLines: 2,
-                  decoration: const InputDecoration(
-                    labelText: 'ملاحظة التأكيد (اختياري)',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _difference,
-                  enabled: !_submitting,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText:
-                        'فرق مالي عن الكشف (اختياري، بالدينار؛ قد يكون سالباً)',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1905,17 +1816,7 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
                   setState(() => _submitting = true);
                   Navigator.pop(
                     context,
-                    _BulkStatusChoice(
-                      _target!,
-                      _printAfter,
-                      statementRef: _confirming
-                          ? _statementRef.text.trim()
-                          : '',
-                      note: _confirming ? _note.text.trim() : '',
-                      differenceMinor: _confirming
-                          ? _parseDifferenceMinor()
-                          : null,
-                    ),
+                    _BulkStatusChoice(_target!, _printAfter),
                   );
                 },
           child: label == 'تطبيق الحالة'

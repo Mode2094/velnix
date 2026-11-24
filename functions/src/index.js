@@ -226,17 +226,14 @@ async function applyInternalStatusChange(ref,user,target,meta){
           ...(confirmation.differenceMinor!==null?{differenceMinor:confirmation.differenceMinor}:{})}}
       : (currentInternal==='delivered'?{internalCompletion:FieldValue.delete()}:{});
     tx.update(ref,{status:target,internalStatus:target,...completion,...reconciliation,revision:FieldValue.increment(1),updatedAt:FieldValue.serverTimestamp()});
-    const detail={status:target,previous:currentInternal};
-    if(target==='delivered'){
-      detail.confirmedBy=user.id;
-      if(confirmation.statementRef)detail.statementRef=confirmation.statementRef;
-      if(confirmation.note)detail.note=confirmation.note;
-      if(confirmation.differenceMinor!==null)detail.differenceMinor=confirmation.differenceMinor;
-      if(!hasCarrier)detail.completionSource='internal';
-    }
-    const action=target==='delivered'?'internal_delivery_confirmed':'status_changed';
-    await addEvent(ref.id,action,user,detail,tx);
-    await audit('order.'+action,user,ref.id,detail,tx);
+    // The event/audit action stays the existing `status_changed` so the journey
+    // timeline labels and the historical audit vocabulary are unchanged; the
+    // accounting proof (who/when + optional statement reference, note and
+    // difference) lives on the order as `internalCompletion` and the audit row's
+    // actor/time. This keeps the 6 internal statuses' behaviour byte-for-byte.
+    const detail={status:target,previous:currentInternal,...(target==='delivered'&&!hasCarrier?{completionSource:'internal'}:{})};
+    await addEvent(ref.id,'status_changed',user,detail,tx);
+    await audit('order.status_changed',user,ref.id,detail,tx);
     return {ok:true,changed:true};
   });
 }
