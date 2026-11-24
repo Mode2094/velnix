@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'notifications_service.dart';
 import 'push_routing.dart';
 import 'order_filters.dart';
+import 'date_range_field.dart';
 import 'directory_panel.dart';
 import 'jordan_locations.dart';
 import 'live_stores.dart';
@@ -28,6 +29,7 @@ import 'gateway.dart';
 
 part 'live_dashboard.dart';
 part 'live_orders.dart';
+part 'live_orders_web.dart';
 part 'live_order_journey.dart';
 part 'live_bucket_status.dart';
 part 'live_admin.dart';

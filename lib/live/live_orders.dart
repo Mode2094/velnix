@@ -73,6 +73,93 @@ class _LiveOrdersState extends State<LiveOrders> {
   static const int _bulkChunk = 50;
   static const int _dispatchChunk = 10;
 
+  // ---- Web-only Data Grid state (see live_orders_web.dart, kIsWeb only) ----
+  // Header-click sorting of the loaded rows; a null key keeps the server's
+  // createdAt order. `_webCompanyNames`/`_webStoreName` are display lookups
+  // fetched once for the grid header/cells and never mutate order data.
+  String? webSortKey;
+  bool webSortAsc = true;
+  String? webStoreName;
+  bool webMetaLoaded = false;
+  Map<String, String> webCompanyNames = const {};
+  final webScroll = ScrollController();
+  // Desktop web loads a wider first page; Android keeps its 30-row default.
+  static const int webPageSize = 50;
+  // Row currently under the mouse (hover highlight), or null.
+  int? webHover;
+
+  /// Single bridge for the web-only grid (live_orders_web.dart, same library)
+  /// to mutate this state: a sibling declaration cannot call the protected
+  /// [State.setState] directly.
+  void webSetState(VoidCallback fn) => setState(fn);
+
+  /// Applies a single top-toolbar filter (company/city/...) from the web grid.
+  /// `null`/`all`/empty removes the key; every change re-runs the query.
+  void webSetFilter(String key, String? value) {
+    setState(() {
+      final next = {...filters};
+      if (value == null || value.isEmpty || value == 'all') {
+        next.remove(key);
+      } else {
+        next[key] = value;
+      }
+      filters = next;
+    });
+    load(reset: true);
+  }
+
+  /// Sets the internal-status filter (web grid "الحالة" dropdown).
+  void webSetStatus(String? value) {
+    setState(() => status = (value == null || value == 'all') ? null : value);
+    load(reset: true);
+  }
+
+  /// Sets the period filter from inclusive local days, converted to the store's
+  /// UTC+03:00 exclusive-next-day boundaries (same contract as OrderFilters).
+  void webSetPeriod(DateTime? from, DateTime? to) {
+    DateTime boundary(DateTime d) =>
+        DateTime.utc(d.year, d.month, d.day).subtract(const Duration(hours: 3));
+    setState(() {
+      final next = {...filters}
+        ..remove('from')
+        ..remove('to');
+      if (from != null && to != null) {
+        next['from'] = boundary(from).toIso8601String();
+        next['to'] = boundary(
+          to.add(const Duration(days: 1)),
+        ).toIso8601String();
+      }
+      filters = next;
+    });
+    load(reset: true);
+  }
+
+  /// Loads the display-only lookups the web grid header/cells need: the store
+  /// (organization) name and the delivery-company id→name map. Read once; a
+  /// failure just leaves the grid showing em dashes, never blocking the list.
+  Future<void> _loadWebMeta() async {
+    String? storeName;
+    var companyNames = const <String, String>{};
+    try {
+      final settings = await gateway.call('getSettings');
+      final name = settings['organizationName']?.toString();
+      if (name != null && name.trim().isNotEmpty) storeName = name.trim();
+    } catch (_) {}
+    try {
+      final companies = await gateway.companies();
+      companyNames = {
+        for (final c in companies)
+          if (c['id'] != null) c['id'].toString(): (c['name'] ?? '').toString(),
+      };
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      webStoreName = storeName;
+      webCompanyNames = companyNames;
+      webMetaLoaded = true;
+    });
+  }
+
   void _enterSelection(String id) {
     setState(() {
       selectionMode = true;
@@ -212,6 +299,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
     bucket = widget.bucket;
     load(reset: true);
+    if (kIsWeb) _loadWebMeta();
     if (widget.autoSearchFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) searchFocus.requestFocus();
@@ -225,6 +313,7 @@ class _LiveOrdersState extends State<LiveOrders> {
     search.dispose();
     searchFocus.dispose();
     _listController.dispose();
+    webScroll.dispose();
     super.dispose();
   }
 
@@ -285,6 +374,7 @@ class _LiveOrdersState extends State<LiveOrders> {
               bucket: bucket,
               companyId: widget.companyId,
               filters: filters,
+              pageSize: kIsWeb ? webPageSize : 30,
               fresh: fresh,
             );
       final list = gateway.listResult(result);
@@ -974,8 +1064,15 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
   }
 
+  /// Web-only entry point: mounts the Excel-style Data Grid. Kept tiny so the
+  /// (large) web UI can live in its own part file without touching Android.
+  Widget buildWebOrders(BuildContext context) => _WebOrdersView(state: this);
+
   @override
   Widget build(BuildContext context) {
+    // Web gets the wide Excel-style Data Grid (live_orders_web.dart). Android
+    // and the widget tests keep the exact card list below, unchanged.
+    if (kIsWeb) return buildWebOrders(context);
     final visible = rows;
     final compact = MediaQuery.sizeOf(context).width < 720;
     // The toolbar/search/filters stay pinned; only the results list scrolls.

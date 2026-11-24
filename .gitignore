@@ -61,3 +61,6 @@ backups/
 
 # Signed Android release artifacts (large binaries; distributed out of band)
 release/
+
+# Client-provided reference screenshots (may contain customer PII) — local only
+docs/assets/orders_reference_client.jpeg
