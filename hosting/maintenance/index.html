@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#495BEE">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Velnix — الموقع قيد صيانة مؤقتة، ونعود قريبًا.">
+  <title>Velnix — نعمل حاليًا على تحسين تجربتكم</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root{
+      --brand:#495BEE;
+      --brand-2:#7481FC;
+      --aqua:#007F78;
+      --ink:#19243C;
+      --muted:#617189;
+      --line:#E9EDF4;
+      --canvas:#F5F7FB;
+      --white:#FFFFFF;
+    }
+    *,*::before,*::after{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      min-height:100vh;
+      min-height:100dvh;
+      display:grid;
+      place-items:center;
+      padding:
+        max(clamp(16px,4vw,40px),env(safe-area-inset-top))
+        max(clamp(16px,4vw,40px),env(safe-area-inset-right))
+        max(clamp(16px,4vw,40px),env(safe-area-inset-bottom))
+        max(clamp(16px,4vw,40px),env(safe-area-inset-left));
+      color:var(--ink);
+      background:
+        radial-gradient(1100px 620px at 88% -14%, rgba(73,91,238,.16), transparent 60%),
+        radial-gradient(820px 520px at 4% 110%, rgba(0,127,120,.12), transparent 62%),
+        var(--canvas);
+      font-family:"Cairo","Tajawal","Noto Kufi Arabic","Noto Naskh Arabic","Segoe UI",Tahoma,system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;
+      text-rendering:optimizeLegibility;
+    }
+    .card{
+      position:relative;
+      width:min(560px,100%);
+      background:var(--white);
+      border:1px solid var(--line);
+      border-radius:26px;
+      padding:clamp(30px,5.4vw,50px) clamp(22px,5vw,48px);
+      box-shadow:0 30px 70px -34px rgba(25,36,60,.30), 0 2px 8px rgba(25,36,60,.04);
+      text-align:center;
+      overflow:hidden;
+    }
+    .card::before{
+      content:"";
+      position:absolute;
+      inset-inline:0;
+      top:0;
+      height:5px;
+      background:linear-gradient(90deg,var(--brand),var(--aqua));
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:14px;
+      margin-bottom:clamp(20px,4vw,28px);
+    }
+    .mark{
+      width:58px;
+      height:58px;
+      flex:0 0 auto;
+      border-radius:17px;
+      background:var(--white);
+      border:1px solid var(--line);
+      box-shadow:0 14px 28px -16px rgba(73,91,238,.6);
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+    }
+    .mark img{width:100%;height:100%;object-fit:contain;padding:7px;display:block}
+    .wordmark{font-size:27px;font-weight:800;letter-spacing:-.6px;color:var(--ink)}
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font-size:12.5px;
+      font-weight:700;
+      color:#3A45B8;
+      background:#EEF0FF;
+      border:1px solid #E0E4FF;
+      border-radius:999px;
+      padding:6px 13px;
+      margin-bottom:18px;
+    }
+    .dot{
+      width:7px;height:7px;border-radius:50%;
+      background:var(--brand);
+      box-shadow:0 0 0 4px rgba(73,91,238,.14);
+      animation:pulse 2.4s ease-in-out infinite;
+    }
+    h1{
+      margin:0 0 12px;
+      font-size:clamp(21px,4.7vw,29px);
+      font-weight:900;
+      letter-spacing:-.5px;
+      line-height:1.4;
+      color:var(--ink);
+    }
+    p{
+      margin:0 auto;
+      max-width:42ch;
+      color:var(--muted);
+      font-size:clamp(14px,3.4vw,16px);
+      line-height:1.95;
+    }
+    .bar{
+      width:min(220px,72%);
+      height:4px;
+      border-radius:999px;
+      background:var(--line);
+      overflow:hidden;
+      margin:clamp(22px,4vw,30px) auto 0;
+      position:relative;
+    }
+    .bar span{
+      position:absolute;
+      top:0;bottom:0;
+      width:42%;
+      border-radius:inherit;
+      background:linear-gradient(90deg,var(--brand),var(--aqua));
+      animation:slide 1.7s ease-in-out infinite;
+    }
+    .foot{
+      margin-top:clamp(20px,4vw,26px);
+      font-size:12px;
+      letter-spacing:.1px;
+      color:#98A2B3;
+    }
+    @keyframes slide{0%{transform:translateX(-130%)}100%{transform:translateX(340%)}}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(73,91,238,.14)}50%{box-shadow:0 0 0 6px rgba(73,91,238,.06)}}
+    @media (max-width:380px){
+      .wordmark{font-size:24px}
+      .mark{width:52px;height:52px}
+    }
+    @media (prefers-reduced-motion:reduce){
+      .bar span{animation:none;width:100%}
+      .dot{animation:none}
+    }
+  </style>
+</head>
+<body>
+  <main class="card" role="status" aria-live="polite" aria-labelledby="maintenance-title">
+    <div class="brand">
+      <span class="mark"><img src="icons/Icon-192.png" alt="شعار Velnix" width="58" height="58"></span>
+      <span class="wordmark">Velnix</span>
+    </div>
+    <span class="badge"><span class="dot" aria-hidden="true"></span> صيانة مؤقتة</span>
+    <h1 id="maintenance-title">نعمل حاليًا على تحسين تجربتكم</h1>
+    <p>الموقع قيد العمل مؤقتًا، وسنعود قريبًا. شكرًا لتفهمكم.</p>
+    <div class="bar" aria-hidden="true"><span></span></div>
+    <div class="foot">Velnix — إدارة الطلبات والفرق والتوصيل</div>
+  </main>
+  <script>
+    // While maintenance is on, make sure nobody keeps seeing a cached copy of the
+    // app: drop any legacy Flutter app-shell worker and its caches. The push
+    // worker (firebase-messaging-sw.js) is deliberately left untouched.
+    (function () {
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (reg) {
+              var url = (reg.active && reg.active.scriptURL) ||
+                (reg.installing && reg.installing.scriptURL) ||
+                (reg.waiting && reg.waiting.scriptURL) || "";
+              if (url.indexOf("flutter_service_worker") !== -1) {
+                reg.unregister();
+              }
+            });
+          }).catch(function () {});
+        }
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (key) {
+              if (/^flutter/i.test(key)) { caches.delete(key); }
+            });
+          }).catch(function () {});
+        }
+      } catch (e) { /* never surface errors to the visitor */ }
+    })();
+  </script>
+</body>
+</html>
