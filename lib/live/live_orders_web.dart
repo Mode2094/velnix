@@ -22,6 +22,18 @@ class _WebOrdersView extends StatelessWidget {
   static const _rowHeight = 46.0;
   static const _headerHeight = 46.0;
 
+  // Compact, ERP-style filter metrics. The bar renders as a dense, even grid:
+  // the layout picks the largest column count whose cells stay at or above
+  // [_minCellW], then stretches the cells to fill the row, so the whole filter
+  // area stays within two or three short rows at any desktop width and the data
+  // grid keeps the vertical space instead.
+  static const double _minCellW = 124;
+  static const double _fieldH = 40;
+  static const double _facetGap = 6;
+
+  /// The shared compact text style for filter fields and their labels.
+  static const _labelStyle = TextStyle(fontSize: 12.5);
+
   /// Fixed pixel widths, listed in the reference's right-to-left order. A Row in
   /// the app's RTL directionality lays the first entry at the far right.
   static const _columns = <_WebCol>[
@@ -350,11 +362,16 @@ class _WebOrdersView extends StatelessWidget {
     final section = _sectionLabel();
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 8,
         children: [
+          // Title + the tools for the current section, on one compact line.
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'قائمة الطلبات',
@@ -365,26 +382,9 @@ class _WebOrdersView extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _qrButton(),
-              const Spacer(),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.storefront_outlined, color: VColors.brand),
-                  const SizedBox(width: 8),
-                  Text(
-                    state.webStoreName ?? 'Velnix',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: VColors.brand,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
+              const SizedBox(width: 10),
+              const Text('•', style: TextStyle(color: VColors.muted)),
+              const SizedBox(width: 10),
               Text(
                 section,
                 style: Theme.of(
@@ -404,7 +404,22 @@ class _WebOrdersView extends StatelessWidget {
                   ),
                 ),
               ),
-              const Spacer(),
+            ],
+          ),
+          // Store identity + the two global actions, on the same line on desktop.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.storefront_outlined, color: VColors.brand),
+              const SizedBox(width: 8),
+              Text(
+                state.webStoreName ?? 'Velnix',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: VColors.brand,
+                ),
+              ),
+              const SizedBox(width: 12),
               OutlinedButton.icon(
                 onPressed: state.busy
                     ? null
@@ -539,110 +554,194 @@ class _WebOrdersView extends StatelessWidget {
   Widget _toolbar(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Row 1 — every filter facet at once. Nothing is hidden behind a
-          // «المزيد من الفلاتر» button; the Wrap lays them out as a compact,
-          // aligned grid and reflows onto more lines on narrower desktops.
-          Wrap(spacing: 10, runSpacing: 10, children: _facetControls(context)),
-          const SizedBox(height: 10),
-          // Row 2 — «الفترة الزمنية» and «تاريخ الإرسال» side by side on desktop
-          // with equal width/height; stacked only when the viewport is narrow.
+          // Row A — the comprehensive search plus the «مسح الفلاتر» / «تحديث»
+          // actions on one compact line. Search keeps the width it needs without
+          // reserving a tall row of its own, and the actions sit right next to it.
           LayoutBuilder(
             builder: (context, box) {
-              final period = _dateRangeField(
-                label: 'الفترة الزمنية',
-                from: _periodDays().from,
-                to: _periodDays().to,
-                onChanged: state.webSetPeriod,
+              final search = _searchBox(context);
+              final actions = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _filterActionButton(
+                    icon: Icons.filter_alt_off_outlined,
+                    label: 'مسح الفلاتر',
+                    onPressed: state.busy ? null : state.webClearFilters,
+                  ),
+                  const SizedBox(width: 8),
+                  _filterActionButton(
+                    icon: Icons.refresh,
+                    label: 'تحديث',
+                    onPressed: state.busy
+                        ? null
+                        : () => state.load(reset: true, fresh: true),
+                  ),
+                ],
               );
-              final sent = _dateRangeField(
-                label: 'تاريخ الإرسال',
-                from: _sentPeriodDays().from,
-                to: _sentPeriodDays().to,
-                onChanged: state.webSetSentPeriod,
-              );
-              if (box.maxWidth >= 720) {
+              if (box.maxWidth >= 760) {
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: period),
-                    const SizedBox(width: 12),
-                    Expanded(child: sent),
+                    Expanded(child: search),
+                    const SizedBox(width: 8),
+                    actions,
                   ],
                 );
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [period, const SizedBox(height: 10), sent],
+                children: [
+                  search,
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: actions,
+                  ),
+                ],
               );
             },
           ),
-          const SizedBox(height: 10),
-          // Row 3 — the comprehensive search box (full width). The bulk actions
-          // live in the always-visible operations bar directly below so they stay
-          // reachable while scrolling without competing for this row, and QR moves
-          // to the top bar.
-          _searchBox(context),
+          const SizedBox(height: 8),
+          // Rows B/C — every filter facet at once in a compact, even grid.
+          // There is deliberately NO «المزيد من الفلاتر» button: hiding a
+          // condition behind a toggle was the exact behaviour this page must not
+          // have. The grid reflows the same controls onto two or three short
+          // rows at any desktop width, and the two date ranges stay adjacent as
+          // one two-cell group.
+          LayoutBuilder(
+            builder: (context, box) {
+              const gap = _facetGap;
+              const groupCells = 2; // the two date fields travel together
+              final cells = _facetCount + groupCells;
+              var columns = ((box.maxWidth + gap) / (_minCellW + gap)).floor();
+              if (columns < 1) columns = 1;
+              if (columns > cells) columns = cells;
+              final cellW = (box.maxWidth - (columns - 1) * gap) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                crossAxisAlignment: WrapCrossAlignment.start,
+                children: [
+                  ..._facetControls(context, cellW),
+                  _dateGroup(cellW),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _searchBox(BuildContext context) => TextField(
-    controller: state.search,
-    textInputAction: TextInputAction.search,
-    onChanged: state._onQueryChanged,
-    onSubmitted: (_) {
-      state.load(reset: true);
-    },
-    decoration: InputDecoration(
-      isDense: true,
-      prefixIcon: const Icon(Icons.search, size: 20),
-      hintText:
-          'بحث شامل (رقم الطلب، الباركود، الاسم، الهاتف، المنتج، المنطقة، العنوان، المصدر، المنشئ، مرجع الشحنة، الملاحظات...)',
-      suffixIcon: state.search.text.trim().isEmpty
-          ? null
-          : IconButton(
-              tooltip: 'مسح البحث',
-              onPressed: () {
-                state.search.clear();
-                state.load(reset: true);
-              },
-              icon: const Icon(Icons.close, size: 18),
-            ),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+  /// The number of single-cell filter facets the bar renders, used by the grid to
+  /// pick a column count before the widgets are built.
+  int get _facetCount => 15 + (state.widget.policy.viewAmounts ? 2 : 0);
+
+  /// One compact square-ish action button used in the filter bar (clear/refresh).
+  Widget _filterActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) => OutlinedButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 17),
+    label: Text(label),
+    style: OutlinedButton.styleFrom(
+      minimumSize: const Size(0, _fieldH),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      visualDensity: VisualDensity.compact,
+      textStyle: const TextStyle(
+        fontFamily: 'Cairo',
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+  );
+
+  /// The two date ranges side by side as one compact, adjacent two-cell group:
+  /// «الفترة الزمنية» (order date) and «تاريخ الإرسال» (carrier send date).
+  /// Tapping a field opens the calendar, exactly as on Android.
+  Widget _dateGroup(double cellW) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        width: cellW,
+        child: _dateRangeField(
+          label: 'الفترة الزمنية',
+          from: _periodDays().from,
+          to: _periodDays().to,
+          onChanged: state.webSetPeriod,
+        ),
+      ),
+      const SizedBox(width: _facetGap),
+      SizedBox(
+        width: cellW,
+        child: _dateRangeField(
+          label: 'تاريخ الإرسال',
+          from: _sentPeriodDays().from,
+          to: _sentPeriodDays().to,
+          onChanged: state.webSetSentPeriod,
+        ),
+      ),
+    ],
+  );
+
+  Widget _searchBox(BuildContext context) => SizedBox(
+    height: _fieldH,
+    child: TextField(
+      controller: state.search,
+      textInputAction: TextInputAction.search,
+      onChanged: state._onQueryChanged,
+      onSubmitted: (_) {
+        state.load(reset: true);
+      },
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search, size: 18),
+        prefixIconConstraints: const BoxConstraints(
+          minWidth: 36,
+          minHeight: 36,
+        ),
+        hintText:
+            'بحث شامل (رقم الطلب، الباركود، الاسم، الهاتف، المنتج، المنطقة، العنوان، المصدر، المنشئ، مرجع الشحنة، الملاحظات...)',
+        hintStyle: _labelStyle,
+        suffixIcon: state.search.text.trim().isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'مسح البحث',
+                onPressed: () {
+                  state.search.clear();
+                  state.load(reset: true);
+                },
+                icon: const Icon(Icons.close, size: 18),
+              ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+      style: _fieldStyle,
     ),
   );
 
   Widget _dropdown({
+    required double width,
     required String label,
     required String value,
     required Map<String, String> items,
     required ValueChanged<String?> onChanged,
   }) => SizedBox(
-    width: 158,
+    width: width,
+    height: _fieldH,
     child: DropdownButtonFormField<String>(
       key: ValueKey('$label-$value-${items.length}'),
       isExpanded: true,
       isDense: true,
       initialValue: items.containsKey(value) ? value : 'all',
-      decoration: InputDecoration(
-        isDense: true,
-        labelText: label,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      style: const TextStyle(
-        fontFamily: 'Cairo',
-        fontSize: 13,
-        color: VColors.ink,
-      ),
+      decoration: _fieldDecoration(label),
+      style: _fieldStyle,
       items: [
         for (final e in items.entries)
           DropdownMenuItem(value: e.key, child: Text(e.value)),
@@ -656,7 +755,7 @@ class _WebOrdersView extends StatelessWidget {
   /// behind a toggle was the exact behaviour this page must not have. Every
   /// facet the server supports is visible at once, so nothing is ever hidden.
   /// The Wrap reflows them into a compact, aligned grid at any desktop width.
-  List<Widget> _facetControls(BuildContext context) {
+  List<Widget> _facetControls(BuildContext context, double width) {
     // The internal status vocabulary the section's own cards use: every internal
     // status INCLUDING «مرتجع», but never the carrier-driven «تم الإرسال» /
     // «قيد التوصيل» — those live in the independent «حالة الشحنة» facet.
@@ -697,99 +796,105 @@ class _WebOrdersView extends StatelessWidget {
     };
     return [
       _dropdown(
+        width: width,
         label: 'المجموعة',
         value: state.bucket,
         items: groupItems,
         onChanged: state.webSetBucket,
       ),
       _dropdown(
+        width: width,
         label: 'الحالة الداخلية',
         value: state.status ?? 'all',
         items: statusItems,
         onChanged: state.webSetStatus,
       ),
       _dropdown(
+        width: width,
         label: 'حالة الشحنة',
         value: state.shippingStatus ?? 'all',
         items: shippingItems,
         onChanged: state.webSetShippingStatus,
       ),
       _dropdown(
+        width: width,
         label: 'شركة التوصيل',
         value: state.filters['companyId']?.toString() ?? 'all',
         items: companyItems,
         onChanged: (v) => state.webSetFilter('companyId', v),
       ),
       _dropdown(
+        width: width,
         label: 'المحافظة',
         value: state.filters['city']?.toString() ?? 'all',
         items: cityItems,
         onChanged: (v) => state.webSetFilter('city', v),
       ),
       _textFilter(
+        width: width,
         label: 'المنطقة',
         filterKey: 'area',
         controller: state.webArea,
       ),
       _dropdown(
+        width: width,
         label: 'مصدر الطلب',
         value: state.filters['pageId']?.toString() ?? 'all',
         items: sourceItems,
         onChanged: (v) => state.webSetFilter('pageId', v),
       ),
       _dropdown(
+        width: width,
         label: 'المنشئ',
         value: state.filters['createdBy']?.toString() ?? 'all',
         items: creatorItems,
         onChanged: (v) => state.webSetFilter('createdBy', v),
       ),
-      _typeDropdown(),
-      _dispatchDropdown(),
+      _typeDropdown(width),
+      _dispatchDropdown(width),
       _textFilter(
+        width: width,
         label: 'الهاتف (أرقام)',
         filterKey: 'phone',
         controller: state.webPhone,
         numbers: true,
       ),
       _textFilter(
+        width: width,
         label: 'الباركود / رقم الطلب',
         filterKey: 'barcode',
         controller: state.webBarcode,
         ltr: true,
       ),
       _textFilter(
+        width: width,
         label: 'المنتج / المحتويات',
         filterKey: 'product',
         controller: state.webProduct,
       ),
       _textFilter(
+        width: width,
         label: 'الملاحظات',
         filterKey: 'note',
         controller: state.webNote,
       ),
       if (state.widget.policy.viewAmounts) ...[
         _textFilter(
+          width: width,
           label: 'المبلغ من',
           filterKey: 'amountMin',
           controller: state.webAmountMin,
           numbers: true,
         ),
         _textFilter(
+          width: width,
           label: 'المبلغ إلى',
           filterKey: 'amountMax',
           controller: state.webAmountMax,
           numbers: true,
         ),
       ],
-      _sortDropdown(),
-      SizedBox(
-        height: 48,
-        child: OutlinedButton.icon(
-          onPressed: state.busy ? null : state.webClearFilters,
-          icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-          label: const Text('مسح الفلاتر'),
-        ),
-      ),
+      _sortDropdown(width),
     ];
   }
 
@@ -803,8 +908,9 @@ class _WebOrdersView extends StatelessWidget {
     'review': 'يحتاج مراجعة',
   };
 
-  Widget _dispatchDropdown() => SizedBox(
-    width: 158,
+  Widget _dispatchDropdown(double width) => SizedBox(
+    width: width,
+    height: _fieldH,
     child: DropdownButtonFormField<String>(
       key: ValueKey('dispatch-${state.filters['dispatch'] ?? 'all'}'),
       isExpanded: true,
@@ -823,8 +929,9 @@ class _WebOrdersView extends StatelessWidget {
     ),
   );
 
-  Widget _typeDropdown() => SizedBox(
-    width: 158,
+  Widget _typeDropdown(double width) => SizedBox(
+    width: width,
+    height: _fieldH,
     child: DropdownButtonFormField<String>(
       key: ValueKey('type-${state.filters['orderType'] ?? 'all'}'),
       isExpanded: true,
@@ -841,12 +948,13 @@ class _WebOrdersView extends StatelessWidget {
     ),
   );
 
-  Widget _sortDropdown() {
+  Widget _sortDropdown(double width) {
     // The server pins the sort while a global search is active, so the control
     // is disabled (match that contract) instead of silently doing nothing.
     final searching = state.appliedQuery.trim().length >= 2;
     return SizedBox(
-      width: 158,
+      width: width,
+      height: _fieldH,
       child: DropdownButtonFormField<String>(
         key: ValueKey('sort-${state.sort}'),
         isExpanded: true,
@@ -871,7 +979,8 @@ class _WebOrdersView extends StatelessWidget {
   InputDecoration _fieldDecoration(String label) => InputDecoration(
     isDense: true,
     labelText: label,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    labelStyle: _labelStyle,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
   );
 
@@ -886,14 +995,15 @@ class _WebOrdersView extends StatelessWidget {
   /// amount boxes as a numeric range; both commit on Enter or when the box loses
   /// focus, so typing does not fire a query on every keystroke.
   Widget _textFilter({
+    required double width,
     required String label,
     required String filterKey,
     required TextEditingController controller,
     bool ltr = false,
     bool numbers = false,
   }) => SizedBox(
-    width: 158,
-    height: 48,
+    width: width,
+    height: _fieldH,
     child: TextField(
       controller: controller,
       textInputAction: TextInputAction.search,
@@ -906,10 +1016,8 @@ class _WebOrdersView extends StatelessWidget {
       decoration: InputDecoration(
         isDense: true,
         labelText: label,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 10,
-          vertical: 10,
-        ),
+        labelStyle: _labelStyle,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
       style: _fieldStyle,
@@ -931,6 +1039,7 @@ class _WebOrdersView extends StatelessWidget {
     label: label,
     from: from,
     to: to,
+    dense: true,
     onChanged: onChanged,
   );
 
@@ -974,78 +1083,84 @@ class _WebOrdersView extends StatelessWidget {
     final none = selected == 0;
     final busy = state.bulkBusy;
     final allVisible = state.rows.isNotEmpty && selected == state.rows.length;
-    return Container(
-      color: VColors.softBlue,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                none ? Icons.check_box_outline_blank : Icons.check_circle,
-                color: VColors.brand,
-                size: 18,
+    return Theme(
+      data: Theme.of(context).copyWith(
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Container(
+        color: VColors.softBlue,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  none ? Icons.check_box_outline_blank : Icons.check_circle,
+                  color: VColors.brand,
+                  size: 18,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'المحدد: $selected',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ],
+            ),
+            TextButton(
+              onPressed: state.rows.isEmpty || allVisible
+                  ? null
+                  : () => _selectAllVisible(false),
+              child: const Text('تحديد الظاهر'),
+            ),
+            TextButton(
+              onPressed: busy ? null : state._selectAllMatching,
+              child: const Text('تحديد كل النتائج'),
+            ),
+            TextButton(
+              onPressed: none ? null : state._exitSelection,
+              child: const Text('إلغاء التحديد'),
+            ),
+            Tooltip(
+              message: none
+                  ? 'حدّد طلباً واحداً أو أكثر لتفعيل الطباعة'
+                  : 'طباعة $selected طلب',
+              child: FilledButton.icon(
+                onPressed: none || busy ? null : state._bulkPrint,
+                icon: const Icon(Icons.print_outlined, size: 18),
+                label: Text(none ? 'طباعة' : 'طباعة ($selected)'),
               ),
-              const SizedBox(width: 6),
-              Text(
-                'المحدد: $selected',
-                style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            if (canManage)
+              OutlinedButton.icon(
+                onPressed: none || busy ? null : state._bulkChangeStatus,
+                icon: const Icon(Icons.sync_alt, size: 18),
+                label: const Text('تغيير الحالة'),
               ),
-            ],
-          ),
-          TextButton(
-            onPressed: state.rows.isEmpty || allVisible
-                ? null
-                : () => _selectAllVisible(false),
-            child: const Text('تحديد الظاهر'),
-          ),
-          TextButton(
-            onPressed: busy ? null : state._selectAllMatching,
-            child: const Text('تحديد كل النتائج'),
-          ),
-          TextButton(
-            onPressed: none ? null : state._exitSelection,
-            child: const Text('إلغاء التحديد'),
-          ),
-          Tooltip(
-            message: none
-                ? 'حدّد طلباً واحداً أو أكثر لتفعيل الطباعة'
-                : 'طباعة $selected طلب',
-            child: FilledButton.icon(
-              onPressed: none || busy ? null : state._bulkPrint,
-              icon: const Icon(Icons.print_outlined, size: 18),
-              label: Text(none ? 'طباعة' : 'طباعة ($selected)'),
-            ),
-          ),
-          if (canManage)
-            OutlinedButton.icon(
-              onPressed: none || busy ? null : state._bulkChangeStatus,
-              icon: const Icon(Icons.sync_alt, size: 18),
-              label: const Text('تغيير الحالة'),
-            ),
-          if (canSend)
-            FilledButton.tonalIcon(
-              onPressed: none || busy ? null : () => _sendToCompany(context),
-              icon: const Icon(Icons.local_shipping_outlined, size: 18),
-              label: const Text('إرسال إلى شركة التوصيل'),
-            ),
-          if (canSend)
-            OutlinedButton.icon(
-              onPressed: busy ? null : () => _openDispatchLog(context),
-              icon: const Icon(Icons.history, size: 18),
-              label: const Text('سجل عمليات الإرسال'),
-            ),
-          if (busy)
-            const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-        ],
+            if (canSend)
+              FilledButton.tonalIcon(
+                onPressed: none || busy ? null : () => _sendToCompany(context),
+                icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                label: const Text('إرسال إلى شركة التوصيل'),
+              ),
+            if (canSend)
+              OutlinedButton.icon(
+                onPressed: busy ? null : () => _openDispatchLog(context),
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text('سجل عمليات الإرسال'),
+              ),
+            if (busy)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -70,6 +70,7 @@ class VDateRangeField extends StatefulWidget {
     this.to,
     required this.onChanged,
     this.label = 'الفترة الزمنية',
+    this.dense = false,
   });
 
   final DateTime? from;
@@ -79,6 +80,11 @@ class VDateRangeField extends StatefulWidget {
   /// when the range is cleared.
   final void Function(DateTime? from, DateTime? to) onChanged;
   final String label;
+
+  /// Renders the collapsed preset selector with the tighter ERP-style metrics
+  /// used by the web filter bar. Defaults to `false` so the Android/other call
+  /// sites keep their existing sizing untouched.
+  final bool dense;
 
   @override
   State<VDateRangeField> createState() => _VDateRangeFieldState();
@@ -174,9 +180,15 @@ class _VDateRangeFieldState extends State<VDateRangeField> {
       DropdownButtonFormField<VRangePreset>(
         key: ValueKey('range-preset-${preset?.name ?? 'none'}'),
         isExpanded: true,
+        isDense: widget.dense,
         initialValue: preset,
         decoration: InputDecoration(
+          isDense: widget.dense,
           labelText: widget.label,
+          labelStyle: widget.dense ? const TextStyle(fontSize: 12.5) : null,
+          contentPadding: widget.dense
+              ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+              : null,
           prefixIcon: const Icon(Icons.date_range_outlined, size: 20),
         ),
         hint: Text(widget.label),
@@ -267,6 +279,9 @@ class _VDateRangeFieldState extends State<VDateRangeField> {
       decoration: InputDecoration(
         labelText: label,
         isDense: true,
+        contentPadding: widget.dense
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+            : null,
         suffixIcon: const Icon(Icons.calendar_month_outlined, size: 18),
       ),
       child: IgnorePointer(
