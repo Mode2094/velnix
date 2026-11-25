@@ -27,6 +27,7 @@ class LiveOrders extends StatefulWidget {
     this.onCreated,
     this.sectionMode = false,
     this.sectionTotal,
+    this.webBulkUx = kIsWeb,
   });
   final SessionPolicy policy;
   final String bucket;
@@ -68,6 +69,16 @@ class LiveOrders extends StatefulWidget {
   /// Store-wide order total (every status, from the dashboard aggregate the
   /// section already loaded) for the counters strip. Null shows a dash.
   final int? sectionTotal;
+
+  /// Web-only bulk UX. When true a bulk status change uses two steps (choose a
+  /// status, then a confirmation dialog that echoes the chosen status and the
+  /// order count and offers the optional print step) and a finished bulk
+  /// operation refreshes the loaded rows IN PLACE, so the search, the filters,
+  /// the loaded pages and the scroll position all survive. Defaults to [kIsWeb];
+  /// Android keeps its single-dialog flow and first-page reload unchanged.
+  /// Exposed as a constructor flag so the VM tests can cover the web path.
+  final bool webBulkUx;
+
   @override
   State<LiveOrders> createState() => _LiveOrdersState();
 }
@@ -1249,7 +1260,14 @@ class _LiveOrdersState extends State<LiveOrders> {
         transportError: transportError,
       );
       // Refresh regardless: completed chunks may already have changed orders.
-      await load(reset: true, fresh: true);
+      // On the web the loaded rows are refreshed IN PLACE, so the search, the
+      // filters, the loaded pages and the scroll position all survive the
+      // operation. Android keeps its first-page reload unchanged.
+      if (widget.webBulkUx) {
+        await webRefreshPreservingView();
+      } else {
+        await load(reset: true, fresh: true);
+      }
     } finally {
       if (mounted) setState(() => bulkBusy = false);
     }
@@ -1276,9 +1294,26 @@ class _LiveOrdersState extends State<LiveOrders> {
         statuses: internalChangeableStatuses,
         labels: statusLabels,
         count: count,
+        // On the web the print decision belongs to the separate confirmation
+        // step below; Android keeps the single-dialog flow unchanged.
+        showPrintOption: !widget.webBulkUx,
       ),
     );
     if (choice == null || !mounted) return;
+    var printAfter = choice.printAfter;
+    // Web-only second step: a dedicated confirmation that echoes the chosen
+    // status and the order count and offers the optional (default-off) print
+    // step. Cancelling it cancels the whole operation, so nothing is changed
+    // without an explicit confirmation.
+    if (widget.webBulkUx) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) =>
+            BulkStatusConfirmDialog(target: choice.target, count: count),
+      );
+      if (confirmed == null || !mounted) return;
+      printAfter = confirmed;
+    }
     // «تم التسليم» on the web is a manual accounting confirmation: collect the
     // optional statement reference, note and financial difference first (web
     // only — Android's behaviour is unchanged). Cancelling that step cancels the
@@ -1299,7 +1334,7 @@ class _LiveOrdersState extends State<LiveOrders> {
         confirmation: confirmation,
       ),
     );
-    if (!choice.printAfter || !mounted) return;
+    if (!printAfter || !mounted) return;
     // Print ONLY the orders the server confirmed as processed. A failed,
     // unauthorized, unresolved or uncertain order is never printed as success.
     final printable = <String>[
@@ -1941,15 +1976,21 @@ class _BulkStatusChoice {
 /// affected, offers an optional (default-off) "print after change" checkbox and
 /// requires an explicit confirmation. The confirm button is disabled until a
 /// status is chosen and while submitting, so a double tap cannot submit twice.
+///
+/// When [showPrintOption] is false (the web two-step flow) the print checkbox
+/// moves to the separate [BulkStatusConfirmDialog] and this dialog only chooses
+/// the target status.
 class _BulkStatusDialog extends StatefulWidget {
   const _BulkStatusDialog({
     required this.statuses,
     required this.labels,
     required this.count,
+    this.showPrintOption = true,
   });
   final List<OrderStatus> statuses;
   final Map<String, String> labels;
   final int count;
+  final bool showPrintOption;
   @override
   State<_BulkStatusDialog> createState() => _BulkStatusDialogState();
 }
@@ -1961,7 +2002,11 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final label = _target == null
+    // The web two-step flow only chooses the status here; its second step owns
+    // the print decision and the confirm button.
+    final label = !widget.showPrintOption
+        ? 'متابعة'
+        : _target == null
         ? 'تطبيق الحالة'
         : 'تطبيق الحالة على ${widget.count} طلب';
     return AlertDialog(
@@ -2013,19 +2058,20 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
                     : (value) => setState(() => _target = value),
               ),
               const SizedBox(height: 8),
-              CheckboxListTile(
-                value: _printAfter,
-                onChanged: _submitting
-                    ? null
-                    : (value) => setState(() => _printAfter = value ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('طباعة الطلبات بعد تغيير الحالة'),
-                subtitle: const Text(
-                  'تُطبع الطلبات التي تغيّرت حالتها بنجاح فقط، بوليصات منفصلة.',
-                  style: TextStyle(fontSize: 12),
+              if (widget.showPrintOption)
+                CheckboxListTile(
+                  value: _printAfter,
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() => _printAfter = value ?? false),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('طباعة الطلبات بعد تغيير الحالة'),
+                  subtitle: const Text(
+                    'تُطبع الطلبات التي تغيّرت حالتها بنجاح فقط، بوليصات منفصلة.',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -2049,6 +2095,99 @@ class _BulkStatusDialogState extends State<_BulkStatusDialog> {
           child: label == 'تطبيق الحالة'
               ? const Text('تطبيق الحالة')
               : Text(label),
+        ),
+      ],
+    );
+  }
+}
+
+/// Web-only second step of the bulk status change. Echoes the chosen status and
+/// the number of affected orders, offers the optional (default-off) "print
+/// after change" checkbox and requires an explicit confirmation. Pops `true`
+/// (print) or `false` (don't print) on confirm and `null` when cancelled, so a
+/// cancellation is never confused with "don't print".
+class BulkStatusConfirmDialog extends StatefulWidget {
+  const BulkStatusConfirmDialog({
+    super.key,
+    required this.target,
+    required this.count,
+  });
+  final OrderStatus target;
+  final int count;
+  @override
+  State<BulkStatusConfirmDialog> createState() =>
+      _BulkStatusConfirmDialogState();
+}
+
+class _BulkStatusConfirmDialogState extends State<BulkStatusConfirmDialog> {
+  bool _printAfter = false;
+  bool _submitting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تأكيد تغيير الحالة'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.target.color,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'الحالة الجديدة: '
+                      '${statusLabels[widget.target.name] ?? widget.target.label}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('عدد الطلبات: ${widget.count}'),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: _printAfter,
+                onChanged: _submitting
+                    ? null
+                    : (value) => setState(() => _printAfter = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('طباعة الطلبات بعد تغيير الحالة'),
+                subtitle: const Text(
+                  'تُطبع الطلبات التي تغيّرت حالتها بنجاح فقط، بوليصات منفصلة.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: _submitting
+              ? null
+              : () {
+                  // Guard against a double tap closing/submitting twice.
+                  setState(() => _submitting = true);
+                  Navigator.pop(context, _printAfter);
+                },
+          child: const Text('تأكيد'),
         ),
       ],
     );

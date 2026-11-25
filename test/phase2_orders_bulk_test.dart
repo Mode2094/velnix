@@ -1024,4 +1024,288 @@ void main() {
     expect(find.text('أفقي'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  // ------------------------------------------------- web two-step bulk flow
+  // `webBulkUx` is the constructor seam that runs the web bulk UX on the VM
+  // (production defaults it to kIsWeb). These lock in the choose→confirm flow,
+  // the optional print step and the view-preserving refresh.
+
+  /// Drives the web two-step flow: select all, pick [statusLabel], press
+  /// «متابعة», then confirm the second dialog.
+  Future<void> runWebBulkChange(
+    WidgetTester tester, {
+    required String statusLabel,
+    bool print = false,
+    bool confirm = true,
+  }) async {
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الحالة الجديدة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(statusLabel).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('متابعة'));
+    await tester.pumpAndSettle();
+    if (!confirm) {
+      await tester.tap(find.text('إلغاء'));
+      await tester.pumpAndSettle();
+      return;
+    }
+    if (print) {
+      await tester.tap(find.text('طباعة الطلبات بعد تغيير الحالة'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.text('تأكيد'));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+  }
+
+  testWidgets(
+    'web: choosing a status then confirming in a second dialog applies it',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      String? sentStatus;
+      List<String>? sentIds;
+      commonFake((name, data) {
+        if (name == 'bulkChangeStatus') {
+          sentIds = (data['ids'] as List).cast<String>();
+          sentStatus = data['status'] as String?;
+          return {
+            'succeeded': 2,
+            'unchanged': 0,
+            'failed': 0,
+            'results': [
+              {'id': '1', 'ok': true},
+              {'id': '2', 'ok': true},
+            ],
+          };
+        }
+        if (name == 'getOrdersByIds') {
+          return {
+            'items': [order('1'), order('2')],
+          };
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm(), webBulkUx: true)));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('عميل 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تحديد الظاهر'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('تغيير الحالة'));
+      await tester.pumpAndSettle();
+
+      // Step 1 only chooses the status: no print checkbox, action is «متابعة».
+      expect(find.text('تغيير حالة الطلبات'), findsOneWidget);
+      expect(find.text('طباعة الطلبات بعد تغيير الحالة'), findsNothing);
+      await tester.tap(find.text('الحالة الجديدة'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ملغي').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('متابعة'));
+      await tester.pumpAndSettle();
+
+      // Step 2 echoes the chosen status and the order count.
+      expect(find.text('تأكيد تغيير الحالة'), findsOneWidget);
+      expect(find.textContaining('الحالة الجديدة: ملغي'), findsOneWidget);
+      expect(find.textContaining('عدد الطلبات: 2'), findsOneWidget);
+      expect(
+        sentStatus,
+        isNull,
+        reason: 'nothing is sent before the second confirmation',
+      );
+
+      await tester.tap(find.text('تأكيد'));
+      await tester.pumpAndSettle();
+
+      expect(sentStatus, 'cancelled');
+      expect(sentIds, unorderedEquals(['1', '2']));
+      expect(find.textContaining('تم التغيير'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('web: cancelling the confirmation dialog changes nothing', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    var bulkCalled = false;
+    commonFake((name, data) {
+      if (name == 'bulkChangeStatus') {
+        bulkCalled = true;
+        return const <String, dynamic>{};
+      }
+      throw StateError('Unexpected $name');
+    });
+    await tester.pumpWidget(app(LiveOrders(policy: gm(), webBulkUx: true)));
+    await tester.pumpAndSettle();
+    await runWebBulkChange(tester, statusLabel: 'ملغي', confirm: false);
+    expect(bulkCalled, isFalse);
+    expect(find.text('تأكيد تغيير الحالة'), findsNothing);
+    expect(find.textContaining('نتيجة العملية'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('web: the confirmation print checkbox is unchecked by default', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(800, 1400);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    commonFake((name, data) => throw StateError('Unexpected $name'));
+    await tester.pumpWidget(app(LiveOrders(policy: gm(), webBulkUx: true)));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text('عميل 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تحديد الظاهر'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير الحالة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الحالة الجديدة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ملغي').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('متابعة'));
+    await tester.pumpAndSettle();
+    final tile = tester.widget<CheckboxListTile>(
+      find.ancestor(
+        of: find.text('طباعة الطلبات بعد تغيير الحالة'),
+        matching: find.byType(CheckboxListTile),
+      ),
+    );
+    expect(
+      tile.value,
+      false,
+      reason: 'the print checkbox defaults to unchecked',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'web: a finished bulk change refreshes rows in place, not by reloading',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final calls = <String>[];
+      var listOrdersCalls = 0;
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        calls.add(name);
+        if (name == 'listOrders') {
+          listOrdersCalls++;
+          return {
+            'items': [order('1'), order('2')],
+            'nextAfterId': null,
+          };
+        }
+        if (name == 'listCompanies' ||
+            name == 'listAllowedPages' ||
+            name == 'listOrderCreators') {
+          return {'items': <dynamic>[]};
+        }
+        if (name == 'bulkChangeStatus') {
+          return {
+            'succeeded': 2,
+            'unchanged': 0,
+            'failed': 0,
+            'results': [
+              {'id': '1', 'ok': true},
+              {'id': '2', 'ok': true},
+            ],
+          };
+        }
+        if (name == 'getOrdersByIds') {
+          return {
+            'items': [order('1'), order('2')],
+          };
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm(), webBulkUx: true)));
+      await tester.pumpAndSettle();
+      await runWebBulkChange(tester, statusLabel: 'قيد التجهيز');
+      expect(
+        listOrdersCalls,
+        1,
+        reason: 'a web bulk change must not reload the first page',
+      );
+      expect(calls, contains('getOrdersByIds'));
+      // The previously loaded rows are still shown (nothing was dropped).
+      expect(find.text('عميل 1'), findsOneWidget);
+      expect(find.text('عميل 2'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'web: printing after the change prints only the confirmed orders',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final calls = <String>[];
+      final byIds = <List<String>>[];
+      commonFake((name, data) {
+        calls.add(name);
+        if (name == 'bulkChangeStatus') {
+          return {
+            'succeeded': 1,
+            'unchanged': 0,
+            'failed': 1,
+            'results': [
+              {'id': '1', 'ok': true},
+              {'id': '2', 'ok': false, 'code': 'failed-precondition'},
+            ],
+          };
+        }
+        if (name == 'getOrdersByIds') {
+          final ids = (data['ids'] as List).cast<String>();
+          byIds.add(ids);
+          return {
+            'items': [for (final id in ids) order(id)],
+          };
+        }
+        if (name == 'getSettings') {
+          return {'organizationName': 'Velnix', 'receiptFooter': ''};
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(app(LiveOrders(policy: gm(), webBulkUx: true)));
+      await tester.pumpAndSettle();
+      await runWebBulkChange(tester, statusLabel: 'قيد التجهيز', print: true);
+      expect(
+        calls.indexOf('bulkChangeStatus'),
+        lessThan(calls.indexOf('getOrdersByIds')),
+      );
+      // The print fetch is the last by-ids call and covers only the ok order.
+      expect(byIds.last, ['1']);
+      expect(find.text('طباعة الطلبات المحددة'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
