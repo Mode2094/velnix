@@ -21,3 +21,4 @@ PY
 node scripts/emulator-preview/browser.cjs
 node scripts/emulator-preview/join-approval.cjs
 node scripts/emulator-preview/readback.cjs
+node scripts/emulator-preview/realtime-sync.cjs
