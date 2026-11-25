@@ -180,10 +180,12 @@ class _VDateRangeFieldState extends State<VDateRangeField> {
       DropdownButtonFormField<VRangePreset>(
         key: ValueKey('range-preset-${preset?.name ?? 'none'}'),
         isExpanded: true,
-        isDense: widget.dense,
+        // NOTE: `DropdownButtonFormField` defaults `isDense` to true locally and
+        // forces it onto the decoration, so the untouched call sites were already
+        // dense. Do not override it with `widget.dense`: passing `false` here
+        // silently un-densifies every Android/shared `OrderFilters` field.
         initialValue: preset,
         decoration: InputDecoration(
-          isDense: widget.dense,
           labelText: widget.label,
           labelStyle: widget.dense ? const TextStyle(fontSize: 12.5) : null,
           contentPadding: widget.dense
