@@ -1,0 +1,31 @@
+{
+  "title": "Velnix device push (FCM) — live web verification",
+  "date": "2026-11-25",
+  "project": "velnix-6c1a2",
+  "hostingOrigin": "https://velnix-6c1a2.web.app",
+  "method": "Real browser (Chrome 157) driven over CDP against the deployed Hosting build, with the real root-scope service worker, a real FCM token, and notices created through the production Firestore trigger chain (pushNotice -> deliverNotice -> FCM). No mock, no emulator.",
+  "actor": "authorized test recipient (active generalManager member), device registered by the same write the backend performs; test device + notices deleted afterwards",
+  "result": "PASS 12/12",
+  "checks": [
+    { "name": "enable: FCM token minted on the live origin", "result": "PASS", "detail": "worker scope https://velnix-6c1a2.web.app/ , page controlled by the push worker, Notification.permission=granted" },
+    { "name": "background push delivered by the backend trigger", "result": "PASS", "detail": "notices/<id>.pushState=sent, pushOutcome {success:1, failure:0}" },
+    { "name": "background push shows one OS notification", "result": "PASS", "detail": "exactly one notification, tag velnix-<noticeId>" },
+    { "name": "notification body carries no customer data", "result": "PASS", "detail": "fixed generic body: \"لديك تحديث جديد. افتح التطبيق لعرض التفاصيل.\"" },
+    { "name": "notification click data carries the permitted order id", "result": "PASS", "detail": "data {\"noticeId\":\"<id>\",\"orderId\":\"364bTw6GJ6vWglMPZuX4\"}" },
+    { "name": "notification has a tray icon", "result": "PASS", "detail": "https://velnix-6c1a2.web.app/icons/Icon-192.png" },
+    { "name": "tapping the notification opens the app on that order", "result": "PASS", "detail": "app tab navigated from /?v3=<stamp> to /?order=364bTw6GJ6vWglMPZuX4" },
+    { "name": "foreground push reaches the visible app", "result": "PASS", "detail": "onMessage fired on the visible, controlled client; backend state=sent" },
+    { "name": "foreground push shows no OS notification", "result": "PASS", "detail": "no notification with this notice's tag while the tab was visible" },
+    { "name": "duplicate notice id is rejected", "result": "PASS", "detail": "re-creating the same notice id fails with already-exists, so no double push" },
+    { "name": "another member notice never reaches this device", "result": "PASS", "detail": "pushLastError=no_devices; this device is never addressed for another recipient" }
+  ],
+  "productionImpactFoundWhileTesting": {
+    "pushNoticeRunInvoker": "The Cloud Run service 'pushnotice' had an empty IAM policy, so every Eventarc delivery was rejected with run.routes.invoke. Repaired with roles/run.invoker for velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com.",
+    "runtimeRoleFcm": "The custom role velnixInternalRuntime did not include any FCM permission, so sendEachForMulticast failed. Added cloudmessaging.messages.create (send-only).",
+    "historicalEvidence": "902 real notices existed with pushState=undefined: the push trigger had never once run successfully in production."
+  },
+  "limitations": [
+    "The app tab was asserted by URL after tap; the in-app opening of LiveOrderDetail from ?order=<id> is covered by unit tests (test/push_routing_test.dart) and lib/live/live_app.dart wiring, not by a logged-in production session.",
+    "Foreground presentation was verified at the FCM/SDK level (onMessage on a visible controlled client + no OS notification), not through a logged-in app session."
+  ]
+}

@@ -15,6 +15,16 @@ class PushRouting {
     return target.isEmpty ? null : target;
   }
 
+  /// Returns the order a web notification tap encoded in `?order=<id>`, or null
+  /// when the URL carries no usable target. The push worker navigates an open
+  /// tab to that URL because web has no `getInitialMessage`/opened-app stream.
+  static String? deepLinkOrder(Uri uri) {
+    final value = uri.queryParameters['order'];
+    if (value == null) return null;
+    final target = value.trim();
+    return target.isEmpty ? null : target;
+  }
+
   final Set<String> _seenForeground = <String>{};
 
   /// Foreground notices are shown once per noticeId. A push without a usable

@@ -1,5 +1,5 @@
 title: Velnix Internal Runtime
-description: Proposed internal Functions runtime; no document deletion, Auth creation/deletion, FCM, KMS, storage or IAM administration.
+description: 'Velnix internal Functions runtime: Firestore reads/writes, Firebase Auth user administration, Eventarc events and FCM message send only; no KMS/IAM/Storage administration.'
 stage: GA
 includedPermissions:
   - datastore.databases.get
@@ -10,4 +10,9 @@ includedPermissions:
   - datastore.entities.update
   - firebaseauth.users.get
   - firebaseauth.users.update
+  - firebaseauth.users.create
+  - firebaseauth.users.delete
   - eventarc.events.receiveEvent
+  # Device push needs to send FCM messages. This is the send-only permission the
+  # Admin SDK's sendEachForMulticast uses; it grants no topic/FCM administration.
+  - cloudmessaging.messages.create

@@ -280,10 +280,44 @@ functions/node_modules/.bin/firebase deploy --project velnix-6c1a2 --account mod
 تحقق من اسم Cloud Run الفعلي للمحفز، ثم binding الضيق المصرح به، **قبل أي حدث قبول**:
 
 ```bash
-gcloud functions describe orderEventNotice --gen2 --project=velnix-6c1a2 --region=us-central1 --format='value(serviceConfig.service)'
-# VELNIX_NOTICE_SERVICE هو آخر جزء من المسار الفعلي أعلاه بعد التحقق، لا اسم مخمّن.
-test -n "$VELNIX_NOTICE_SERVICE" || { echo 'Missing verified service name; stop'; exit 1; }
-gcloud run services add-iam-policy-binding "$VELNIX_NOTICE_SERVICE" --project=velnix-6c1a2 --region=us-central1 --member='serviceAccount:velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com' --role=roles/run.invoker
+# كل دالة مُشغّلة بحدث تحتاج binding مستقلاً على خدمة Cloud Run الخاصة بها.
+# اقرأ اسم الخدمة الفعلي من وصف الدالة، لا تخمّنه.
+for spec in 'orderEventNotice us-central1' 'pushNotice europe-west1'; do
+  set -- $spec
+  SERVICE=$(gcloud functions describe "$1" --gen2 --project=velnix-6c1a2 --region="$2" --format='value(serviceConfig.service)')
+  test -n "$SERVICE" || { echo "Missing verified service name for $1; stop"; exit 1; }
+  gcloud run services add-iam-policy-binding "$SERVICE" --project=velnix-6c1a2 --region="$2" \
+    --member='serviceAccount:velnix-runtime-internal@velnix-6c1a2.iam.gserviceaccount.com' --role=roles/run.invoker
+  # التحقق: يجب أن يُقرأ الدور بعد الكتابة.
+  gcloud run services get-iam-policy "$SERVICE" --project=velnix-6c1a2 --region="$2" --format='value(bindings[].members)' | grep -q velnix-runtime-internal || { echo "invoker binding missing for $1"; exit 1; }
+done
+```
+
+> **درس تشغيلي (25/11/2026):** ظلّ `pushNotice` بلا `roles/run.invoker` بعد نشر الدوال،
+> فرفض Eventarc كل استدعاء بـ`run.routes.invoke` ولم يصل أي دفع جهاز في الإنتاج
+> (902 إشعار داخلي، جميعها `pushState=undefined`). الـCLI لا يضيف هذا الربط في مسار
+> التحديث، لذا يبقى الإصلاح اليدوي ثابتاً — لكن **تحقّق بعد كل نشر** عبر الأمر أعلاه.
+
+الدور المخصص `velnixInternalRuntime` يجب أن يتضمن صلاحية إرسال FCM الوحيدة
+`cloudmessaging.messages.create` (إرسال فقط، بلا إدارة FCM). تأكّد بعد النشر:
+
+```bash
+gcloud iam roles describe velnixInternalRuntime --project velnix-6c1a2 \
+  --format='value(includedPermissions)' | tr ';' '\n' | grep -q cloudmessaging.messages.create \
+  || { echo 'runtime role cannot send FCM; push send will fail'; exit 1; }
+```
+
+> **درس تشغيلي (25/11/2026):** الدور كان يستثني FCM نصًا، فكان `sendEachForMulticast`
+> يفشل بـ`push_send_failed` بعد إصلاح الربط. غياب الصلاحية والإرسال الفاشل **صامتان**
+> في الواجهة أيضًا، لذا سجّلنا كود خطأ FCM في `functions/src/push.js`.
+
+**بوابة الويب للدفع:** عند `VELNIX_PUSH_ENABLED=true` يرفض preflight الإعداد إن لم يكن
+عامل الخدمة `web/firebase-messaging-sw.js` موجودًا ولديه `notificationclick` و`clients.claim()`:
+
+```bash
+python3 scripts/configure_web_push.py config/firebase.stage3.production.public.json
+python3 scripts/check_runtime_config.py config/firebase.stage3.production.public.json \
+  --environment production --platform web --expected-project velnix-6c1a2
 ```
 
 تحقق أن22 callable تبقى ACTIVE/GEN_2/nodejs22 فيeurope-west1، وأن

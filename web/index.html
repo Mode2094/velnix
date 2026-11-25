@@ -84,6 +84,16 @@
       setTimeout(hide, 12000);
     })();
   </script>
+  <script>
+    // Velnix serves its own root-scope push worker (firebase-messaging-sw.js).
+    // Flutter's deprecated app-shell worker registers at the same scope and would
+    // replace it on the next reload, silently killing background push, so report
+    // "no registration" to Flutter and keep the push worker as the only one.
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistration = () =>
+        Promise.resolve(undefined);
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

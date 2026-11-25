@@ -10,7 +10,7 @@
 5. أنشئ مفتاح KMS وخدمة Functions بأقل IAM اللازم، وحدد VELNIX_KMS_KEY وALLOWED_DELIVERY_HOSTS كما في functions/.env.example. مرر الاعتمادات عبر مدير أسرار/هوية الخدمة؛ لا ترسل قيم المفاتيح في المحادثة.
 6. بعد موافقة نشر محددة: راجع القواعد والفهارس وFunctions على staging، ثم اختبار كامل من التطبيق عبر Auth وApp Check وFunctions وقاعدة البيانات. لا ينفذ هذا التقرير النشر.
 7. Bootstrap أول مدير عند غياب الإدارة فقط عبر functions/scripts/bootstrap_admin.js مع VELNIX_BOOTSTRAP_CONFIRM_PROJECT المطابق وVELNIX_ADMIN_GOOGLE_UID الموثق؛ هوية المشغل مُدارة ومخولة دون طلب private-key JSON. الفحص dry-run افتراضي و--apply كتابة تحتاج إذناً منفصلاً؛ يرفض استبدال عضو أو إدارة قائمة. backfill_search_keys dry-run أولاً، ونسخة احتياطية ومراجعة --apply.
-8. FCM اختياري: إعداد VAPID والـService Worker عبر scripts/configure_web_push.py والإذن الصريح، ثم VELNIX_PUSH_ENABLED. ملف worker الناتج محلي مستثنى. اختبر foreground/background ورفض الإذن والخروج.
+8. FCM اختياري: مولّد Service Worker من scripts/configure_web_push.py من الإعداد العام (بلا VAPID مخصص — اعتماد FCM المدمج يكفي)، ثم VELNIX_PUSH_ENABLED. ملف worker الناتج محلي مستثنى، وpreflight الإعداد يرفض تفعيل دفع الويب بلا worker صالح. اختبر foreground/background ورفض الإذن والخروج.
 
 الاختبارات المحلية: source scripts/cloud-env.sh ثم scripts/validate.sh. المحاكيات demo-velnix فقط؛ suite يمسح بيانات المحاكي المحلي عمداً. المحاكي لا يثبت صلاحية الفهارس المركبة ولا أداء الخدمة المنشورة.
 

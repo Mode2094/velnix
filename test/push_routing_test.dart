@@ -25,6 +25,32 @@ void main() {
     });
   });
 
+  group('web deep-link parsing', () {
+    test('reads the order a notification tap navigated to', () {
+      expect(
+        PushRouting.deepLinkOrder(Uri.parse('https://x/?order=order-1')),
+        'order-1',
+      );
+      expect(
+        PushRouting.deepLinkOrder(Uri.parse('https://x/?order=%20order-1%20')),
+        'order-1',
+      );
+    });
+
+    test('returns null when the URL has no usable order', () {
+      expect(PushRouting.deepLinkOrder(Uri.parse('https://x/')), isNull);
+      expect(PushRouting.deepLinkOrder(Uri.parse('https://x/?order=')), isNull);
+      expect(
+        PushRouting.deepLinkOrder(Uri.parse('https://x/?order=%20%20')),
+        isNull,
+      );
+      expect(
+        PushRouting.deepLinkOrder(Uri.parse('https://x/?other=order-1')),
+        isNull,
+      );
+    });
+  });
+
   group('foreground presentation de-duplication', () {
     test('same notice is presented once while retries are suppressed', () {
       final routing = PushRouting();

@@ -1,5 +1,6 @@
 'use strict';
 const crypto=require('node:crypto');
+const logger=require('firebase-functions/logger');
 const {Timestamp,FieldValue}=require('firebase-admin/firestore');
 const MAX_ATTEMPTS=4,LEASE_MS=120000;
 // Mirrors the channel created by MainActivity and declared as the manifest
@@ -30,12 +31,27 @@ async function deliverNotice(admin,db,noticeId,notice,canSeeOrder) {
     tokens:devices.map(d=>d.data().token),
     notification:{title:'Velnix',body:'لديك تحديث جديد. افتح التطبيق لعرض التفاصيل.'},
     android:{notification:{channelId:ANDROID_CHANNEL_ID}},
+    // Web: one notification per notice (tag) and a click that focuses/opens the
+    // app directly on the permitted order. No customer data leaves the payload.
+    webpush:{
+      notification:{
+        title:'Velnix',
+        body:'لديك تحديث جديد. افتح التطبيق لعرض التفاصيل.',
+        icon:'/icons/Icon-192.png',
+        badge:'/icons/Icon-192.png',
+        tag:noticeId?'velnix-'+noticeId:undefined,
+      },
+      fcmOptions:{link:notice.orderId?`/?order=${encodeURIComponent(notice.orderId)}`:'/'},
+    },
     data:{noticeId,orderId:notice.orderId||''},
   });
   const delivered=[];let retryable=false,lastError=null;
   await Promise.all(result.responses.map(async(r,i)=>{
     if(r.success){delivered.push(devices[i].id||deviceId(devices[i].data().token));return;}
     lastError=safeCode(r.error);
+    // A failed push must be diagnosable from logs; the token itself is never
+    // logged and the message carries no customer data.
+    logger.warn('push send failed',{code:r.error?.code||'unknown',message:String(r.error?.message||'').slice(0,300)});
     if(INVALID.has(r.error?.code))await devices[i].ref.delete();
     if(TEMPORARY.has(r.error?.code))retryable=true;
   }));

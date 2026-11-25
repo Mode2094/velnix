@@ -62,5 +62,8 @@ backups/
 # Signed Android release artifacts (large binaries; distributed out of band)
 release/
 
+# Generated web push worker (embeds public client config; built by scripts/configure_web_push.py)
+web/firebase-messaging-sw.js
+
 # Client-provided reference screenshots (may contain customer PII) — local only
 docs/assets/orders_reference_client.jpeg

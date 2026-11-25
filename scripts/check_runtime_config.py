@@ -13,6 +13,19 @@ PUBLIC_FIELDS = {
     "FIREBASE_STORAGE_BUCKET", "FIREBASE_IOS_BUNDLE_ID",
 }
 FLAGS = {"VELNIX_DEBUG_APPCHECK", "VELNIX_GOOGLE_ENABLED", "VELNIX_PUSH_ENABLED"}
+# A push-enabled web build is only usable with the generated root-scope worker;
+# without it FCM cannot receive background pushes and the failure is invisible
+# in the UI. Require the worker to carry both the click routing and the claim.
+WEB_WORKER = "firebase-messaging-sw.js"
+WEB_WORKER_MARKERS = ("notificationclick", "clients.claim()")
+
+
+def web_worker_ready(web_root):
+    worker = Path(web_root) / WEB_WORKER
+    if not worker.is_file():
+        return False
+    text = worker.read_text(errors="replace")
+    return all(marker in text for marker in WEB_WORKER_MARKERS)
 
 
 def validate(data, *, environment, platform, expected_project, release=True):
@@ -33,8 +46,11 @@ def validate(data, *, environment, platform, expected_project, release=True):
         if not data.get("FIREBASE_APPCHECK_SITE_KEY", "").strip():
             raise ValueError("Web requires a PUBLIC reCAPTCHA Enterprise site key; Classic/v3 is not supported")
         required += ["FIREBASE_AUTH_DOMAIN", "FIREBASE_APPCHECK_SITE_KEY"]
-        if data.get("VELNIX_PUSH_ENABLED"):
-            required.append("FIREBASE_VAPID_KEY")
+        # Web push uses FCM's built-in web credential by default. A custom VAPID
+        # key is optional and only valid when it is a real registered public key.
+        vapid = data.get("FIREBASE_VAPID_KEY", "")
+        if vapid and not re.fullmatch(r"B[A-Za-z0-9_-]{86}", vapid):
+            raise ValueError("VAPID public key must be a URL-safe base64 P-256 key")
     elif data.get("VELNIX_GOOGLE_ENABLED"):
         required.append("GOOGLE_WEB_CLIENT_ID")
     if any(not data.get(k, "").strip() for k in required):
@@ -62,6 +78,8 @@ def main():
     parser.add_argument("--platform", required=True, choices=["web", "android", "ios"])
     parser.add_argument("--expected-project", required=True)
     parser.add_argument("--debug-build", action="store_true")
+    parser.add_argument("--web-root", type=Path, default=Path("web"),
+                        help="Directory holding the generated web push worker")
     args = parser.parse_args()
     try:
         data = json.loads(args.path.read_text())
@@ -70,6 +88,10 @@ def main():
     except (OSError, ValueError, TypeError):
         # Parsing errors can echo part of a private input: expose no values.
         parser.exit(1, "Public configuration rejected; check target, fields and flags safely.\n")
+    if args.platform == "web" and data.get("VELNIX_PUSH_ENABLED") and not args.debug_build:
+        if not web_worker_ready(args.web_root):
+            parser.exit(1, "Web push is enabled but the push service worker is missing or stale; "
+                           "run scripts/configure_web_push.py on the same config first.\n")
     print("Public configuration preflight passed; remote Firebase/IAM and devices remain unverified")
 
 

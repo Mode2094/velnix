@@ -1018,10 +1018,20 @@ class _LiveShellState extends State<LiveShell> {
       // Push is optional infrastructure; navigation and the rest of the shell
       // keep working without it.
     }
+    // A web notification tap re-enters the app at /?order=<id> (the push worker
+    // navigates the tab). Open it once this authenticated shell is mounted so the
+    // order is read under the signed-in user's permissions. Native always has an
+    // empty query, so this is a no-op there.
+    final deepLink = PushRouting.deepLinkOrder(Uri.base);
+    if (deepLink != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => openOrder(deepLink));
+    }
   }
 
-  void openPush(RemoteMessage message) {
-    final id = PushRouting.orderTarget(message.data);
+  void openPush(RemoteMessage message) =>
+      openOrder(PushRouting.orderTarget(message.data));
+
+  void openOrder(String? id) {
     if (!mounted || id == null) return;
     final navigator = tabKeys[selected]?.currentState ?? Navigator.of(context);
     navigator.push(

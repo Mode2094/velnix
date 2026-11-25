@@ -36,3 +36,18 @@ test('device identity is token scoped so two registrations cannot collide',()=>{
   assert.notEqual(a,b);
   assert.equal(a,deviceId('token_a_1234567890abcd'));
 });
+test('web payload groups per notice and links a tap to the permitted order only',async()=>{
+  let sent=null;
+  const db={
+    doc:path=>path.startsWith('members/')?{get:async()=>({exists:true,id:'recipient',data:()=>({role:'manager',active:true})})}
+      :path.startsWith('orders/')?{get:async()=>({exists:true,data:()=>({customer:'PRIVATE',phone:'PRIVATE',createdBy:'recipient'})})}
+      :{get:async()=>({exists:true,data:()=>({createdBy:'recipient'})})},
+    collection:()=>({where:()=>({limit:()=>({get:async()=>({docs:[{data:()=>({token:'local_device_token_1234567890'}),ref:{delete:async()=>{}}}]})})})}),
+  };
+  const admin={messaging:()=>({sendEachForMulticast:async payload=>{sent=payload;return {successCount:1,failureCount:0,responses:[{success:true}]};}})};
+  await deliverNotice(admin,db,'notice',{recipientId:'recipient',orderId:'order'},()=>true);
+  assert.equal(sent.webpush.notification.tag,'velnix-notice');
+  assert.equal(sent.webpush.fcmOptions.link,'/?order=order');
+  assert.equal(sent.webpush.notification.icon,'/icons/Icon-192.png');
+  assert.equal(JSON.stringify(sent.webpush).includes('PRIVATE'),false);
+});
