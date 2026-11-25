@@ -38,8 +38,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   }
 
   bool _addCode(String raw) {
-    final code = raw.trim();
-    if (code.isEmpty) return false;
+    // Only clean control characters / surrounding whitespace / Arabic-Indic
+    // digits; a valid Latin code is never rewritten (no guessing).
+    final code = normalizeScannedCode(raw);
+    if (code.isEmpty) {
+      setState(() => status = 'لم يُقرأ أي باركود. أعد المحاولة.');
+      return false;
+    }
     if (codes.length >= maxCodes) {
       setState(() => status = 'الحد الأقصى $maxCodes باركوداً');
       return false;
@@ -69,12 +74,46 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     }
   }
 
+  /// Resolves the collected codes server-side.
+  ///
+  /// One single code that matches exactly one order opens the FULL order card
+  /// immediately. Several matches, or a batch of codes, open the results list.
+  /// No match shows a clear message instead of any opaque code.
   Future<void> _resolve() async {
     if (codes.isEmpty || processing) return;
     setState(() => processing = true);
     try {
       final results = await VelnixGateway.instance.resolveBarcodes(codes);
       if (!mounted) return;
+      final found = results
+          .where((r) => r['status'] == 'ok' && r['order'] is Map)
+          .map((r) => Map<String, dynamic>.from(r['order'] as Map))
+          .toList();
+      if (found.isEmpty) {
+        setState(
+          () => status =
+              'لم يتم العثور على أي طلب مطابق لهذه الباركودات. '
+              'تأكد من الباركود، أو من صلاحيتك لعرض الطلب.',
+        );
+        return;
+      }
+      if (found.length == 1 && codes.length == 1) {
+        final order = found.single;
+        final id = order['id']?.toString() ?? '';
+        if (id.isEmpty) return;
+        setState(() {
+          codes.clear();
+          status = null;
+        });
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+          ),
+        );
+        return;
+      }
       await Navigator.push(
         context,
         MaterialPageRoute<void>(
@@ -87,6 +126,25 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     } finally {
       if (mounted) setState(() => processing = false);
     }
+  }
+
+  /// A quick scan (HID/typed code + Enter): resolves the code the operator just
+  /// read, immediately.
+  Future<void> _quickScan(String raw) async {
+    final code = normalizeScannedCode(raw);
+    manual.clear();
+    if (code.isEmpty || processing) return;
+    if (!codes.contains(code)) {
+      if (codes.length >= maxCodes) {
+        setState(() => status = 'الحد الأقصى $maxCodes باركوداً');
+        return;
+      }
+      setState(() {
+        codes.add(code);
+        status = null;
+      });
+    }
+    await _resolve();
   }
 
   Future<void> _clearAll() async {
@@ -156,29 +214,49 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               ),
             ),
           Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+            child: Text(
+              'حقل المسح المخصص: يعمل مع ماسحات USB/Bluetooth التي تُدخِل الكود '
+              'كلوحة مفاتيح ثم ترسل Enter. اضبط الماسح على تخطيط لاتيني (US) '
+              'وأضف Enter كلاحقة؛ فالماسح الذي يستبدل الأحرف نفسها لا يمكن '
+              'للبرنامج أن يعيد فكّها بثقة.',
+              style: const TextStyle(color: VColors.muted, fontSize: 11.5),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          Padding(
             padding: const EdgeInsets.all(10),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: manual,
+                    autofocus: true,
                     textInputAction: TextInputAction.done,
-                    onSubmitted: (v) {
-                      if (_addCode(v)) manual.clear();
-                    },
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    // Enter ends the scan and resolves immediately (HID wedge).
+                    onSubmitted: _quickScan,
                     decoration: const InputDecoration(
-                      labelText: 'إدخال كود يدوياً',
+                      labelText: 'امسح أو الصق الباركود',
+                      hintText: 'VNX-000039',
                       prefixIcon: Icon(Icons.keyboard),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.filledTonal(
-                  tooltip: 'إضافة الكود',
+                  tooltip: 'إضافة إلى القائمة',
                   onPressed: () {
                     if (_addCode(manual.text)) manual.clear();
                   },
                   icon: const Icon(Icons.add),
+                ),
+                const SizedBox(width: 4),
+                IconButton.filled(
+                  tooltip: 'مسح فوري',
+                  onPressed: processing ? null : () => _quickScan(manual.text),
+                  icon: const Icon(Icons.search),
                 ),
               ],
             ),
@@ -273,7 +351,7 @@ class BarcodeResultsScreen extends StatefulWidget {
 
 class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
   late final List<Map<String, dynamic>> found;
-  late final int notFound;
+  late final List<String> unresolved;
   late final int duplicate;
   // Selected order ids from the scan results (reuses the shared bulk callables).
   final selected = <String>{};
@@ -288,11 +366,24 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
         .where((r) => r['status'] == 'ok' && r['order'] is Map)
         .map((r) => Map<String, dynamic>.from(r['order'] as Map))
         .toList();
-    notFound = widget.results
+    // Codes that resolved to nothing visible. Kept as plain codes so the user
+    // gets a clear per-code message, never an opaque technical symbol.
+    unresolved = widget.results
         .where((r) => r['status'] == 'not_found' || r['status'] == 'invalid')
-        .length;
+        .map((r) => r['code']?.toString() ?? '')
+        .where((c) => c.isNotEmpty)
+        .toList();
     duplicate = widget.results.where((r) => r['status'] == 'duplicate').length;
   }
+
+  int get notFound => unresolved.length;
+
+  void _openDetails(String id) => Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+    ),
+  );
 
   void _toggle(String id) => setState(() {
     if (!selected.remove(id)) selected.add(id);
@@ -538,48 +629,107 @@ class _BarcodeResultsScreenState extends State<BarcodeResultsScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 9),
               child: VLivePanel(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                child: Row(
-                  children: [
-                    Checkbox(
-                      value: selected.contains(o['id'].toString()),
-                      onChanged: (_) => _toggle(o['id'].toString()),
+                padding: EdgeInsets.zero,
+                child: InkWell(
+                  onTap: () => _openDetails(o['id'].toString()),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
                     ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
+                      children: [
+                        Checkbox(
+                          value: selected.contains(o['id'].toString()),
+                          onChanged: (_) => _toggle(o['id'].toString()),
+                        ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                orderDisplayNumber(o),
+                                textDirection: TextDirection.ltr,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15,
+                                  color: VColors.brand,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${o['customer'] ?? ''} • '
+                                '${statusLabels[o['status']?.toString() ?? 'created'] ?? o['status']}',
+                                style: const TextStyle(
+                                  color: VColors.muted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'فتح التفاصيل',
+                          onPressed: () => _openDetails(o['id'].toString()),
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (unresolved.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            VLivePanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'باركودات لم يتم العثور على طلب مطابق لها',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'تأكد من قيمة الباركود أو من صلاحيتك لعرض الطلب. '
+                    'لا تُعرض أي بيانات لطلب غير مصرّح به.',
+                    style: TextStyle(color: VColors.muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final c in unresolved)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
                         children: [
-                          Text('${o['customer'] ?? ''}'),
-                          Text(
-                            'طلب #${o['orderNumber'] ?? o['id']} • ${statusLabels[o['status']?.toString() ?? 'created'] ?? o['status']}',
-                            style: const TextStyle(
-                              color: VColors.muted,
+                          const Icon(
+                            Icons.error_outline,
+                            size: 16,
+                            color: VColors.danger,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              c,
+                              textDirection: TextDirection.ltr,
+                              style: const TextStyle(fontSize: 12.5),
+                            ),
+                          ),
+                          const Text(
+                            'غير موجود',
+                            style: TextStyle(
+                              color: VColors.danger,
                               fontSize: 12,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'فتح التفاصيل',
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => LiveOrderDetail(
-                            id: o['id'].toString(),
-                            policy: widget.policy,
-                          ),
-                        ),
-                      ),
-                      icon: const Icon(Icons.chevron_left),
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
+          ],
           const SizedBox(height: 24),
         ],
       ),

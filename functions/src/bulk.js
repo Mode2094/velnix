@@ -33,7 +33,10 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
   // Resolves one scanned/pasted code to its order id using exact, read-only
   // lookups. Never guesses.
   async function resolveCodeToId(code){
-    const raw=String(code||'').trim();
+    // Clean a scanned code without rewriting a valid one: drop control/bidi
+    // characters, trim, and fold Arabic-Indic digits to ASCII (a scanner set to
+    // an Arabic keyboard layout still resolves). Case is handled per-shape.
+    const raw=foldDigits(String(code||'').replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g,'')).trim();
     if(!raw)throw new Error('empty_code');
     const upper=raw.toUpperCase();
     // Barcode / order number both use the "VNX-" prefix; try both shapes.

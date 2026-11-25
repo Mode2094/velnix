@@ -28,7 +28,7 @@ class _WebOrdersView extends StatelessWidget {
     _WebCol(key: 'select', label: '', width: 40, sortable: false),
     _WebCol(key: 'serial', label: '#', width: 42, sortable: false, ltr: true),
     _WebCol(key: 'orderNumber', label: 'رقم الطلب', width: 90, ltr: true),
-    _WebCol(key: 'barcode', label: 'الباركود', width: 134, ltr: true),
+    _WebCol(key: 'barcode', label: 'الباركود (المطبوع)', width: 134, ltr: true),
     _WebCol(key: 'source', label: 'المصدر', width: 74),
     _WebCol(key: 'customer', label: 'العميل / الاسم', width: 112),
     _WebCol(key: 'phone', label: 'رقم الهاتف', width: 104, ltr: true),
@@ -86,7 +86,7 @@ class _WebOrdersView extends StatelessWidget {
 
   String _text(Map<String, dynamic> o, String key) => switch (key) {
     'orderNumber' => o['orderNumber']?.toString() ?? '—',
-    'barcode' => o['barcodeValue']?.toString() ?? '—',
+    'barcode' => orderBarcodeLabel(o),
     'source' => o['pageName']?.toString() ?? '—',
     'customer' => o['customer']?.toString() ?? '—',
     'phone' => o['phone']?.toString() ?? '—',

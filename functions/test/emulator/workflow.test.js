@@ -144,8 +144,10 @@ for(const [role,id]of Object.entries(users))test(role+' creates a real persisted
   const result=await invoke('createOrder',id,{...payload,requestKey:'create_order_for_'+id});
   const doc=await db.doc('orders/'+result.id).get();
   assert.equal(doc.data().createdBy,id);assert.equal(doc.data().amountMinor,12345);
-  assert.equal(doc.data().barcodeValue,'VNX-'+result.id);
   assert.match(doc.data().orderNumber,/^VNX-\d{6}$/);
+  // The stored barcode value IS the printed/scanned serial, so the bars encode
+  // exactly the number printed under them.
+  assert.equal(doc.data().barcodeValue,doc.data().orderNumber);
   const searched=await invoke('searchOrders','gm',{query:doc.data().orderNumber});
   assert.ok(searched.items.some(item=>item.id===result.id));
   assert.equal(searched.items.find(item=>item.id===result.id).orderNumber,doc.data().orderNumber);

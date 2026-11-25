@@ -1815,7 +1815,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'طلب #${o['orderNumber'] ?? id} • $scope'
+                      'طلب ${orderDisplayNumber(o)} • $scope'
                       '${pageName.isNotEmpty ? ' • $pageName' : ''}'
                       ' • ${o['city'] ?? ''} / ${o['area'] ?? ''}'
                       '${created != null ? ' • $created' : ''}',
@@ -1873,7 +1873,7 @@ class _LiveOrdersState extends State<LiveOrders> {
                               tooltip: 'نسخ رقم الطلب',
                               visualDensity: VisualDensity.compact,
                               onPressed: () async {
-                                final num = (o['orderNumber'] ?? id).toString();
+                                final num = orderDisplayNumber(o).toString();
                                 await Clipboard.setData(
                                   ClipboardData(text: num),
                                 );

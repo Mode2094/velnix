@@ -7,6 +7,18 @@ test('new orders expose immutable barcode in authorized order DTO',()=>{
   assert.equal(publicOrder(stub('abc_X')).barcodeValue,'VNX-abc_X');
   assert.equal(publicOrder(stub('abc_X',{barcodeValue:'VNX-abc_X'})).barcodeValue,'VNX-abc_X');
 });
+test('new orders keep the serial as the barcode value',()=>{
+  // createOrder stores barcodeValue = orderNumber, so the encoded bars and the
+  // number printed beneath them are the same string.
+  const dto=publicOrder(stub('seq_x',{orderNumber:'VNX-000039',barcodeValue:'VNX-000039'}));
+  assert.equal(dto.barcodeValue,dto.orderNumber);
+  assert.equal(dto.barcodeValue,'VNX-000039');
+});
+test('createOrder stores the serial as barcodeValue',()=>{
+  const fs=require('node:fs');const src=fs.readFileSync(require.resolve('../src/index'),'utf8');
+  const section=src.slice(src.indexOf('exports.createOrder='),src.indexOf('exports.updateOrder='));
+  assert.match(section,/barcodeValue:orderNumber/);
+});
 test('legacy orders can be reprinted with stable id-derived barcode',()=>{
   const a=publicOrder(stub('legacy1'));
   const b=publicOrder(stub('legacy1'));

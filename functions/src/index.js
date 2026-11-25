@@ -142,9 +142,11 @@ async function mergeSourcePage({sources,positions,boundary,sort,pageSize,scanLim
     pos[key]=docPosition(doc);
     if(buffers.get(key).length===0&&!exhausted.has(key)&&fullChunk.get(key))await fill(key);
     if(seenIds.has(doc.id))continue;
-    seenIds.add(doc.id);
     if(boundary&&!afterPosition(doc,boundary,sort))continue;
-    if(accept(doc,key))out.push(doc);
+    // Mark the order as returned only once it is ACCEPTED. A fuzzy source (e.g.
+    // a free-text prefix match) may surface an order it then rejects; that must
+    // never block the same order from a later exact/direct source.
+    if(accept(doc,key)){seenIds.add(doc.id);out.push(doc);}
   }
   const pending=sources.some(s=>!exhausted.has(s.key)||(buffers.get(s.key)?.length||0)>0);
   return {
@@ -806,10 +808,14 @@ exports.createOrder=callable(async req=>{
     if(!Number.isSafeInteger(nextNumber)||nextNumber>999999)fail('resource-exhausted','نفد نطاق أرقام الطلبات');
     const orderNumber=`VNX-${String(nextNumber).padStart(6,'0')}`;
     tx.set(counterRef,{value:nextNumber,updatedAt:FieldValue.serverTimestamp()},{merge:true});
-    tx.create(ref,{...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
+    // The barcode value IS the human sequence number: the printed bars encode
+    // exactly the `VNX-000039` printed beneath them, so a scan shows the same
+    // number a person reads. Legacy orders keep their historical
+    // `VNX-<docId>` value and stay resolvable; no existing id/serial changes.
+    tx.create(ref,{...fields,orderNumber,barcodeValue:orderNumber,createdBy:user.id,createdByName:user.name,createdByRole:user.role,
       salesSupervisorId:user.role==='dataEntry'?user.salesSupervisorId||null:null,visibleTo,
       ...pageSnapshot,
-      ...buildSearchFields({...fields,orderNumber,barcodeValue:`VNX-${ref.id}`,...pageSnapshot,
+      ...buildSearchFields({...fields,orderNumber,barcodeValue:orderNumber,...pageSnapshot,
         createdByName:user.name,companyName:company.name||'',status:'created',internalStatus:'created'}),
       companyId:companyId||null,companyName:company.name||null,hasDelivery:companyId!=null,deliveryAccepted:false,revision:0,status:'created',internalStatus:'created',trackingNumber:null,remoteStatus:null,
       dispatchState:'idle',createdAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
@@ -848,7 +854,7 @@ exports.updateOrder=callable(async req=>{
   // Recompute derived search fields on edit; keep the immutable identifiers and
   // the fields an edit never changes (creator, company, lifecycle statuses) so
   // the free-text index keeps covering them.
-  const searchFields=buildSearchFields({...fields,orderNumber:old.orderNumber,barcodeValue:old.barcodeValue||`VNX/${ref.id}`,...pageSnapshot,
+  const searchFields=buildSearchFields({...fields,orderNumber:old.orderNumber,barcodeValue:old.barcodeValue||old.orderNumber||`VNX-${ref.id}`,...pageSnapshot,
     clickOrderRef:old.clickOrderRef,trackingNumber:old.trackingNumber,providerOrderId:old.providerOrderId,
     createdByName:old.createdByName,companyName:old.companyName,
     status:old.status,internalStatus:old.internalStatus,shippingStatus:old.shippingStatus});

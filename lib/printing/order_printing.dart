@@ -7,24 +7,80 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-/// The barcode is a stable representation of the Firestore document ID.
-/// Never use the current time to generate a new barcode when reprinting.
+/// A canonical, resolvable order reference: `VNX-<6-digit sequence>`.
+final RegExp _sequenceNumber = RegExp(r'^VNX-\d{1,12}$');
+
+/// The value encoded in an order's barcode and printed under it.
+///
+/// New vouchers encode the REAL sequential order number (`VNX-000039`), so the
+/// scannable data is exactly the human-readable number shown beneath the bars.
+/// Orders that predate the sequence counter fall back to the legacy
+/// `VNX-<documentId>` form, which the server still resolves — old vouchers stay
+/// readable and no Firestore id or shipping data is ever changed.
+///
+/// Never use the current time to generate a new code when reprinting: the value
+/// is derived from stored order data alone, so it is stable across reprints.
 String orderBarcode(Map<String, dynamic> order) {
+  final seq = order['orderNumber']?.toString().trim().toUpperCase() ?? '';
+  if (_sequenceNumber.hasMatch(seq)) return seq;
   final id = order['id']?.toString().trim() ?? '';
   if (id.isEmpty ||
       id.length > 140 ||
       !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(id)) {
     throw const FormatException('معرّف الطلب غير صالح لإنشاء الباركود');
   }
-  final value = order['barcodeValue']?.toString() ?? '';
-  // Do not trust a mutable remote barcode that points to a different order.
-  return value == 'VNX-$id' ? value : 'VNX-$id';
+  // Legacy fallback: the historical `VNX-<docId>` barcode, kept resolvable.
+  return 'VNX-$id';
 }
 
-/// The QR payload is the SAME stable internal reference as the barcode
-/// (`VNX-<docId>`). It carries no customer data, no token and no access grant;
-/// the scanner resolves it server-side through `resolveBarcodes`, which enforces
-/// the caller's permissions. It stays valid across reprints.
+/// [orderBarcode] that never throws, for list/table rendering.
+String orderBarcodeLabel(Map<String, dynamic> order) {
+  try {
+    return orderBarcode(order);
+  } catch (_) {
+    return '—';
+  }
+}
+
+/// The number a person reads on screen/voucher: the sequential `orderNumber`
+/// when present, otherwise the legacy `VNX-<id>` reference. Never a bare random
+/// Firestore id.
+String orderDisplayNumber(Map<String, dynamic> order) {
+  final seq = order['orderNumber']?.toString().trim() ?? '';
+  if (seq.isNotEmpty) return seq;
+  final id = order['id']?.toString().trim() ?? '';
+  return id.isEmpty ? '—' : 'VNX-$id';
+}
+
+/// Cleans a scanned/pasted code WITHOUT guessing or rewriting a valid one:
+/// drops control/bidi characters, trims surrounding whitespace, and folds
+/// Arabic-Indic digits to ASCII so a scanner set to an Arabic keyboard layout
+/// still resolves. Case and internal characters are preserved.
+String normalizeScannedCode(String raw) {
+  var s = raw.replaceAll(
+    RegExp(
+      '[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]',
+    ),
+    '',
+  );
+  s = s.trim();
+  String fold(int base) => String.fromCharCode(0x30 + (base - 0x660));
+  s = s.replaceAllMapped(
+    RegExp('[\u0660-\u0669]'),
+    (m) => fold(m.group(0)!.codeUnitAt(0)),
+  );
+  s = s.replaceAllMapped(
+    RegExp('[\u06F0-\u06F9]'),
+    (m) => fold(m.group(0)!.codeUnitAt(0) - 0x90),
+  );
+  return s;
+}
+
+/// The QR payload is the SAME stable reference as the barcode (the sequential
+/// `VNX-000039`, or the legacy `VNX-<docId>`). It carries no customer data, no
+/// token and no access grant; the scanner resolves it server-side through
+/// `resolveBarcodes`, which enforces the caller's permissions. It stays valid
+/// across reprints.
 String orderQrPayload(Map<String, dynamic> order) => orderBarcode(order);
 
 /// Arabic label for the order business type (kept in sync with the app).
@@ -376,7 +432,6 @@ class OrderInvoicePdf {
     final narrow = format.width < 100 * PdfPageFormat.mm;
     final thermal = template == OrderTemplate.thermal || narrow;
     final horizontalMargin = _marginsFor(format, template).horizontal;
-    final id = order['id']?.toString() ?? '';
     final barcode = orderBarcode(order);
     final timestamp = DateTime.tryParse(order['createdAt']?.toString() ?? '');
     final created = timestamp == null ? null : businessTime(timestamp);
@@ -464,9 +519,10 @@ class OrderInvoicePdf {
     );
 
     // ---- Symbol widget: a single, compact Code128 barcode ----
-    // No QR and no machine-readable text is printed: the scannable payload is
-    // unchanged (still the stable internal reference) but only the bars appear,
-    // at a smaller height that stays reliably scannable with clear quiet zones.
+    // No QR and no machine-readable text is printed: only the bars appear, at a
+    // height that stays reliably scannable with clear quiet zones. The encoded
+    // value IS the sequential order number printed right below it, so a scan
+    // shows exactly the number a person reads on the voucher.
     final printableWidth = format.width - horizontalMargin * 2;
     final barcodeGeometry = invoiceBarcodeGeometry(
       barcode,
@@ -493,7 +549,8 @@ class OrderInvoicePdf {
     );
 
     // ---- Header: sales page identity + barcode above the order number + type ----
-    final orderNumber = order['orderNumber'] ?? id;
+    // The number under the bars is the SAME string the barcode encodes (`barcode`
+    // above), so the printed number and the scanned value can never disagree.
     final header = pw.Container(
       padding: pw.EdgeInsets.only(
         bottom: thermal ? 6 : 10,
@@ -550,9 +607,9 @@ class OrderInvoicePdf {
                 // Barcode sits ABOVE the order number.
                 symbols,
                 pw.SizedBox(height: thermal ? 3 : 5),
-                // Only the order number is shown; the label «رقم الطلب» is removed.
+                // The number under the bars is exactly what the bars encode.
                 pw.Text(
-                  '$orderNumber',
+                  barcode,
                   textDirection: pw.TextDirection.ltr,
                   style: pw.TextStyle(font: bold, fontSize: thermal ? 12 : 16),
                 ),

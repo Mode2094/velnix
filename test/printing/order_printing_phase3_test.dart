@@ -29,10 +29,15 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('QR payload', () {
-    test('the QR payload equals the stable internal barcode reference', () {
+    test('the QR payload equals the sequential order barcode reference', () {
       final order = syntheticOrder();
-      expect(orderQrPayload(order), 'VNX-RLWEouzNty2huVT8DUHN');
+      expect(orderQrPayload(order), 'VNX-000123');
       expect(orderQrPayload(order), orderBarcode(order));
+    });
+
+    test('a legacy order without a sequence keeps the VNX-<id> payload', () {
+      final legacy = syntheticOrder()..remove('orderNumber');
+      expect(orderQrPayload(legacy), 'VNX-RLWEouzNty2huVT8DUHN');
     });
 
     test('the QR payload carries no customer data, token or URL', () {
