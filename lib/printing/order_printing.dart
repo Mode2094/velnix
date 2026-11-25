@@ -91,6 +91,16 @@ String orderTypeLabel(dynamic value) => switch (value?.toString()) {
   _ => 'عادي',
 };
 
+/// The emphasised order-type banner label for the voucher: the Arabic label of
+/// a non-`normal` business type, or `null` when the order is `normal` (a normal
+/// order must never print the word «عادي» and must not reserve any space for it).
+String? voucherTypeLabel(dynamic value) => switch (value?.toString()) {
+  'return' => 'إرجاع',
+  'exchange' => 'تبديل',
+  'partial_receipt' => 'استلام جزئي',
+  _ => null,
+};
+
 /// Keep at least ten modules of clear space on either side and one 203-DPI
 /// dot per narrow module. Refuse too-small paper instead of silently shrinking.
 ({double width, double quietZone, double leftPadding, double rightPadding})
@@ -443,7 +453,7 @@ class OrderInvoicePdf {
         : '${created.hour.toString().padLeft(2, '0')}:${created.minute.toString().padLeft(2, '0')}';
     final pageName = order['pageName']?.toString() ?? '';
     final pageLogo = _pageLogo(order['logoDataUri']);
-    final orderType = orderTypeLabel(order['orderType']);
+    final voucherType = voucherTypeLabel(order['orderType']);
     final pagePhone = order['pagePhone']?.toString().trim() ?? '';
     final pageWhatsapp = order['pageWhatsapp']?.toString().trim() ?? '';
     final colored = template == OrderTemplate.professional && !thermal;
@@ -548,7 +558,66 @@ class OrderInvoicePdf {
       ],
     );
 
-    // ---- Header: sales page identity + barcode above the order number + type ----
+    // ---- Order-type banner: only for a NON-normal type, at the very top ----
+    // A normal order prints no type word at all and reserves no space for one.
+    // For إرجاع/تبديل/استلام جزئي the type is unmistakable on first glance:
+    // very large, heavy, black text inside a bordered box (the border keeps it
+    // legible on black-and-white and thermal printers, so it never relies on
+    // colour alone), and its height/width follow the paper so it never clips and
+    // never overlaps the barcode or the order number.
+    final typeFontSize = (format.width * .16)
+        .clamp(thermal ? 16 : 30, 72)
+        .toDouble();
+    final typeBanner = voucherType == null
+        ? null
+        : pw.Container(
+            width: double.infinity,
+            margin: pw.EdgeInsets.only(bottom: thermal ? 5 : 9),
+            padding: pw.EdgeInsets.symmetric(
+              vertical: thermal ? 5 : 9,
+              horizontal: thermal ? 4 : 12,
+            ),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(
+                color: PdfColors.black,
+                width: thermal ? 1.2 : 1.8,
+              ),
+              color: colored ? const PdfColor.fromInt(0xFFFFF3CD) : null,
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.center,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: [
+                pw.Text(
+                  'نوع الطلب',
+                  textDirection: pw.TextDirection.rtl,
+                  style: pw.TextStyle(
+                    font: bold,
+                    fontSize: thermal ? 7 : 9,
+                    color: PdfColors.black,
+                  ),
+                ),
+                pw.SizedBox(height: thermal ? 2 : 4),
+                // FittedBox(scaleDown): the label shrinks by the smallest amount
+                // needed to stay inside the box on any paper, so a long label on
+                // narrow thermal paper can never overflow or be cut.
+                pw.FittedBox(
+                  fit: pw.BoxFit.scaleDown,
+                  child: pw.Text(
+                    voucherType,
+                    textDirection: pw.TextDirection.rtl,
+                    style: pw.TextStyle(
+                      font: bold,
+                      fontSize: typeFontSize,
+                      color: PdfColors.black,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+
+    // ---- Header: sales page identity + barcode above the order number ----
     // The number under the bars is the SAME string the barcode encodes (`barcode`
     // above), so the printed number and the scanned value can never disagree.
     final header = pw.Container(
@@ -613,23 +682,16 @@ class OrderInvoicePdf {
                   textDirection: pw.TextDirection.ltr,
                   style: pw.TextStyle(font: bold, fontSize: thermal ? 12 : 16),
                 ),
-                pw.SizedBox(height: 3),
-                // The order type is emphasised: bold, dark and large.
-                pw.Text(
-                  orderType,
-                  style: pw.TextStyle(
-                    font: bold,
-                    fontSize: thermal ? 12 : 16,
-                    color: PdfColors.black,
-                  ),
-                ),
                 if (created != null)
-                  pw.Text(
-                    '$date${time != null ? '  $time' : ''}',
-                    style: pw.TextStyle(
-                      font: font,
-                      fontSize: thermal ? 7 : 9,
-                      color: PdfColors.grey700,
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.only(top: 3),
+                    child: pw.Text(
+                      '$date${time != null ? '  $time' : ''}',
+                      style: pw.TextStyle(
+                        font: font,
+                        fontSize: thermal ? 7 : 9,
+                        color: PdfColors.grey700,
+                      ),
                     ),
                   ),
               ],
@@ -693,6 +755,7 @@ class OrderInvoicePdf {
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       mainAxisSize: pw.MainAxisSize.min,
       children: [
+        ?typeBanner,
         header,
         pw.SizedBox(height: thermal ? 5 : 9),
         fields,
