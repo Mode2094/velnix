@@ -35,6 +35,21 @@ class _LiveDashboardState extends State<LiveDashboard> {
     super.initState();
     filters = Map.of(widget.initialFilters);
     reload();
+    // Real-time: a server order/company change re-reads the counters in place,
+    // keeping the current filters. No full reload, no second listener.
+    SyncService.instance.any.addListener(_onRemoteChange);
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.any.removeListener(_onRemoteChange);
+    super.dispose();
+  }
+
+  void _onRemoteChange() {
+    if (!mounted) return;
+    VelnixGateway.instance.invalidate('dashboard');
+    setState(() => reload(fresh: true));
   }
 
   // The dashboard is a basic-filter surface (date range; company/creator when

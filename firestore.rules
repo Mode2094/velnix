@@ -14,6 +14,14 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == userId;
       allow list, create, update, delete: if false;
     }
+    // Real-time sync revision counters. This document holds counters only — no
+    // order, customer or credential data — so any signed-in user may read it to
+    // learn that something changed. It is written only by the Cloud Functions
+    // triggers (sync.js); clients can never write it.
+    match /sync/{docId} {
+      allow get: if signedIn();
+      allow list, create, update, delete: if false;
+    }
     match /{document=**} {
       allow read, write: if false;
     }

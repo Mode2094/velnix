@@ -87,6 +87,18 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
   void initState() {
     super.initState();
     request = VelnixGateway.instance.dashboard();
+    // Real-time: counts re-read in place when the server reports any change.
+    SyncService.instance.any.addListener(_onRemoteChange);
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.any.removeListener(_onRemoteChange);
+    super.dispose();
+  }
+
+  void _onRemoteChange() {
+    if (mounted) refresh();
   }
 
   void refresh() =>

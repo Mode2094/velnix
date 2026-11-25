@@ -1311,4 +1311,68 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'web: a bulk status change moves orders out of the open status card (no duplicate copy)',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(800, 1400);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final calls = <String>[];
+      VelnixGateway.instance = VelnixGateway.forTesting((name, data) async {
+        calls.add(name);
+        if (name == 'listOrders') {
+          // The card is the internal status «created»: two matching orders.
+          return {
+            'items': [order('1'), order('2')],
+            'nextAfterId': null,
+          };
+        }
+        if (name == 'listCompanies' ||
+            name == 'listAllowedPages' ||
+            name == 'listOrderCreators') {
+          return {'items': <dynamic>[]};
+        }
+        if (name == 'bulkChangeStatus') {
+          return {
+            'succeeded': 2,
+            'unchanged': 0,
+            'failed': 0,
+            'results': [
+              {'id': '1', 'ok': true},
+              {'id': '2', 'ok': true},
+            ],
+          };
+        }
+        if (name == 'getOrdersByIds') {
+          // The server now reports the NEW status for the same two order ids:
+          // the documents are updated in place, never re-created.
+          return {
+            'items': [
+              {...order('1'), 'status': 'preparing'},
+              {...order('2'), 'status': 'preparing'},
+            ],
+          };
+        }
+        throw StateError('Unexpected $name');
+      });
+      await tester.pumpWidget(
+        app(LiveOrders(policy: gm(), webBulkUx: true, status: 'created')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('عميل 1'), findsOneWidget);
+      expect(find.text('عميل 2'), findsOneWidget);
+
+      await runWebBulkChange(tester, statusLabel: 'قيد التجهيز');
+
+      // Both orders now have a status this card does not show: they must leave
+      // it immediately, and never appear twice.
+      expect(find.text('عميل 1'), findsNothing);
+      expect(find.text('عميل 2'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

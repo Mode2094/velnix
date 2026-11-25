@@ -9,7 +9,7 @@ const APP_IDS={android:'1:948196868655:android:4465def254bb941ac43cda',ios:'1:94
 const ROOT=`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)`;
 function sourcePlan(root=path.resolve(__dirname,'../..')){
  const text=fs.readFileSync(path.join(root,'functions/src/index.js'),'utf8');
- const functions=[...text.matchAll(/exports\.(\w+)=(callable|onRequest|onSchedule|onDocumentCreated)\(/g)].map(m=>({name:m[1],kind:m[2],region:m[1]==='orderEventNotice'?'us-central1':'europe-west1'}));
+ const functions=[...text.matchAll(/exports\.(\w+)=(callable|onRequest|onSchedule|onDocumentCreated|onDocumentWritten)\(/g)].map(m=>({name:m[1],kind:m[2],region:m[1]==='orderEventNotice'?'us-central1':'europe-west1'}));
  if(!functions.length||functions.length!==[...text.matchAll(/exports\.\w+\s*=/g)].length)throw Error('source_manifest_requires_review');
  // These callables are exported through the existing join factory, not exports.foo.
  // Fail closed if the factory binding or export shape changes; never import handlers

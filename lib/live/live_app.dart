@@ -31,6 +31,7 @@ import '../core/page_logo.dart';
 import '../models/entities.dart';
 import '../models/shipping_status.dart';
 import 'gateway.dart';
+import 'sync_service.dart';
 
 part 'live_dashboard.dart';
 part 'live_orders.dart';
@@ -982,13 +983,19 @@ class LiveShell extends StatefulWidget {
   State<LiveShell> createState() => _LiveShellState();
 }
 
-class _LiveShellState extends State<LiveShell> {
+class _LiveShellState extends State<LiveShell> with WidgetsBindingObserver {
   final scaffoldKey = GlobalKey<ScaffoldState>();
   StreamSubscription<RemoteMessage>? foregroundPush, openedPush;
   final pushRouting = PushRouting();
   @override
   void initState() {
     super.initState();
+    // Real-time sync: one listener on `sync/global` for the whole signed-in
+    // session; every data screen re-reads in place when a counter changes. The
+    // observer stops it while the app is backgrounded and restarts it on
+    // resume, so subscriptions are never duplicated and never run unused.
+    WidgetsBinding.instance.addObserver(this);
+    SyncService.instance.start();
     // Foreground/opened push wiring must never take the shell down when the
     // messaging plugin or Firebase app is unavailable (e.g. widget tests, web
     // without a configured project). The shell stays usable either way.
@@ -1045,9 +1052,28 @@ class _LiveShellState extends State<LiveShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    SyncService.instance.stop();
     foregroundPush?.cancel();
     openedPush?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Stop the listener while the app is not visible (no needless reads, no
+    // duplicate listeners) and resync on return: on resume Firestore delivers a
+    // fresh server snapshot and any counter that moved during the pause is
+    // applied then.
+    switch (state) {
+      case AppLifecycleState.resumed:
+        SyncService.instance.resume();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.detached:
+        SyncService.instance.pause();
+    }
   }
 
   Map<String, dynamic> selectedFilters = {};
@@ -1536,11 +1562,14 @@ class _LiveShellState extends State<LiveShell> {
                 style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900),
               ),
               const Spacer(),
-              if (w >= 430)
+              const SyncIndicator(),
+              if (w >= 430) ...[
+                const SizedBox(width: 12),
                 Text(
                   widget.policy.roleLabel,
                   style: const TextStyle(fontSize: 12, color: VColors.muted),
                 ),
+              ],
             ],
           ),
         ),

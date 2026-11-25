@@ -3,7 +3,7 @@ const crypto=require('node:crypto');
 const {setGlobalOptions}=require('firebase-functions/v2');
 const {runtimeOptions}=require('./runtime_config');
 setGlobalOptions(runtimeOptions(process.env.VELNIX_RUNTIME_SERVICE_ACCOUNT,process.env.GCLOUD_PROJECT||process.env.GOOGLE_CLOUD_PROJECT,process.env.FUNCTIONS_EMULATOR==='true'));
-const {onDocumentCreated}=require('firebase-functions/v2/firestore');
+const {onDocumentCreated,onDocumentWritten}=require('firebase-functions/v2/firestore');
 const {deviceId,processPush,recoverPushes}=require('./push');
 const {initializeApp}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
@@ -24,8 +24,17 @@ const {directoryPage}=require('./directory');
 const {aggregateGroups}=require('./aggregations');
 const {normalizeCustomer,searchDigits,parseFilters,applyFilters,matchingFilters}=require('./query');
 const {buildSearchFields}=require('./search');
+const {bumpSync}=require('./sync');
 initializeApp();const db=getFirestore();
 const REGION='europe-west1';
+
+// Real-time sync: one tiny `sync/global` revision document, bumped by these
+// triggers on every order/company/notice write. Each signed-in client holds a
+// single listener on it and re-reads its own authorized data in place (see
+// sync.js and firestore.rules). The handler ignores the payload on purpose.
+exports.syncOrdersRev=onDocumentWritten({document:'orders/{orderId}',region:REGION,retry:true},async()=>{await bumpSync(db,FieldValue,'orders');});
+exports.syncCompaniesRev=onDocumentWritten({document:'companies/{companyId}',region:REGION,retry:true},async()=>{await bumpSync(db,FieldValue,'companies');});
+exports.syncNoticesRev=onDocumentWritten({document:'notices/{noticeId}',region:REGION,retry:true},async()=>{await bumpSync(db,FieldValue,'notices');});
 // Server-enforced allowlist for real Click sending. Flutter cannot change this.
 const CLICK_SEND_ALLOWED_COMPANY_IDS=new Set((process.env.CLICK_SEND_ALLOWED_COMPANY_IDS||'click_delivery_1603').split(',').map(x=>x.trim()).filter(Boolean));
 const callable=(fn)=>onCall({region:REGION, enforceAppCheck: true, maxInstances:15, timeoutSeconds:60},async req=>{try{return await fn(req);}catch(e){return firebaseError(e);}});

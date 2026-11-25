@@ -69,8 +69,8 @@ test('only the current registered web app and matching mobile packages qualify',
 test('project IAM read uses the pinned official human session and redacts unrelated identities',()=>{
  const calls=[],s=createGcloudSession({env:{},expectedAccount:owner,run:args=>{calls.push(args);return args[0]==='projects'?'{}':args[0]==='config'?'(unset)':owner;}});assert.deepEqual(s.readProjectIam(),{});const args=calls.at(-1);assert.equal(args[1],'get-iam-policy');assert.ok(args.includes('--account='+owner));assert.ok(args.includes('--billing-project='+project));
 });
-test('source manifest includes all 63 exports, existing schedulers, and deny-by-default rules; index normalization preserves real filters',()=>{
- assert.equal(plan.functions.length,63);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,218);assert.equal(plan.bootstrapForbidden,true);
+test('source manifest includes all 66 exports, existing schedulers, and deny-by-default rules; index normalization preserves real filters',()=>{
+ assert.equal(plan.functions.length,66);assert.equal(plan.functions.filter(f=>f.kind==='onSchedule').length,2); assert.equal(plan.indexes.length,218);assert.equal(plan.bootstrapForbidden,true);
   // Dashboard/company aggregates sum amountMinor, so every facet needs the
   // aggregated field indexed. These are the unfiltered facet shapes.
   const facetFields=[['status'],['status','deliveryAccepted'],['shippingStatus'],['hasDelivery'],['hasDelivery','deliveryAccepted'],['hasDelivery','dispatchState'],['carrierDeletion.state']];

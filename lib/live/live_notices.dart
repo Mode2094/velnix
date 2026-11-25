@@ -18,6 +18,17 @@ class _LiveNoticesState extends State<LiveNotices> {
   void initState() {
     super.initState();
     reload();
+    SyncService.instance.notices.addListener(_onRemoteChange);
+  }
+
+  @override
+  void dispose() {
+    SyncService.instance.notices.removeListener(_onRemoteChange);
+    super.dispose();
+  }
+
+  void _onRemoteChange() {
+    if (mounted) refresh();
   }
 
   Future<List<Map<String, dynamic>>> _firstPage() async {

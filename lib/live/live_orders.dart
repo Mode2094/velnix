@@ -322,20 +322,54 @@ class _LiveOrdersState extends State<LiveOrders> {
     if (!mounted) return;
     setState(() {
       var next = [for (final o in rows) freshById[o['id'].toString()] ?? o];
-      if (dropBucketMismatch && bucket != 'all') {
-        // `dispatchState == 'sent'` is the client-visible proof of a confirmed
-        // acceptance (the server keeps `deliveryAccepted` private). The internal
-        // bucket excludes accepted orders; the delivery bucket keeps only them.
-        next = next
-            .where(
-              (o) => bucket == 'delivery'
-                  ? o['dispatchState'] == 'sent'
-                  : o['dispatchState'] != 'sent',
-            )
-            .toList();
+      if (dropBucketMismatch) {
+        // An order that stopped matching the open card/list must leave it — this
+        // is what keeps each order in EXACTLY ONE status card and moves it
+        // immediately after a change. Mirrors the server's in-memory filter for
+        // every dimension a card/list exposes.
+        next = next.where(_matchesCurrentView).toList();
       }
       rows = next;
     });
+  }
+
+  /// Whether [o] still belongs to the open view: the acceptance bucket plus the
+  /// status / carrier-state / dispatch-group / company / carrier-deletion
+  /// filters. Mirrors the server's `matchingFilters` for the fields a card or
+  /// list exposes, so movement between cards is exact and an order never lingers
+  /// in a card it no longer matches. Advanced free-text filters cannot change
+  /// because of an operation, so a row that already matched keeps matching.
+  bool _matchesCurrentView(Map<String, dynamic> o) {
+    // `dispatchState == 'sent'` is the client-visible proof of a confirmed
+    // acceptance (the server keeps `deliveryAccepted` private).
+    final sent = o['dispatchState'] == 'sent';
+    if (bucket == 'delivery' && !sent) return false;
+    if (bucket == 'internal' && sent) return false;
+    if (status != null && o['status'] != status) return false;
+    if (shippingStatus != null && o['shippingStatus'] != shippingStatus) {
+      return false;
+    }
+    if (_dispatch != null) {
+      const groups = {
+        'idle': ['idle'],
+        'sending': ['sending'],
+        'sent': ['sent'],
+        'review': ['needs_review'],
+      };
+      final allowed = groups[_dispatch] ?? const <String>[];
+      if (!allowed.contains(o['dispatchState'] ?? 'idle')) return false;
+    }
+    final companyFilter = filters['companyId'];
+    if (companyFilter != null && o['companyId'] != companyFilter) return false;
+    if (_deletion != null) {
+      final state = (o['carrierDeletion'] as Map?)?['state'];
+      if (_deletion == 'any') {
+        if (!const ['confirmed', 'needs_review'].contains(state)) return false;
+      } else if (state != _deletion) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Sets the period filter from inclusive local days, converted to the store's
@@ -578,6 +612,10 @@ class _LiveOrdersState extends State<LiveOrders> {
     bucket = widget.bucket;
     load(reset: true);
     if (kIsWeb) _loadWebMeta();
+    // Real-time: a server order change re-reads the visible rows in place, so the
+    // search, filters, loaded pages, scroll and selection survive; only orders
+    // that no longer match the current bucket are dropped.
+    SyncService.instance.orders.addListener(_onRemoteOrders);
     if (widget.autoSearchFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) searchFocus.requestFocus();
@@ -587,6 +625,7 @@ class _LiveOrdersState extends State<LiveOrders> {
 
   @override
   void dispose() {
+    SyncService.instance.orders.removeListener(_onRemoteOrders);
     _debounce?.cancel();
     search.dispose();
     searchFocus.dispose();
@@ -600,6 +639,18 @@ class _LiveOrdersState extends State<LiveOrders> {
     webAmountMin.dispose();
     webAmountMax.dispose();
     super.dispose();
+  }
+
+  /// A server-reported order change. The web list re-reads the loaded rows in
+  /// place (view preserved); Android reloads the first page. Skipped while a
+  /// bulk operation is running so a refresh can never race the operation.
+  void _onRemoteOrders() {
+    if (!mounted || bulkBusy) return;
+    if (widget.webBulkUx) {
+      webRefreshPreservingView(dropBucketMismatch: true);
+    } else {
+      load(reset: true, fresh: true);
+    }
   }
 
   void _onQueryChanged(String value) {
@@ -1391,7 +1442,7 @@ class _LiveOrdersState extends State<LiveOrders> {
       // filters, the loaded pages and the scroll position all survive the
       // operation. Android keeps its first-page reload unchanged.
       if (widget.webBulkUx) {
-        await webRefreshPreservingView(dropBucketMismatch: dispatchReport);
+        await webRefreshPreservingView(dropBucketMismatch: true);
       } else {
         await load(reset: true, fresh: true);
       }
