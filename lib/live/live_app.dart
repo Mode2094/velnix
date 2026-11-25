@@ -10,6 +10,7 @@ import 'date_range_field.dart';
 import 'directory_panel.dart';
 import 'jordan_locations.dart';
 import 'live_stores.dart';
+import 'live_settings.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -1049,7 +1050,7 @@ class _LiveShellState extends State<LiveShell> {
   /// orders, order details, create, companies, team and settings instead of a
   /// full-screen route replacing the whole shell.
   final tabKeys = {
-    for (final index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    for (final index in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
       index: GlobalKey<NavigatorState>(debugLabel: 'velnix-tab-$index'),
   };
 
@@ -1067,6 +1068,7 @@ class _LiveShellState extends State<LiveShell> {
     'التقارير',
     'المزامنة',
     'الصفحات الإلكترونية',
+    'إعدادات النظام',
   ];
   final icons = [
     Icons.dashboard_outlined,
@@ -1079,6 +1081,7 @@ class _LiveShellState extends State<LiveShell> {
     Icons.bar_chart_outlined,
     Icons.sync_outlined,
     Icons.facebook_outlined,
+    Icons.settings_outlined,
   ];
 
   /// Returns a tab to its root page. Called when a top-level destination is
@@ -1151,6 +1154,7 @@ class _LiveShellState extends State<LiveShell> {
     if (widget.policy.can('managePages')) 9,
     if (widget.policy.can('manageEmployees')) 4,
     if (widget.policy.can('viewReports')) 7,
+    if (widget.policy.can('manageSettings')) 10,
     6,
   ];
 
@@ -1437,6 +1441,7 @@ class _LiveShellState extends State<LiveShell> {
       key: ValueKey('pages$refreshVersion'),
       policy: widget.policy,
     ),
+    10 => LiveSettings(key: ValueKey('settings$refreshVersion')),
     _ => LiveAudit(key: ValueKey('audit$refreshVersion')),
   };
 

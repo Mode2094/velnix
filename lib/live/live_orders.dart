@@ -1061,10 +1061,8 @@ class _LiveOrdersState extends State<LiveOrders> {
         await Navigator.push(
           context,
           MaterialPageRoute<void>(
-            builder: (_) => BulkPrintScreen(
-              orders: merged,
-              printedBy: widget.policy.name,
-            ),
+            builder: (_) =>
+                BulkPrintScreen(orders: merged, printedBy: widget.policy.name),
           ),
         );
       }
@@ -4297,6 +4295,10 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
   List<Map<String, dynamic>> companies = [];
   bool _optionsLoading = true;
   String? _optionsError;
+
+  /// Shown when a stored default (company or page) can no longer be used, so the
+  /// employee knows why the field was left for a manual choice.
+  String? _defaultNotice;
   final String _requestKey = List.generate(
     5,
     (_) => Random.secure().nextInt(1 << 30).toRadixString(36).padLeft(6, '0'),
@@ -4337,12 +4339,15 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
     try {
       final pagesResult = await VelnixGateway.instance.allowedPages();
       final companiesResult = await VelnixGateway.instance.companies();
-      // Default delivery company for a new order (administration setting).
+      // Administration defaults for a NEW order only (administration setting).
+      // An edited order never applies them: its stored page/company win.
       String? defaultCompanyId;
+      String? defaultPageId;
       if (widget.initial == null) {
         try {
           final settings = await VelnixGateway.instance.settings(fresh: true);
           defaultCompanyId = settings['defaultCompanyId']?.toString();
+          defaultPageId = settings['defaultPageId']?.toString();
         } catch (_) {
           // Settings are optional; the form still works without a default.
         }
@@ -4354,18 +4359,44 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
       final comps = companiesResult
           .where((c) => c['enabled'] == true && c['archived'] != true)
           .toList();
+      // A stored default that is disabled/archived/deleted (company) or not
+      // allowed/active for this employee (page) is NEVER preselected; the field
+      // stays for a manual choice and a clear reason is shown.
+      String? notice;
+      if (defaultCompanyId != null &&
+          defaultCompanyId.isNotEmpty &&
+          !comps.any((c) => c['id']?.toString() == defaultCompanyId)) {
+        notice =
+            'الشركة الافتراضية المحفوظة لم تعد متاحة؛ اختر شركة من القائمة.';
+        defaultCompanyId = null;
+      }
+      if (defaultPageId != null &&
+          defaultPageId.isNotEmpty &&
+          !pages.any((p) => p['id']?.toString() == defaultPageId)) {
+        notice = pages.isEmpty
+            ? 'لا توجد صفحات مسموحة لحسابك؛ راجع المدير.'
+            : 'الصفحة الافتراضية المحفوظة غير متاحة لحسابك؛ اختر صفحة من القائمة.';
+        defaultPageId = null;
+      }
       setState(() {
         allowedPages = pages;
         companies = comps;
-        // Preselect the default company only when it is still enabled/available
-        // and the user did not already pick one.
-        if (widget.initial == null &&
-            (_companyId == null || _companyId!.isEmpty) &&
-            defaultCompanyId != null &&
-            defaultCompanyId.isNotEmpty &&
-            comps.any((c) => c['id']?.toString() == defaultCompanyId)) {
-          _companyId = defaultCompanyId;
+        // Preselect only for a new order, only while the field is still empty (a
+        // manual choice made before the options arrived always wins), and only
+        // when the value is genuinely enabled/allowed.
+        if (widget.initial == null) {
+          if ((_companyId == null || _companyId!.isEmpty) &&
+              defaultCompanyId != null &&
+              defaultCompanyId.isNotEmpty) {
+            _companyId = defaultCompanyId;
+          }
+          if ((_pageId == null || _pageId!.isEmpty) &&
+              defaultPageId != null &&
+              defaultPageId.isNotEmpty) {
+            _pageId = defaultPageId;
+          }
         }
+        _defaultNotice = notice;
         _optionsLoading = false;
         _optionsError = null;
         // Keep the edited order's page visible even if it is now archived.
@@ -4566,6 +4597,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                               : (v) {
                                   setState(() {
                                     _pageId = v;
+                                    _defaultNotice = null;
                                     _dirty = true;
                                   });
                                   field.didChange(v);
@@ -4613,6 +4645,7 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
                     ],
                     onChanged: (v) => setState(() {
                       _companyId = v;
+                      _defaultNotice = null;
                       _dirty = true;
                     }),
                   ),
@@ -4624,6 +4657,29 @@ class _LiveOrderFormState extends State<LiveOrderForm> {
               'اختيار الشركة لا يُرسل الشحنة؛ الإرسال خطوة مستقلة لاحقًا.',
               style: TextStyle(color: VColors.muted, fontSize: 11.5),
             ),
+            if (_defaultNotice != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: VColors.warning,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _defaultNotice!,
+                        style: const TextStyle(
+                          color: VColors.warning,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (_optionsError != null)
               Row(
                 children: [

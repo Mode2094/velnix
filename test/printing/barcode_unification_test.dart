@@ -117,10 +117,7 @@ void main() {
     });
 
     test('drops control and bidi marks without touching the value', () {
-      expect(
-        normalizeScannedCode('\u200fVNX-000039\u202c'),
-        'VNX-000039',
-      );
+      expect(normalizeScannedCode('\u200fVNX-000039\u202c'), 'VNX-000039');
       expect(normalizeScannedCode('\u0000VNX-000039\u007f'), 'VNX-000039');
     });
 
@@ -167,35 +164,37 @@ void main() {
   });
 
   group('real PDF decode', () {
-    test('the bars in the generated voucher decode to the printed number',
-        () async {
-      final python = _findPythonWithDecoder();
-      if (python == null) {
-        // No decoder available in this environment: the pure-Dart assertions
-        // above still cover the contract. Skip rather than fake a pass.
-        markTestSkipped('no python with pymupdf+zxingcpp available');
-        return;
-      }
-      final dir = Directory.systemTemp.createTempSync('vnxbar');
-      addTearDown(() => dir.deleteSync(recursive: true));
+    test(
+      'the bars in the generated voucher decode to the printed number',
+      () async {
+        final python = _findPythonWithDecoder();
+        if (python == null) {
+          // No decoder available in this environment: the pure-Dart assertions
+          // above still cover the contract. Skip rather than fake a pass.
+          markTestSkipped('no python with pymupdf+zxingcpp available');
+          return;
+        }
+        final dir = Directory.systemTemp.createTempSync('vnxbar');
+        addTearDown(() => dir.deleteSync(recursive: true));
 
-      final printed = 'VNX-000039';
-      final bytes = await OrderInvoicePdf.generateMany(
-        orders: [newOrder(number: printed)],
-        format: PdfPageFormat.a4,
-        printedBy: 'سارة علي',
-      );
-      final pdf = File('${dir.path}/voucher.pdf')..writeAsBytesSync(bytes);
-      final script = File('${dir.path}/decode.py')
-        ..writeAsStringSync(_decoderScript);
-      final res = Process.runSync(python, [script.path, pdf.path]);
-      final out = res.stdout.toString().trim();
-      expect(
-        out,
-        contains('DECODED=$printed'),
-        reason: 'decoder stdout: $out\nstderr: ${res.stderr}',
-      );
-    });
+        final printed = 'VNX-000039';
+        final bytes = await OrderInvoicePdf.generateMany(
+          orders: [newOrder(number: printed)],
+          format: PdfPageFormat.a4,
+          printedBy: 'سارة علي',
+        );
+        final pdf = File('${dir.path}/voucher.pdf')..writeAsBytesSync(bytes);
+        final script = File('${dir.path}/decode.py')
+          ..writeAsStringSync(_decoderScript);
+        final res = Process.runSync(python, [script.path, pdf.path]);
+        final out = res.stdout.toString().trim();
+        expect(
+          out,
+          contains('DECODED=$printed'),
+          reason: 'decoder stdout: $out\nstderr: ${res.stderr}',
+        );
+      },
+    );
   });
 }
 

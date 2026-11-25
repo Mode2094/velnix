@@ -1837,22 +1837,39 @@ exports.listOrderCreators=callable(async req=>{
   return {items,more:rows.length>start+size,afterId:page.at(-1)?.id||null};
 });
 
-exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();const d=snap.data()||{};return {organizationName:d.organizationName||'Velnix',receiptFooter:d.receiptFooter||'',supportPhone:d.supportPhone||'',defaultCompanyId:d.defaultCompanyId||null};});
+exports.getSettings=callable(async req=>{await requireAuth(req);const snap=await db.doc('settings/system').get();const d=snap.data()||{};return {organizationName:d.organizationName||'Velnix',receiptFooter:d.receiptFooter||'',supportPhone:d.supportPhone||'',defaultCompanyId:d.defaultCompanyId||null,defaultPageId:d.defaultPageId||null};});
 exports.saveSettings=callable(async req=>{
   const user=await requireAuth(req);requiredPerm(user,'manageSettings');
-  const organizationName=str(req.data?.organizationName,120),receiptFooter=optional(req.data?.receiptFooter,200),supportPhone=arabicDigits(optional(req.data?.supportPhone,30)).replace(/[ ()-]/g,'');
+  const data=req.data||{};
+  const organizationName=str(data.organizationName,120),receiptFooter=optional(data.receiptFooter,200),supportPhone=arabicDigits(optional(data.supportPhone,30)).replace(/[ ()-]/g,'');
   if(supportPhone&&!/^\+?[0-9]{7,15}$/.test(supportPhone))fail('invalid-argument','هاتف دعم غير صالح');
+  // The two new-order defaults are only touched when their key is explicitly
+  // present, so saving unrelated settings (or a form that omits them) can never
+  // wipe them by accident. A present-but-empty key clears the default on purpose.
+  const hasCompany=Object.prototype.hasOwnProperty.call(data,'defaultCompanyId');
+  const hasPage=Object.prototype.hasOwnProperty.call(data,'defaultPageId');
   // Optional default delivery company. Must reference an existing, enabled,
   // non-archived company so the form can preselect it safely.
   let defaultCompanyId=null;
-  if(req.data?.defaultCompanyId!=null&&req.data.defaultCompanyId!==''){
-    defaultCompanyId=idValue(req.data.defaultCompanyId);
+  if(hasCompany&&data.defaultCompanyId!=null&&data.defaultCompanyId!==''){
+    defaultCompanyId=idValue(data.defaultCompanyId);
     const company=await db.doc('companies/'+defaultCompanyId).get();
     if(!company.exists)fail('failed-precondition','شركة التوصيل الافتراضية غير موجودة');
     const c=company.data();
     if(c.enabled!==true||c.archived===true)fail('failed-precondition','الشركة الافتراضية يجب أن تكون مفعلة وغير مؤرشفة');
   }
-  await db.runTransaction(async tx=>{await currentActor(tx,user);tx.set(db.doc('settings/system'),{organizationName,receiptFooter,supportPhone,defaultCompanyId,updatedAt:FieldValue.serverTimestamp()},{merge:true});await audit('settings.updated',user,'system',{defaultCompanyId},tx);});return {ok:true};
+  // Optional default electronic (Facebook) page. Must reference an existing,
+  // active, non-archived page; the create form still re-checks the employee's
+  // own permission, so a page they may not use is never preselected for them.
+  let defaultPageId=null;
+  if(hasPage&&data.defaultPageId!=null&&data.defaultPageId!==''){
+    defaultPageId=idValue(data.defaultPageId);
+    const page=await db.doc('pages/'+defaultPageId).get();
+    if(!page.exists)fail('failed-precondition','صفحة فيسبوك الافتراضية غير موجودة');
+    const p=page.data();
+    if(p.active!==true||p.archived===true)fail('failed-precondition','الصفحة الافتراضية يجب أن تكون نشطة وغير مؤرشفة');
+  }
+  await db.runTransaction(async tx=>{await currentActor(tx,user);const patch={organizationName,receiptFooter,supportPhone,updatedAt:FieldValue.serverTimestamp()};if(hasCompany)patch.defaultCompanyId=defaultCompanyId;if(hasPage)patch.defaultPageId=defaultPageId;tx.set(db.doc('settings/system'),patch,{merge:true});await audit('settings.updated',user,'system',{...(hasCompany?{defaultCompanyId}:{}),...(hasPage?{defaultPageId}:{})},tx);});return {ok:true};
 });
 
 exports.orderEventNotice=onDocumentCreated({document:'orders/{orderId}/events/{eventId}',region:'us-central1',retry:true},async event=>{

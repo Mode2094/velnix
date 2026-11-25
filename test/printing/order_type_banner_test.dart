@@ -95,11 +95,7 @@ void main() {
           script.path,
           ...files.values.map((f) => f.path),
         ]);
-        expect(
-          res.exitCode,
-          0,
-          reason: 'inspector failed: ${res.stderr}',
-        );
+        expect(res.exitCode, 0, reason: 'inspector failed: ${res.stderr}');
         final data = jsonDecode(res.stdout as String) as List<dynamic>;
         final byName = <String, Map<String, dynamic>>{
           for (final raw in data)
@@ -192,9 +188,7 @@ void main() {
       font = pw.Font.ttf(
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
       );
-      bold = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
-      );
+      bold = pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
     });
 
     Future<({PdfPoint content, PdfPoint printable})> measure(
@@ -237,15 +231,8 @@ void main() {
           ..['address'] = 'عنوان طويل جداً ' * 60
           ..['note'] = 'ملاحظة طويلة ' * 200;
         for (final order in [typeOrder('partial_receipt'), extreme]) {
-          for (final format in [
-            PdfPageFormat.a4,
-            PdfPageFormat.a4.landscape,
-          ]) {
-            final m = await measure(
-              order,
-              format,
-              OrderTemplate.professional,
-            );
+          for (final format in [PdfPageFormat.a4, PdfPageFormat.a4.landscape]) {
+            final m = await measure(order, format, OrderTemplate.professional);
             final scale = m.content.y > m.printable.y
                 ? m.printable.y / m.content.y
                 : 1.0;
@@ -259,40 +246,43 @@ void main() {
       },
     );
 
-    test('every paper size yields exactly one page for a special type', () async {
-      final formats = <String, PdfPageFormat>{
-        'A4 portrait': PdfPageFormat.a4,
-        'A4 landscape': PdfPageFormat.a4.landscape,
-        'A5 portrait': PdfPageFormat.a5,
-        'A5 landscape': PdfPageFormat.a5.landscape,
-        'A6 portrait': PdfPageFormat.a6,
-        'thermal80': OrderPaper.thermal80.format(),
-        'thermal58': OrderPaper.thermal58.format(),
-      };
-      for (final e in formats.entries) {
-        final template = e.key.startsWith('thermal')
-            ? OrderTemplate.thermal
-            : OrderTemplate.professional;
-        final doc = pw.Document(
-          theme: pw.ThemeData.withFont(base: font, bold: bold),
-        );
-        doc.addPage(
-          await OrderInvoicePdf.buildPage(
-            order: typeOrder('exchange'),
-            format: e.value,
-            template: template,
-            printedBy: 'مديرة الطباعة',
-          ),
-        );
-        expect(
-          doc.document.pdfPageList.pages.length,
-          1,
-          reason: '${e.key}: one page per order',
-        );
-        final bytes = await doc.save();
-        expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
-      }
-    });
+    test(
+      'every paper size yields exactly one page for a special type',
+      () async {
+        final formats = <String, PdfPageFormat>{
+          'A4 portrait': PdfPageFormat.a4,
+          'A4 landscape': PdfPageFormat.a4.landscape,
+          'A5 portrait': PdfPageFormat.a5,
+          'A5 landscape': PdfPageFormat.a5.landscape,
+          'A6 portrait': PdfPageFormat.a6,
+          'thermal80': OrderPaper.thermal80.format(),
+          'thermal58': OrderPaper.thermal58.format(),
+        };
+        for (final e in formats.entries) {
+          final template = e.key.startsWith('thermal')
+              ? OrderTemplate.thermal
+              : OrderTemplate.professional;
+          final doc = pw.Document(
+            theme: pw.ThemeData.withFont(base: font, bold: bold),
+          );
+          doc.addPage(
+            await OrderInvoicePdf.buildPage(
+              order: typeOrder('exchange'),
+              format: e.value,
+              template: template,
+              printedBy: 'مديرة الطباعة',
+            ),
+          );
+          expect(
+            doc.document.pdfPageList.pages.length,
+            1,
+            reason: '${e.key}: one page per order',
+          );
+          final bytes = await doc.save();
+          expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+        }
+      },
+    );
   });
 }
 

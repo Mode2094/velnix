@@ -219,6 +219,31 @@ test('settings are persisted by authorized administrators and forbidden for ordi
   const settings=await invoke('getSettings','entry');
   assert.equal(settings.organizationName,'المؤسسة المحلية');assert.equal(settings.receiptFooter,'سند طلب');
 });
+test('new-order defaults for company and page are validated, persisted and never wiped by an unrelated save',async()=>{
+  // The fixtures already provide an enabled company and an active page.
+  await invoke('saveSettings','gm',{organizationName:'المؤسسة المحلية',defaultCompanyId:'company',defaultPageId:'test_page'});
+  let settings=await invoke('getSettings','entry');
+  assert.equal(settings.defaultCompanyId,'company');assert.equal(settings.defaultPageId,'test_page');
+  // Saving only the organization name must not clear either default (the keys
+  // are absent, so they are left untouched).
+  await invoke('saveSettings','gm',{organizationName:'اسم جديد'});
+  settings=await invoke('getSettings','entry');
+  assert.equal(settings.defaultCompanyId,'company');assert.equal(settings.defaultPageId,'test_page');
+  // An explicitly empty key clears that default on purpose.
+  await invoke('saveSettings','gm',{organizationName:'اسم جديد',defaultPageId:''});
+  settings=await invoke('getSettings','entry');
+  assert.equal(settings.defaultPageId,null);assert.equal(settings.defaultCompanyId,'company');
+  // A disabled/archived company, a missing company, an inactive page and a
+  // missing page are all rejected.
+  await db.doc('companies/disabled_default').set({name:'معطلة',provider:'generic_v1',enabled:false,archived:false});
+  await db.doc('pages/archived_default').set({name:'مؤرشفة',nameLower:'مؤرشفة',active:false,archived:true,status:'archived'});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'x',defaultCompanyId:'disabled_default'}),{code:'failed-precondition'});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'x',defaultCompanyId:'no_such_company'}),{code:'failed-precondition'});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'x',defaultPageId:'archived_default'}),{code:'failed-precondition'});
+  await assert.rejects(invoke('saveSettings','gm',{organizationName:'x',defaultPageId:'no_such_page'}),{code:'failed-precondition'});
+  // An ordinary employee still cannot change either default.
+  await assert.rejects(invoke('saveSettings','entry',{organizationName:'x',defaultPageId:'test_page'}),{code:'permission-denied'});
+});
 test('removed sales role cannot use historical team arrays for lists or aggregate counts',async()=>{
   await db.doc('members/sales').update({role:'manager',permissions:[]});
   const list=await invoke('listOrders','sales');

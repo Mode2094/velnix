@@ -18,7 +18,11 @@ class _LiveSettingsState extends State<LiveSettings> {
   bool loading = true, busy = false, _dirty = false;
   String? error;
   String? defaultCompanyId;
+  String? defaultPageId;
   List<Map<String, dynamic>> companies = [];
+  List<Map<String, dynamic>> pages = [];
+  bool _staleCompany = false;
+  bool _stalePage = false;
   @override
   void initState() {
     super.initState();
@@ -38,13 +42,38 @@ class _LiveSettingsState extends State<LiveSettings> {
             .where((c) => c['enabled'] == true && c['archived'] != true)
             .toList();
       } catch (_) {}
+      List<Map<String, dynamic>> pgs = [];
+      try {
+        final allowed = await VelnixGateway.instance.allowedPages();
+        pgs = ((allowed['items'] as List?) ?? const [])
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+      } catch (_) {}
+      var company = data['defaultCompanyId']?.toString();
+      var page = data['defaultPageId']?.toString();
+      // A default that is no longer usable (disabled/archived/deleted) is not
+      // shown as selected: the field falls back to «بدون» with a clear notice.
+      final staleCompany =
+          company != null &&
+          company.isNotEmpty &&
+          !comps.any((c) => c['id']?.toString() == company);
+      final stalePage =
+          page != null &&
+          page.isNotEmpty &&
+          !pgs.any((p) => p['id']?.toString() == page);
+      if (staleCompany) company = null;
+      if (stalePage) page = null;
       if (mounted) {
         setState(() {
           name.text = data['organizationName']?.toString() ?? '';
           phone.text = data['supportPhone']?.toString() ?? '';
           footer.text = data['receiptFooter']?.toString() ?? '';
-          defaultCompanyId = data['defaultCompanyId']?.toString();
+          defaultCompanyId = company;
+          defaultPageId = page;
           companies = comps;
+          pages = pgs;
+          _staleCompany = staleCompany;
+          _stalePage = stalePage;
           loading = false;
           error = null;
           _dirty = false;
@@ -77,6 +106,7 @@ class _LiveSettingsState extends State<LiveSettings> {
         'supportPhone': phone.text.trim(),
         'receiptFooter': footer.text.trim(),
         'defaultCompanyId': defaultCompanyId,
+        'defaultPageId': defaultPageId,
       });
       VelnixGateway.instance.invalidate('settings');
       _dirty = false;
@@ -162,7 +192,43 @@ class _LiveSettingsState extends State<LiveSettings> {
                                 labelText: 'تذييل سند الطلب (اختياري)',
                               ),
                             ),
-                            const SizedBox(height: 12),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      VLivePanel(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.tune_rounded,
+                                  size: 18,
+                                  color: VColors.brand,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'الإعدادات الافتراضية للطلبات الجديدة',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'تُطبَّق على نموذج «طلب جديد» فقط، ويمكن للموظف تغييرها يدوياً. '
+                              'اختيار الشركة لا يُرسل الشحنة تلقائياً.',
+                              style: TextStyle(
+                                color: VColors.muted,
+                                fontSize: 11.5,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
                             DropdownButtonFormField<String>(
                               key: ValueKey(
                                 'default-company-${defaultCompanyId ?? ''}',
@@ -170,7 +236,7 @@ class _LiveSettingsState extends State<LiveSettings> {
                               initialValue: defaultCompanyId,
                               isExpanded: true,
                               decoration: const InputDecoration(
-                                labelText: 'شركة التوصيل الافتراضية (اختياري)',
+                                labelText: 'شركة التوصيل الافتراضية',
                               ),
                               items: [
                                 const DropdownMenuItem<String>(
@@ -188,19 +254,62 @@ class _LiveSettingsState extends State<LiveSettings> {
                               ],
                               onChanged: (v) => setState(() {
                                 defaultCompanyId = v;
+                                _staleCompany = false;
                                 _dirty = true;
                               }),
                             ),
-                            const Padding(
-                              padding: EdgeInsets.only(top: 6),
-                              child: Text(
-                                'تُختار تلقائياً عند إنشاء طلب جديد، ولا تُرسل الشحنة تلقائياً.',
-                                style: TextStyle(
-                                  color: VColors.muted,
-                                  fontSize: 11.5,
+                            if (_staleCompany)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'الشركة الافتراضية المحفوظة لم تعد متاحة؛ اختر شركة أخرى أو اترك «بدون».',
+                                  style: TextStyle(
+                                    color: VColors.warning,
+                                    fontSize: 11.5,
+                                  ),
                                 ),
                               ),
+                            const SizedBox(height: 12),
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                'default-page-${defaultPageId ?? ''}',
+                              ),
+                              initialValue: defaultPageId,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                labelText: 'صفحة فيسبوك الافتراضية',
+                              ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('بدون صفحة افتراضية'),
+                                ),
+                                for (final p in pages)
+                                  DropdownMenuItem(
+                                    value: p['id']?.toString(),
+                                    child: Text(
+                                      p['name']?.toString() ?? '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
+                              onChanged: (v) => setState(() {
+                                defaultPageId = v;
+                                _stalePage = false;
+                                _dirty = true;
+                              }),
                             ),
+                            if (_stalePage)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 6),
+                                child: Text(
+                                  'الصفحة الافتراضية المحفوظة لم تعد متاحة؛ اختر صفحة أخرى أو اترك «بدون».',
+                                  style: TextStyle(
+                                    color: VColors.warning,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),

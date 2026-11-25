@@ -713,7 +713,10 @@ class OrderInvoicePdf {
         : row(f.label, f.value);
     final recipientBlock = recipientFields(order).map(field).toList();
     final contentBlock = contentFields(order).map(field).toList();
-    final metaBlock = metaFields(order, printedBy: printedBy).map(field).toList();
+    final metaBlock = metaFields(
+      order,
+      printedBy: printedBy,
+    ).map(field).toList();
 
     // Landscape pages are SHORTER but wider, so the same single column would run
     // past the bottom edge. Using the extra width for two columns keeps every
@@ -852,11 +855,7 @@ class OrderInvoicePdf {
 /// Works in Android, iOS, web and desktop printing supported by `printing`.
 /// A preview remains available even if a printer is not installed.
 class OrderPrintScreen extends StatefulWidget {
-  const OrderPrintScreen({
-    super.key,
-    required this.order,
-    this.printedBy = '',
-  });
+  const OrderPrintScreen({super.key, required this.order, this.printedBy = ''});
   final Map<String, dynamic> order;
 
   /// Name of the signed-in operator, printed as «تمت الطباعة بواسطة».

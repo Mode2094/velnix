@@ -89,9 +89,7 @@ void main() {
     });
 
     test('creator and printed-by are always present, even when empty', () {
-      final fields = OrderInvoicePdf.metaFields({
-        'id': 'x',
-      }, printedBy: '');
+      final fields = OrderInvoicePdf.metaFields({'id': 'x'}, printedBy: '');
       expect(fields.map((f) => f.label), ['المنشئ', 'تمت الطباعة بواسطة']);
       // An empty value still prints the row (with a dash), never vanishes.
       expect(fields.length, 2);
@@ -115,9 +113,7 @@ void main() {
       font = pw.Font.ttf(
         await rootBundle.load('assets/fonts/Cairo-Regular.ttf'),
       );
-      bold = pw.Font.ttf(
-        await rootBundle.load('assets/fonts/Cairo-Bold.ttf'),
-      );
+      bold = pw.Font.ttf(await rootBundle.load('assets/fonts/Cairo-Bold.ttf'));
     });
 
     /// Lays the voucher body out under the real page constraints and returns the
@@ -155,27 +151,33 @@ void main() {
       return (content: size, printable: PdfPoint(maxW, maxH));
     }
 
-    test('portrait (A4) keeps everything at full size inside the page', () async {
-      final m = await measure(fullOrder(), PdfPageFormat.a4);
-      expect(
-        m.content.y,
-        lessThanOrEqualTo(m.printable.y + 0.5),
-        reason: 'portrait voucher must not exceed the printable height',
-      );
-      expect(m.content.x, lessThanOrEqualTo(m.printable.x + 0.5));
-    });
+    test(
+      'portrait (A4) keeps everything at full size inside the page',
+      () async {
+        final m = await measure(fullOrder(), PdfPageFormat.a4);
+        expect(
+          m.content.y,
+          lessThanOrEqualTo(m.printable.y + 0.5),
+          reason: 'portrait voucher must not exceed the printable height',
+        );
+        expect(m.content.x, lessThanOrEqualTo(m.printable.x + 0.5));
+      },
+    );
 
-    test('landscape (A4) keeps everything at full size inside the page', () async {
-      final m = await measure(fullOrder(), PdfPageFormat.a4.landscape);
-      // Landscape is 87mm SHORTER than portrait: before the fix the single
-      // column overflowed the page and the lower fields were painted off-page.
-      expect(
-        m.content.y,
-        lessThanOrEqualTo(m.printable.y + 0.5),
-        reason: 'landscape voucher must not exceed the printable height',
-      );
-      expect(m.content.x, lessThanOrEqualTo(m.printable.x + 0.5));
-    });
+    test(
+      'landscape (A4) keeps everything at full size inside the page',
+      () async {
+        final m = await measure(fullOrder(), PdfPageFormat.a4.landscape);
+        // Landscape is 87mm SHORTER than portrait: before the fix the single
+        // column overflowed the page and the lower fields were painted off-page.
+        expect(
+          m.content.y,
+          lessThanOrEqualTo(m.printable.y + 0.5),
+          reason: 'landscape voucher must not exceed the printable height',
+        );
+        expect(m.content.x, lessThanOrEqualTo(m.printable.x + 0.5));
+      },
+    );
 
     test('the two orientations print the same field count', () async {
       final p = await measure(fullOrder(), PdfPageFormat.a4);
@@ -225,59 +227,56 @@ void main() {
       }
     });
 
-    test(
-      'every field, the creator and the printed-by name are really on the '
-      'page in portrait AND landscape (rendered check)',
-      () async {
-        final python = _findPythonWithPymupdf();
-        if (python == null) {
-          // The renderer is optional: the pure-Dart fit tests above are the
-          // authoritative guard in CI. Skipped only when no renderer is present.
-          printOnFailure('pymupdf not available — skipping rendered check');
-          return;
-        }
-        final dir = Directory.systemTemp.createTempSync('velnix-voucher');
-        addTearDown(() => dir.deleteSync(recursive: true));
+    test('every field, the creator and the printed-by name are really on the '
+        'page in portrait AND landscape (rendered check)', () async {
+      final python = _findPythonWithPymupdf();
+      if (python == null) {
+        // The renderer is optional: the pure-Dart fit tests above are the
+        // authoritative guard in CI. Skipped only when no renderer is present.
+        printOnFailure('pymupdf not available — skipping rendered check');
+        return;
+      }
+      final dir = Directory.systemTemp.createTempSync('velnix-voucher');
+      addTearDown(() => dir.deleteSync(recursive: true));
 
-        final order = fullOrder();
-        final files = <String>[];
-        final formats = {
-          'portrait': PdfPageFormat.a4,
-          'landscape': PdfPageFormat.a4.landscape,
-        };
-        for (final entry in formats.entries) {
-          final bytes = await OrderInvoicePdf.generateMany(
-            orders: [order],
-            format: entry.value,
-            printedBy: 'سارة علي',
-          );
-          final file = File('${dir.path}/${entry.key}.pdf')
-            ..writeAsBytesSync(bytes);
-          files.add(file.path);
-        }
-
-        final needles = [
-          ...mustPrint,
-          'منشئ الطلب',
-          'سارة علي',
-          'VNX-000123',
-          'طقم شرعي',
-          '0791234567',
-        ];
-        final script = '${dir.path}/check.py';
-        File(script).writeAsStringSync(_checkerScript);
-        final res = Process.runSync(python, [
-          script,
-          needles.join('|'),
-          ...files,
-        ]);
-        expect(
-          res.stdout.toString(),
-          contains('ALL_OK'),
-          reason: 'rendered output: ${res.stdout}\n${res.stderr}',
+      final order = fullOrder();
+      final files = <String>[];
+      final formats = {
+        'portrait': PdfPageFormat.a4,
+        'landscape': PdfPageFormat.a4.landscape,
+      };
+      for (final entry in formats.entries) {
+        final bytes = await OrderInvoicePdf.generateMany(
+          orders: [order],
+          format: entry.value,
+          printedBy: 'سارة علي',
         );
-      },
-    );
+        final file = File('${dir.path}/${entry.key}.pdf')
+          ..writeAsBytesSync(bytes);
+        files.add(file.path);
+      }
+
+      final needles = [
+        ...mustPrint,
+        'منشئ الطلب',
+        'سارة علي',
+        'VNX-000123',
+        'طقم شرعي',
+        '0791234567',
+      ];
+      final script = '${dir.path}/check.py';
+      File(script).writeAsStringSync(_checkerScript);
+      final res = Process.runSync(python, [
+        script,
+        needles.join('|'),
+        ...files,
+      ]);
+      expect(
+        res.stdout.toString(),
+        contains('ALL_OK'),
+        reason: 'rendered output: ${res.stdout}\n${res.stderr}',
+      );
+    });
   });
 }
 
