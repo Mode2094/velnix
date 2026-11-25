@@ -423,6 +423,62 @@ class OrderInvoicePdf {
     OrderTemplate template,
   ) => _marginsFor(format, template);
 
+  /// The single, compact Code128 symbol plus the order number printed right
+  /// below it — the SAME string the bars encode, so a scan and a human read
+  /// can never disagree. Drawn OUTSIDE the page's uniform scale-down (see
+  /// [_orderPage]) so the module size [invoiceBarcodeGeometry] computed is
+  /// preserved exactly and the code stays scannable on the smallest paper.
+  static pw.Widget barcodeBlock({
+    required Map<String, dynamic> order,
+    required PdfPageFormat format,
+    required OrderTemplate template,
+    required pw.Font bold,
+  }) {
+    final thermal =
+        template == OrderTemplate.thermal ||
+        format.width < 100 * PdfPageFormat.mm;
+    final horizontalMargin = _marginsFor(format, template).horizontal;
+    final printableWidth = format.width - horizontalMargin * 2;
+    final value = orderBarcode(order);
+    final geometry = invoiceBarcodeGeometry(
+      value,
+      printableWidth,
+      horizontalMargin,
+    );
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      mainAxisSize: pw.MainAxisSize.min,
+      children: [
+        pw.Padding(
+          padding: pw.EdgeInsets.only(
+            left: geometry.leftPadding,
+            right: geometry.rightPadding,
+          ),
+          child: pw.BarcodeWidget(
+            barcode: pw.Barcode.code128(),
+            data: value,
+            drawText: false,
+            height: thermal ? 22 : 34,
+            width: geometry.width,
+          ),
+        ),
+        pw.SizedBox(height: thermal ? 3 : 5),
+        // The serial stays on ONE line even on the narrowest sheet: it is
+        // scaled down rather than wrapped, so the human-readable number always
+        // matches the encoded value and the strip height stays predictable.
+        pw.FittedBox(
+          fit: pw.BoxFit.scaleDown,
+          child: pw.Text(
+            value,
+            maxLines: 1,
+            textDirection: pw.TextDirection.ltr,
+            style: pw.TextStyle(font: bold, fontSize: thermal ? 12 : 16),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// The voucher content for ONE order, without the page frame.
   ///
   /// Portrait and landscape both build from the same ordered field lists
@@ -438,11 +494,10 @@ class OrderInvoicePdf {
     required PdfPageFormat format,
     OrderTemplate template = OrderTemplate.professional,
     String printedBy = '',
+    bool withBarcode = true,
   }) {
     final narrow = format.width < 100 * PdfPageFormat.mm;
     final thermal = template == OrderTemplate.thermal || narrow;
-    final horizontalMargin = _marginsFor(format, template).horizontal;
-    final barcode = orderBarcode(order);
     final timestamp = DateTime.tryParse(order['createdAt']?.toString() ?? '');
     final created = timestamp == null ? null : businessTime(timestamp);
     final date = created == null
@@ -533,30 +588,12 @@ class OrderInvoicePdf {
     // height that stays reliably scannable with clear quiet zones. The encoded
     // value IS the sequential order number printed right below it, so a scan
     // shows exactly the number a person reads on the voucher.
-    final printableWidth = format.width - horizontalMargin * 2;
-    final barcodeGeometry = invoiceBarcodeGeometry(
-      barcode,
-      printableWidth,
-      horizontalMargin,
-    );
-    final symbols = pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
-      children: [
-        pw.Padding(
-          padding: pw.EdgeInsets.only(
-            left: barcodeGeometry.leftPadding,
-            right: barcodeGeometry.rightPadding,
-          ),
-          child: pw.BarcodeWidget(
-            barcode: pw.Barcode.code128(),
-            data: barcode,
-            drawText: false,
-            height: thermal ? 22 : 34,
-            width: barcodeGeometry.width,
-          ),
-        ),
-      ],
-    );
+    //
+    // The bars are NOT scaled with the body: [_orderPage] draws them (via
+    // [barcodeBlock]) OUTSIDE the uniform scale-down that keeps every field on
+    // the page, so a small sheet can never shrink the code below the exact,
+    // scannable module size [invoiceBarcodeGeometry] computed. When the caller
+    // places the barcode itself ([withBarcode] false) it appears there instead.
 
     // ---- Order-type banner: only for a NON-normal type, at the very top ----
     // A normal order prints no type word at all and reserves no space for one.
@@ -673,15 +710,16 @@ class OrderInvoicePdf {
                     ),
                   ),
                 pw.SizedBox(height: thermal ? 4 : 6),
-                // Barcode sits ABOVE the order number.
-                symbols,
-                pw.SizedBox(height: thermal ? 3 : 5),
-                // The number under the bars is exactly what the bars encode.
-                pw.Text(
-                  barcode,
-                  textDirection: pw.TextDirection.ltr,
-                  style: pw.TextStyle(font: bold, fontSize: thermal ? 12 : 16),
-                ),
+                // The barcode sits ABOVE the order number. Rendered by the page
+                // (outside the uniform scale-down) so it is never shrunk below
+                // scannability; skipped here when the page draws it instead.
+                if (withBarcode)
+                  barcodeBlock(
+                    order: order,
+                    format: format,
+                    template: template,
+                    bold: bold,
+                  ),
                 if (created != null)
                   pw.Padding(
                     padding: const pw.EdgeInsets.only(top: 3),
@@ -802,10 +840,13 @@ class OrderInvoicePdf {
   }
 
   /// Wraps [voucherBody] in the single physical page. Exactly ONE page per
-  /// order — and never a clipped one: the voucher is uniformly scaled down by
-  /// the smallest amount needed to fit the printable box (a no-op when it
-  /// already fits), so no field can fall outside the page edge in either
-  /// orientation. A batch of N orders still yields N pages.
+  /// order — and never a clipped one: the voucher body is uniformly scaled down
+  /// by the smallest amount needed to fit the printable box **minus the barcode
+  /// strip** (a no-op when it already fits), so no field can fall outside the
+  /// page edge in either orientation. The Code128 barcode is drawn below that
+  /// scaled region, OUTSIDE the scale-down, so it keeps its exact scannable
+  /// module size even on the smallest sheet. A batch of N orders still yields N
+  /// pages.
   static pw.Page _orderPage(
     Map<String, dynamic> order,
     pw.Font font,
@@ -816,6 +857,33 @@ class OrderInvoicePdf {
   ) {
     final margins = _marginsFor(format, template);
     final printedWidth = format.width - margins.horizontal * 2;
+    final narrow = format.width < 100 * PdfPageFormat.mm;
+    final thermal = template == OrderTemplate.thermal || narrow;
+    // The Code128 strip (bars + gap + one serial line) is drawn at the TOP of
+    // the page, OUTSIDE the uniform scale-down that keeps the fields on the
+    // page. That is the only way the module width [invoiceBarcodeGeometry]
+    // computed survives on the smallest sheets (A6, 50×80 mm): scaling the whole
+    // voucher to fit would otherwise shrink the bars below one 203-DPI dot and
+    // make them unscannable. Its height is reserved below so the scaled body can
+    // never overlap it or (worse) be pushed off the single page.
+    final barcode = barcodeBlock(
+      order: order,
+      format: format,
+      template: template,
+      bold: bold,
+    );
+    final barsHeight = thermal ? 22.0 : 34.0;
+    final innerGap = thermal ? 3.0 : 5.0;
+    // Cairo's line box is ≈1.874× the font size; round up and add a hair so the
+    // reserve is never (even by a fraction of a point) below the real height.
+    final serialLine = (thermal ? 12.0 : 16.0) * 1.9;
+    final barcodeReserve = barsHeight + innerGap + serialLine;
+    final pageGap = thermal ? 3.0 : 5.0;
+    final contentHeight = format.height - margins.vertical * 2;
+    final bodyMax = (contentHeight - barcodeReserve - pageGap - 2).clamp(
+      1.0,
+      double.infinity,
+    );
     return pw.Page(
       pageFormat: format,
       margin: pw.EdgeInsets.fromLTRB(
@@ -825,19 +893,38 @@ class OrderInvoicePdf {
         margins.vertical,
       ),
       textDirection: pw.TextDirection.rtl,
-      build: (_) => pw.FittedBox(
-        fit: pw.BoxFit.scaleDown,
-        child: pw.SizedBox(
-          width: printedWidth,
-          child: voucherBody(
-            order: order,
-            font: font,
-            bold: bold,
-            format: format,
-            template: template,
-            printedBy: printedBy,
+      build: (_) => pw.Column(
+        mainAxisSize: pw.MainAxisSize.min,
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          // The barcode is the FIRST child so that even in the impossible case
+          // where a child would not fit, the scannable symbol is the one that
+          // stays — never dropped in favour of a text field.
+          barcode,
+          pw.SizedBox(height: pageGap),
+          // The body is uniformly scaled down only when it would not fit the
+          // box that remains after the reserved barcode strip (a no-op when it
+          // already fits), so no field can fall outside the page edge.
+          pw.ConstrainedBox(
+            constraints: pw.BoxConstraints(maxHeight: bodyMax),
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.topCenter,
+              child: pw.SizedBox(
+                width: printedWidth,
+                child: voucherBody(
+                  order: order,
+                  font: font,
+                  bold: bold,
+                  format: format,
+                  template: template,
+                  printedBy: printedBy,
+                  withBarcode: false,
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
