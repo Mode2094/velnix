@@ -1,0 +1,33 @@
+name: Regenerate Goldens (temporary)
+
+# Temporary, manual-only helper: the committed goldens were rendered on macOS,
+# so the Linux CI runner reports sub-1% anti-aliasing diffs and fails. This job
+# renders them on the SAME ubuntu-latest / Flutter 3.47.7 image the CI uses and
+# uploads the result. It is deleted again once the goldens are committed.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.7'
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Update goldens (Linux rendering)
+        run: flutter test --update-goldens || true
+      - name: Summarize changed goldens
+        run: git status --short test/goldens | head -200
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: updated-goldens
+          path: test/goldens
+          if-no-files-found: error
