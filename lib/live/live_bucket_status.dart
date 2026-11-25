@@ -289,6 +289,10 @@ class _LiveBucketStatusGridState extends State<LiveBucketStatusGrid> {
               bucket: 'all',
               sectionMode: true,
               sectionTotal: _allTotal(counters['all']),
+              // A finished bulk operation (status change or carrier dispatch)
+              // re-reads the counters here without disturbing the list's own
+              // preserved view (filters, search, scroll, selection).
+              onMutated: refresh,
             );
           },
         ),

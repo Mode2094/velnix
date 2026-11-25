@@ -90,8 +90,8 @@ class _BulkOperationsScreenState extends State<BulkOperationsScreen> {
     final label = ok
         ? 'تم الإرسال'
         : uncertain
-        ? 'نتيجة غير مؤكدة (لا تُعد الإرسال)'
-        : 'لم يُرسل (${r['code'] ?? ''})';
+        ? 'تحتاج مراجعة — ${bulkDispatchReason(r)}'
+        : 'لم يُرسل — ${bulkDispatchReason(r)}';
     final color = ok
         ? VColors.aqua
         : uncertain

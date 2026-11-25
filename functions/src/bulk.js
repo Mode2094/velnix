@@ -264,12 +264,19 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     // Aggregates are computed from the DURABLE results, never from claims.
     const all=await resultsRef.get();
     let succeeded=0,failed=0,uncertain=0,claimed=0,remaining=0;
+    // Per-order final rows for the client's report/progress. Only a finalized
+    // result is included; a live `claimed` row is not (it is still running).
+    // The client must never treat an HTTP 2xx as an acceptance — this row is
+    // the durable proof.
+    const results=[];
     for(const d of all.docs){
       const v=d.data();
       if(v.state==='claimed'){claimed++;continue;}
       if(v.ok===true)succeeded++;
       else if(v.uncertain===true)uncertain++;
       else failed++; // definite, non-retryable-by-UI failure only
+      results.push({id:v.id,ok:v.ok===true,uncertain:v.uncertain===true,
+        code:v.code||null,message:typeof v.message==='string'?v.message:'',trackingNumber:v.trackingNumber||null});
     }
     const total=ids.length;
     const finalized=succeeded+failed+uncertain;
@@ -279,7 +286,7 @@ module.exports = ({db,auth,FieldValue,requireAuth,currentActor,audit,fail,requir
     const status=finished?'finished':'partial';
     await opRef.set({status,finishedAt:finished?FieldValue.serverTimestamp():null,updatedAt:FieldValue.serverTimestamp(),
       succeeded,failed,uncertain,claimed,remaining},{merge:true});
-    return {operationId:opId,status,succeeded,failed,uncertain,claimed,remaining,pending,hasMore:!finished};
+    return {operationId:opId,status,succeeded,failed,uncertain,claimed,remaining,pending,hasMore:!finished,results};
   }
 
   // Lists the caller's own bulk operations (newest first) so the app can recover

@@ -28,6 +28,7 @@ class LiveOrders extends StatefulWidget {
     this.sectionMode = false,
     this.sectionTotal,
     this.webBulkUx = kIsWeb,
+    this.onMutated,
   });
   final SessionPolicy policy;
   final String bucket;
@@ -78,6 +79,13 @@ class LiveOrders extends StatefulWidget {
   /// Android keeps its single-dialog flow and first-page reload unchanged.
   /// Exposed as a constructor flag so the VM tests can cover the web path.
   final bool webBulkUx;
+
+  /// Called after a bulk operation finished so the parent can refresh its own
+  /// counters (the store-wide section grid re-reads `dashboardStats`), while this
+  /// list refreshes its rows IN PLACE — so the filters, search, loaded pages and
+  /// scroll position all survive. Null when the list is not mounted inside a
+  /// counters strip (the orders page, Android cards).
+  final VoidCallback? onMutated;
 
   @override
   State<LiveOrders> createState() => _LiveOrdersState();
@@ -284,7 +292,15 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// details never resets the filters, the search, the sort, the loaded pages or
   /// the scroll position. Re-fetches the visible ids (chunked to the server's
   /// 60-id limit) and swaps each row's data, keeping the row order and count.
-  Future<void> webRefreshPreservingView() async {
+  ///
+  /// When [dropBucketMismatch] is true (bulk dispatch), a row whose fresh data
+  /// no longer matches this list's bucket is removed: an order the carrier just
+  /// confirmed leaves the internal list and joins the delivery list, exactly as
+  /// the server-side filter would place it. The store-wide (`all`) list keeps
+  /// every row, so an accepted order never disappears from the grand total.
+  Future<void> webRefreshPreservingView({
+    bool dropBucketMismatch = false,
+  }) async {
     if (rows.isEmpty) {
       load(reset: true);
       return;
@@ -305,7 +321,20 @@ class _LiveOrdersState extends State<LiveOrders> {
     }
     if (!mounted) return;
     setState(() {
-      rows = [for (final o in rows) freshById[o['id'].toString()] ?? o];
+      var next = [for (final o in rows) freshById[o['id'].toString()] ?? o];
+      if (dropBucketMismatch && bucket != 'all') {
+        // `dispatchState == 'sent'` is the client-visible proof of a confirmed
+        // acceptance (the server keeps `deliveryAccepted` private). The internal
+        // bucket excludes accepted orders; the delivery bucket keeps only them.
+        next = next
+            .where(
+              (o) => bucket == 'delivery'
+                  ? o['dispatchState'] == 'sent'
+                  : o['dispatchState'] != 'sent',
+            )
+            .toList();
+      }
+      rows = next;
     });
   }
 
@@ -1194,6 +1223,11 @@ class _LiveOrdersState extends State<LiveOrders> {
   /// the server's own uncertain outcomes stay uncertain. Every requested order
   /// is reported exactly once.
   ///
+  /// When [dispatchReport] is true (web dispatch) a progress window shows the
+  /// running totals and the serial currently in flight, and the final result is
+  /// a per-order report (a confirmed success, a definite failure, or a result
+  /// that still needs review) instead of the generic summary.
+  ///
   /// Returns the merged per-order result rows ({id, ok, ...}) so the caller can
   /// act on exactly the orders the server confirmed (for an optional follow-up
   /// such as printing), or null when the call was a no-op (busy/empty).
@@ -1201,9 +1235,28 @@ class _LiveOrdersState extends State<LiveOrders> {
     List<String> ids,
     Future<Map<String, dynamic>> Function(List<String> chunk) call, {
     int chunkSize = _bulkChunk,
+    bool dispatchReport = false,
+    void Function(String id)? onOpenOrder,
+    Future<Map<String, dynamic>> Function(List<String> ids)? onVerifyUncertain,
+    List<String> operationIds = const [],
   }) async {
     if (bulkBusy || ids.isEmpty) return null;
     setState(() => bulkBusy = true);
+    final byId = {for (final o in rows) o['id'].toString(): o};
+    final companyNames = widget.webBulkUx
+        ? webCompanyNames
+        : const <String, String>{};
+    final progress = ValueNotifier<BulkDispatchProgress>(
+      BulkDispatchProgress(total: ids.length),
+    );
+    Future<void>? progressDialog;
+    if (dispatchReport && mounted) {
+      progressDialog = showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _BulkDispatchProgressDialog(progress: progress),
+      );
+    }
     final merged = <String, dynamic>{'results': <dynamic>[]};
     var succeeded = 0, failed = 0, uncertain = 0, unchanged = 0;
     // Number of orders in fully-completed chunks (their results were received).
@@ -1220,6 +1273,12 @@ class _LiveOrdersState extends State<LiveOrders> {
         // Mark the chunk in flight BEFORE awaiting: if await throws, these
         // orders were dispatched and their outcome is unknown, not unstarted.
         unknown = chunk.length;
+        if (dispatchReport) {
+          progress.value = progress.value.copyWith(
+            processed: completed,
+            currentSerial: _dispatchSerial(byId, chunk.first),
+          );
+        }
         final result = await call(chunk);
         // Success: the chunk is now completed, not in-flight.
         completed += chunk.length;
@@ -1229,6 +1288,14 @@ class _LiveOrdersState extends State<LiveOrders> {
         failed += (result['failed'] as num?)?.toInt() ?? 0;
         uncertain += (result['uncertain'] as num?)?.toInt() ?? 0;
         unchanged += (result['unchanged'] as num?)?.toInt() ?? 0;
+        if (dispatchReport) {
+          progress.value = progress.value.copyWith(
+            processed: completed,
+            accepted: succeeded,
+            failed: failed,
+            needsReview: uncertain,
+          );
+        }
       }
     } catch (e) {
       // Keep every completed chunk's outcome. The in-flight chunk stays unknown
@@ -1246,32 +1313,146 @@ class _LiveOrdersState extends State<LiveOrders> {
     final results = (merged['results'] as List)
         .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
-    if (!mounted) return results;
-    try {
-      _showBulkResultsDialog(
-        'نتيجة العملية — ${ids.length} طلب',
-        succeeded,
-        unchanged,
-        uncertain,
-        failed,
-        results,
-        unknownIds: unknownIds,
-        notStarted: notStarted,
-        transportError: transportError,
+    if (dispatchReport) {
+      progress.value = progress.value.copyWith(
+        processed: completed,
+        accepted: succeeded,
+        failed: failed,
+        needsReview: uncertain,
+        finished: true,
       );
+      // Close the progress window deterministically (its route is already on
+      // the stack) before showing the result, so no spinner keeps animating.
+      if (progressDialog != null && mounted) {
+        final nav = Navigator.of(context, rootNavigator: true);
+        if (nav.canPop()) nav.pop();
+        await progressDialog;
+      }
+    }
+    if (!mounted) return results;
+    // Build the dispatch report (if any) BEFORE the refresh, but show it only
+    // AFTER the view is refreshed and `bulkBusy` is cleared — so the ops-bar
+    // spinner stops the moment the run ends and the report is a clean result
+    // window, never a spinner that keeps animating behind it.
+    BulkDispatchReport? report;
+    if (dispatchReport) {
+      // Only a durable `ok:true` from the server counts as accepted; an
+      // in-flight/lost chunk and the server's `uncertain` rows are needs-review
+      // and are never counted as success.
+      report = BulkDispatchReport(
+        total: ids.length,
+        success: succeeded,
+        failed: failed + notStarted.length,
+        needsReview: uncertain + unknownIds.length,
+        rows: [
+          ...bulkDispatchRows(results, byId, companyNames),
+          for (final id in unknownIds)
+            BulkDispatchReportRow(
+              orderId: id,
+              orderNumber: _dispatchSerial(byId, id),
+              company: _dispatchCompanyLabel(byId, id, companyNames),
+              outcome: BulkDispatchOutcome.needsReview,
+              reason:
+                  'لم تصل نتيجة الإرسال — تحتاج مراجعة '
+                  '(مرجع: ${_dispatchSerial(byId, id)})',
+            ),
+          for (final id in notStarted)
+            BulkDispatchReportRow(
+              orderId: id,
+              orderNumber: _dispatchSerial(byId, id),
+              company: _dispatchCompanyLabel(byId, id, companyNames),
+              outcome: BulkDispatchOutcome.failed,
+              reason: 'لم تُرسل (لم تبدأ العملية — لن يُعاد إرسالها تلقائيًا)',
+            ),
+        ],
+        operationIds: List.of(operationIds),
+        interrupted:
+            transportError != null ||
+            unknownIds.isNotEmpty ||
+            notStarted.isNotEmpty,
+      );
+    }
+    try {
+      if (!dispatchReport) {
+        _showBulkResultsDialog(
+          'نتيجة العملية — ${ids.length} طلب',
+          succeeded,
+          unchanged,
+          uncertain,
+          failed,
+          results,
+          unknownIds: unknownIds,
+          notStarted: notStarted,
+          transportError: transportError,
+        );
+      }
       // Refresh regardless: completed chunks may already have changed orders.
       // On the web the loaded rows are refreshed IN PLACE, so the search, the
       // filters, the loaded pages and the scroll position all survive the
       // operation. Android keeps its first-page reload unchanged.
       if (widget.webBulkUx) {
-        await webRefreshPreservingView();
+        await webRefreshPreservingView(dropBucketMismatch: dispatchReport);
       } else {
         await load(reset: true, fresh: true);
       }
+      // The counters strip / section grid re-reads its totals without touching
+      // this list's preserved view.
+      widget.onMutated?.call();
     } finally {
       if (mounted) setState(() => bulkBusy = false);
     }
+    if (mounted && report != null) {
+      final built = report;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => built.allSucceeded
+            ? _BulkDispatchSuccessDialog(report: built)
+            : BulkDispatchReportDialog(
+                report: built,
+                onOpenOrder: onOpenOrder,
+                onVerifyUncertain: onVerifyUncertain,
+              ),
+      );
+    }
     return results;
+  }
+
+  /// Read-only reconciliation for the orders a dispatch left «تحتاج مراجعة».
+  /// Reuses the EXISTING safe sync (`syncClickOrder`, never a resend, never a
+  /// second shipment): if the carrier confirms the shipment it is counted as
+  /// confirmed; otherwise it stays needs-review. Returns
+  /// {'confirmed': [ids], 'review': int}.
+  Future<Map<String, dynamic>> _verifyUncertainDispatch(
+    List<String> ids,
+  ) async {
+    for (final id in ids) {
+      try {
+        await gateway.syncClickOrder(id);
+      } catch (_) {
+        // A failed check leaves the order needs-review; it is never resent.
+      }
+    }
+    final confirmed = <String>[];
+    var review = 0;
+    try {
+      for (var i = 0; i < ids.length; i += 60) {
+        final chunk = ids.sublist(i, (i + 60).clamp(0, ids.length));
+        for (final o in await gateway.ordersByIds(chunk)) {
+          final id = o['id'].toString();
+          if (o['dispatchState'] == 'sent') {
+            confirmed.add(id);
+          } else {
+            review++;
+          }
+        }
+      }
+    } catch (_) {
+      review = ids.length - confirmed.length;
+    }
+    if (mounted) {
+      await webRefreshPreservingView(dropBucketMismatch: true);
+    }
+    return {'confirmed': confirmed, 'review': review};
   }
 
   /// Bulk internal status change. Every valid internal status is offered, with
@@ -1440,13 +1621,33 @@ class _LiveOrdersState extends State<LiveOrders> {
     final ids = selected.toList();
     var chunkIndex = 0;
     final opIds = <String>[];
-    await _runBulkChunked(ids, (chunk) {
-      final opId = '${base}_$chunkIndex';
-      chunkIndex++;
-      opIds.add(opId);
-      return gateway.bulkDispatch(chunk, operationId: opId);
-    }, chunkSize: _dispatchChunk);
-    if (mounted && opIds.isNotEmpty) {
+    await _runBulkChunked(
+      ids,
+      (chunk) {
+        final opId = '${base}_$chunkIndex';
+        chunkIndex++;
+        opIds.add(opId);
+        return gateway.bulkDispatch(chunk, operationId: opId);
+      },
+      chunkSize: _dispatchChunk,
+      // On the web UX the card list (VM tests / web fallback) shows the same
+      // live progress window and per-order report as the web grid; production
+      // Android keeps `webBulkUx == kIsWeb == false`, so its flow is unchanged.
+      dispatchReport: widget.webBulkUx,
+      operationIds: opIds,
+      onOpenOrder: (id) {
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => LiveOrderDetail(id: id, policy: widget.policy),
+          ),
+        ).then((_) {
+          if (mounted) load(reset: true);
+        });
+      },
+      onVerifyUncertain: _verifyUncertainDispatch,
+    );
+    if (mounted && opIds.isNotEmpty && !widget.webBulkUx) {
       showSuccess(
         context,
         'معرّفات عمليات الإرسال: ${opIds.join('، ')} — يمكن تتبعها من سجل العمليات.',

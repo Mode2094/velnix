@@ -118,3 +118,33 @@ test('getBulkOperation separates claimed (in progress) from final results',async
   assert.equal(rec.finished,false);
   assert.ok(rec.remaining>=1);
 });
+
+test('bulkDispatch returns a durable per-order result row for the client report',async()=>{
+  sendCalls=0;sendDelayMs=0;sendError=null;sendHang=null;
+  const id=await readyOrder();
+  const opId='claim_results_success_01';
+  const r=await dispatch([id],opId);
+  assert.equal(r.status,'finished');
+  assert.ok(Array.isArray(r.results),'a results array is returned for the report');
+  assert.equal(r.results.length,1,'one row per finalized order');
+  const row=r.results[0];
+  assert.equal(row.id,id);
+  assert.equal(row.ok,true,'a confirmed success is the only ok:true row');
+  assert.equal(row.uncertain,false);
+  assert.ok(row.trackingNumber,'the success row carries the tracking number');
+});
+
+test('a refused dispatch yields a definite failure row, never a success or uncertain',async()=>{
+  sendCalls=0;sendDelayMs=0;sendError=null;sendHang=null;
+  const id=await readyOrder();
+  await dispatch([id],'claim_results_first_001'); // send it once
+  const r=await dispatch([id],'claim_results_second_01'); // never re-sent
+  assert.equal(r.succeeded,0);
+  assert.equal(r.uncertain,0,'a refusal is a definite failure, not uncertain');
+  assert.equal(r.results.length,1);
+  const row=r.results[0];
+  assert.equal(row.ok,false);
+  assert.equal(row.uncertain,false);
+  assert.equal(row.code,'failed-precondition');
+  assert.equal(sendCalls,1,'no duplicate shipment was created');
+});

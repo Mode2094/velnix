@@ -300,7 +300,10 @@ void main() {
 
     await tester.tap(find.text('عرض نتائج الطلبات'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('نتيجة غير مؤكدة'), findsOneWidget);
+    expect(find.textContaining('تحتاج مراجعة'), findsOneWidget);
+    // The exact reason is never invented: a row with no code/message shows the
+    // honest fallback with its diagnostic reference.
+    expect(find.textContaining('تعذر تحديد السبب بدقة'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

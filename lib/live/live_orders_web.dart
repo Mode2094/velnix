@@ -1152,11 +1152,25 @@ class _WebOrdersView extends StatelessWidget {
         'op${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}'
         '${Random.secure().nextInt(1 << 30).toRadixString(36)}';
     var chunkIndex = 0;
-    await state._runBulkChunked(toSend, (chunk) {
-      final opId = '${base}_$chunkIndex';
-      chunkIndex++;
-      return state.gateway.bulkDispatch(chunk, operationId: opId);
-    }, chunkSize: _LiveOrdersState._dispatchChunk);
+    final opIds = <String>[];
+    await state._runBulkChunked(
+      toSend,
+      (chunk) {
+        final opId = '${base}_$chunkIndex';
+        chunkIndex++;
+        opIds.add(opId);
+        return state.gateway.bulkDispatch(chunk, operationId: opId);
+      },
+      chunkSize: _LiveOrdersState._dispatchChunk,
+      // Web-only: a live progress window plus a per-order final report that
+      // distinguishes a confirmed acceptance from a definite failure from a
+      // result that still needs review. A failed row opens its order; the
+      // uncertain rows can be safely reconciled (read-only, never resent).
+      dispatchReport: true,
+      operationIds: opIds,
+      onOpenOrder: (id) => _openDetail(context, id),
+      onVerifyUncertain: state._verifyUncertainDispatch,
+    );
     if (!context.mounted) return;
     if (assignFailed.isNotEmpty) {
       showError(
