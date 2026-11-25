@@ -42,8 +42,23 @@
 
 ## التحقق
 - `dart format --set-exit-if-changed lib test` ✅ — `flutter analyze` ✅.
-- `flutter test`: لا انحدار؛ 25 فشلًا صوريًا (golden) موجود مسبقًا على الشجرة النظيفة أيضًا
-  (فرق rasterization للخطوط على macOS) و`_WebOrdersView` لا يُبنى أصلًا عندما `!kIsWeb`.
+- `flutter test` في CI: أخفق في الدفعة الأولى **بسبب خطأ حقيقي** أُصلح لاحقًا (انظر أدناه).
+- `_WebOrdersView` لا يُبنى أصلًا عندما `!kIsWeb` (البوابة في `live_orders.dart`:
+  `if (kIsWeb) return buildWebOrders(context);`)، فإعادة تصميم الويب لا تظهر في أي golden.
+
+### فخّ `DropdownButtonFormField.isDense` (إصلاح لاحق)
+أضفنا في البداية `isDense: widget.dense` إلى `DropdownButtonFormField` داخل
+`VDateRangeField`. لكن `DropdownButtonFormField` يملك قيمة افتراضية **محلية** هي
+`isDense = true` ويفرضها على الـ`decoration`، فكل مواضع الاستدعاء القديمة كانت مضغوطة
+أصلًا. تمرير `false` لها (عند `dense = false`) ألغى الضغط بصمت في شريط فلاتر Android
+المشترك (`order_filters.dart`) ولوحة المعلومات (`live_dashboard.dart`) وشاشة العمليات،
+وأزاح **20 golden** بنسبة 9–42%.
+
+الإصلاح: عدم تمرير `isDense` إطلاقًا، وإبقاء `labelStyle`/`contentPadding` المضغوطة فقط
+عند `dense == true`. تحقق بالإصلاح: ملفات golden التالية **مطابقة بايت ببايت** لخط
+الأساس `6beadd4` عندما تكون القيمة `false`:
+`delivery_quality/*-dashboard-*`, `final_audit/filter_chips_*`,
+`final_audit/orders_multi_select_900`, `live_dashboard_390`.
 - المعاينة المعزولة (emulator + synthetic roles): `browser.cjs` ✅، `join-approval.cjs` ✅،
   `readback.cjs` ✅، `realtime-sync.cjs` ✅ (فلترة «الحالة الداخلية» تقوم بـ dropdown compact).
 - سكربت القياس: `scripts/emulator-preview/orders-layout.cjs`.
@@ -51,5 +66,9 @@
 ## النشر
 `flutter build web --release --no-web-resources-cdn --no-wasm-dry-run
 --dart-define-from-file=config/firebase.stage3.production.public.json`
-ثم `scripts/maintenance.sh off` (يعيد بناء `build/web` ويستعيد `.well-known/assetlinks.json`
-وينشر `--only hosting` بالإعداد `firebase.hosting.json`).
+ثم `scripts/maintenance.sh off` (ينشر `build/web` كما هو مع `.well-known/assetlinks.json`
+وبالإعداد `firebase.hosting.json`، `--only hosting`).
+
+المنشور الحيّ بعد الإصلاح: `main.dart.js` = 5,112,160 بايت،
+SHA-256 `1581c712ddaef3158ab528b7220bbe441e09c4c05874efe351cb0308a0656ad4`
+(تحقّق عبر طلب متجاوز للكاش؛ الطلب العادي قد يرجع نسخة CDN قديمة حتى `max-age=3600`).
