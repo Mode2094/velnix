@@ -26,6 +26,9 @@ scripts/maintenance.sh off   # إعادة نشر نسخة الإنتاج الأ�
 scripts/maintenance.sh status
 ```
 
+الأمر يقبل أيضًا الصيغة الحرفية نفسها: `scripts/maintenance.sh maintenance:on`
+و`scripts/maintenance.sh maintenance:off`.
+
 - `on`: يجهّز حِزمة الصيانة في `build/hosting-maintenance/` (13 ملفًا، بدون أي ملف من
   واجهة Flutter) وينشرها على الموقع العام.
 - `off`: **يعيد نشر نسخة الإنتاج الحقيقية** (`build/web`، وهي مطابقة بايت ببايت لما هو
